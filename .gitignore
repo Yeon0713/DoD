@@ -1,0 +1,17 @@
+# 비밀 값 (API 키 등)
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+
+# 개인용 API 연결 점검 스크립트
+server/check_apis.py

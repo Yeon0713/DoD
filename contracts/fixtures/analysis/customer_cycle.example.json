@@ -1,0 +1,41 @@
+{
+  "_설명": "예시 데이터. 손님 주문 주기. server/tests/planner/sample_inputs/demo_week_inputs.example.json 를 바탕으로 c_m01 간격을 3개로 고치고(N4 규칙), 주기 없는 손님 c_n01 을 더했다. intervals_days 는 최근 3개 간격, 오래된 것부터.",
+  "rows": [
+    {
+      "customer_key": "c_w01",
+      "cycle": "WEEKLY",
+      "next_expected_at": "2026-11-18T18:20:00+09:00",
+      "expected_daypart": "DINNER",
+      "intervals_days": [
+        7,
+        7,
+        7
+      ],
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "customer_key": "c_m01",
+      "cycle": "MONTHLY",
+      "next_expected_at": "2026-11-20T19:00:00+09:00",
+      "expected_daypart": "DINNER",
+      "intervals_days": [
+        29,
+        35,
+        28
+      ],
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "customer_key": "c_n01",
+      "cycle": "NONE",
+      "next_expected_at": null,
+      "expected_daypart": null,
+      "intervals_days": [
+        3,
+        41,
+        12
+      ],
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    }
+  ]
+}

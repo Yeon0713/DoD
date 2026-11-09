@@ -1,5 +1,7 @@
 # 도나(DoNA) 1차 프론트엔드 & UX/UI 개발 계획서 ([영웅])
 
+> **화면 구조는 Figma 04 시안 기준의 [`frontend_plan_v4.md`](./frontend_plan_v4.md)를 따릅니다.** 이 문서의 기술 스택, API 규칙, 데모 주간 정답표(4장)는 그대로 씁니다.
+
 > **기준 문서**: [`docs/[영웅].md`](./[영웅].md), [`docs/ux_ui_design_spec.md`](./ux_ui_design_spec.md) 및 도나 개발 명세(공통)  
 > **담당**: 장영웅 (`jheroorehj` / `yeongung`, 브랜치: `jheroorehj/feat-ui`)  
 > **목표**: 1차 범위인 **'파악하기'**와 **'계획하기'**를 위한 모바일 웹(Next.js App Router, PWA, 375px 기준) 4대 화면(오늘의 카드, 이번 주 달력, 설정, 개발용 시뮬레이터) 및 디자인 시스템 구축

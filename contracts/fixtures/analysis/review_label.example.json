@@ -1,0 +1,111 @@
+{
+  "_설명": "예시 데이터. 리뷰 분류 결과. server/tests/planner/sample_inputs/demo_week_inputs.example.json 의 reviews[].label 에 review_id 를 붙였다. labeled_at 은 리뷰 뒤 첫 재계산 시각(알림 시각 10분 전, 가정). 원본 리뷰 본문은 같은 파일의 reviews 에 있다.",
+  "rows": [
+    {
+      "review_id": "rv_087",
+      "sentiment": "POSITIVE",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-10-23T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_102",
+      "sentiment": "POSITIVE",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-11T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_105",
+      "sentiment": "NEGATIVE",
+      "complaint_types": [
+        "DELIVERY_DELAY"
+      ],
+      "complaint_groups": [
+        "DELIVERY"
+      ],
+      "is_quick": true,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-12T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_109",
+      "sentiment": "POSITIVE",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-14T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_111",
+      "sentiment": "NEGATIVE",
+      "complaint_types": [
+        "DELIVERY_DELAY"
+      ],
+      "complaint_groups": [
+        "DELIVERY"
+      ],
+      "is_quick": true,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-15T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_112",
+      "sentiment": "POSITIVE",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-16T13:50:00+09:00"
+    },
+    {
+      "review_id": "rv_118",
+      "sentiment": "NEGATIVE",
+      "complaint_types": [
+        "DELIVERY_DELAY"
+      ],
+      "complaint_groups": [
+        "DELIVERY"
+      ],
+      "is_quick": true,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-17T13:50:00+09:00"
+    },
+    {
+      "review_id": "rv_121",
+      "sentiment": "MIXED",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-17T21:20:00+09:00"
+    },
+    {
+      "review_id": "rv_126",
+      "sentiment": "POSITIVE",
+      "complaint_types": [],
+      "complaint_groups": [],
+      "is_quick": false,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-19T13:50:00+09:00"
+    },
+    {
+      "review_id": "rv_131",
+      "sentiment": "NEGATIVE",
+      "complaint_types": [
+        "TASTE"
+      ],
+      "complaint_groups": [
+        "FOOD"
+      ],
+      "is_quick": true,
+      "labeler": "HCX",
+      "labeled_at": "2026-11-20T21:20:00+09:00"
+    }
+  ]
+}

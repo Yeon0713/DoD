@@ -1,0 +1,18 @@
+{
+  "_설명": "예시 데이터. 위험 신호. 배달 지연 3건(rv_105, rv_111, rv_118)으로 11/17 13:50 재계산(14:00 알림 10분 전, 가정)에서 열린다. server/tests/planner/sample_inputs/demo_week_inputs.example.json 와 같다.",
+  "rows": [
+    {
+      "risk_id": "risk_004",
+      "complaint_type": "DELIVERY_DELAY",
+      "review_ids": [
+        "rv_105",
+        "rv_111",
+        "rv_118"
+      ],
+      "first_at": "2026-11-12T21:00:00+09:00",
+      "last_at": "2026-11-17T12:30:00+09:00",
+      "detected_at": "2026-11-17T13:50:00+09:00",
+      "status": "OPEN"
+    }
+  ]
+}

@@ -1,0 +1,437 @@
+{
+  "_설명": "예시 데이터. 하루 × 시간대 매출(11/02~11/17). contracts/sample_responses/sales_response.example.json(grain=day)을 C2 모양으로 옮겼다. 11/17 점심만 평소보다 35% 많다.",
+  "rows": [
+    {
+      "date": "2026-11-02",
+      "daypart": "LUNCH",
+      "sales_amount": 576000,
+      "qty": 68,
+      "food_cost": 195800,
+      "labor_cost": 55000,
+      "profit": 325200
+    },
+    {
+      "date": "2026-11-02",
+      "daypart": "DINNER",
+      "sales_amount": 811800,
+      "qty": 96,
+      "food_cost": 276000,
+      "labor_cost": 88000,
+      "profit": 447800
+    },
+    {
+      "date": "2026-11-02",
+      "daypart": "NIGHT",
+      "sales_amount": 255000,
+      "qty": 30,
+      "food_cost": 86700,
+      "labor_cost": 22000,
+      "profit": 146300
+    },
+    {
+      "date": "2026-11-03",
+      "daypart": "LUNCH",
+      "sales_amount": 618000,
+      "qty": 73,
+      "food_cost": 210100,
+      "labor_cost": 55000,
+      "profit": 352900
+    },
+    {
+      "date": "2026-11-03",
+      "daypart": "DINNER",
+      "sales_amount": 795400,
+      "qty": 94,
+      "food_cost": 270400,
+      "labor_cost": 88000,
+      "profit": 437000
+    },
+    {
+      "date": "2026-11-03",
+      "daypart": "NIGHT",
+      "sales_amount": 250000,
+      "qty": 29,
+      "food_cost": 85000,
+      "labor_cost": 22000,
+      "profit": 143000
+    },
+    {
+      "date": "2026-11-04",
+      "daypart": "LUNCH",
+      "sales_amount": 606000,
+      "qty": 71,
+      "food_cost": 206000,
+      "labor_cost": 55000,
+      "profit": 345000
+    },
+    {
+      "date": "2026-11-04",
+      "daypart": "DINNER",
+      "sales_amount": 852800,
+      "qty": 100,
+      "food_cost": 290000,
+      "labor_cost": 88000,
+      "profit": 474800
+    },
+    {
+      "date": "2026-11-04",
+      "daypart": "NIGHT",
+      "sales_amount": 245000,
+      "qty": 29,
+      "food_cost": 83300,
+      "labor_cost": 22000,
+      "profit": 139700
+    },
+    {
+      "date": "2026-11-05",
+      "daypart": "LUNCH",
+      "sales_amount": 594000,
+      "qty": 70,
+      "food_cost": 202000,
+      "labor_cost": 55000,
+      "profit": 337000
+    },
+    {
+      "date": "2026-11-05",
+      "daypart": "DINNER",
+      "sales_amount": 836400,
+      "qty": 98,
+      "food_cost": 284400,
+      "labor_cost": 88000,
+      "profit": 464000
+    },
+    {
+      "date": "2026-11-05",
+      "daypart": "NIGHT",
+      "sales_amount": 240000,
+      "qty": 28,
+      "food_cost": 81600,
+      "labor_cost": 22000,
+      "profit": 136400
+    },
+    {
+      "date": "2026-11-06",
+      "daypart": "LUNCH",
+      "sales_amount": 601400,
+      "qty": 71,
+      "food_cost": 204500,
+      "labor_cost": 55000,
+      "profit": 341900
+    },
+    {
+      "date": "2026-11-06",
+      "daypart": "DINNER",
+      "sales_amount": 900000,
+      "qty": 106,
+      "food_cost": 306000,
+      "labor_cost": 88000,
+      "profit": 506000
+    },
+    {
+      "date": "2026-11-06",
+      "daypart": "NIGHT",
+      "sales_amount": 309000,
+      "qty": 36,
+      "food_cost": 105100,
+      "labor_cost": 22000,
+      "profit": 181900
+    },
+    {
+      "date": "2026-11-07",
+      "daypart": "LUNCH",
+      "sales_amount": 728000,
+      "qty": 86,
+      "food_cost": 247500,
+      "labor_cost": 55000,
+      "profit": 425500
+    },
+    {
+      "date": "2026-11-07",
+      "daypart": "DINNER",
+      "sales_amount": 931000,
+      "qty": 110,
+      "food_cost": 316500,
+      "labor_cost": 88000,
+      "profit": 526500
+    },
+    {
+      "date": "2026-11-07",
+      "daypart": "NIGHT",
+      "sales_amount": 323200,
+      "qty": 38,
+      "food_cost": 109900,
+      "labor_cost": 22000,
+      "profit": 191300
+    },
+    {
+      "date": "2026-11-08",
+      "daypart": "LUNCH",
+      "sales_amount": 693600,
+      "qty": 82,
+      "food_cost": 235800,
+      "labor_cost": 55000,
+      "profit": 402800
+    },
+    {
+      "date": "2026-11-08",
+      "daypart": "DINNER",
+      "sales_amount": 844800,
+      "qty": 99,
+      "food_cost": 287200,
+      "labor_cost": 88000,
+      "profit": 469600
+    },
+    {
+      "date": "2026-11-08",
+      "daypart": "NIGHT",
+      "sales_amount": 257400,
+      "qty": 30,
+      "food_cost": 87500,
+      "labor_cost": 22000,
+      "profit": 147900
+    },
+    {
+      "date": "2026-11-09",
+      "daypart": "LUNCH",
+      "sales_amount": 600000,
+      "qty": 71,
+      "food_cost": 204000,
+      "labor_cost": 55000,
+      "profit": 341000
+    },
+    {
+      "date": "2026-11-09",
+      "daypart": "DINNER",
+      "sales_amount": 844600,
+      "qty": 99,
+      "food_cost": 287200,
+      "labor_cost": 88000,
+      "profit": 469400
+    },
+    {
+      "date": "2026-11-09",
+      "daypart": "NIGHT",
+      "sales_amount": 242500,
+      "qty": 29,
+      "food_cost": 82400,
+      "labor_cost": 22000,
+      "profit": 138100
+    },
+    {
+      "date": "2026-11-10",
+      "daypart": "LUNCH",
+      "sales_amount": 588000,
+      "qty": 69,
+      "food_cost": 199900,
+      "labor_cost": 55000,
+      "profit": 333100
+    },
+    {
+      "date": "2026-11-10",
+      "daypart": "DINNER",
+      "sales_amount": 828200,
+      "qty": 97,
+      "food_cost": 281600,
+      "labor_cost": 88000,
+      "profit": 458600
+    },
+    {
+      "date": "2026-11-10",
+      "daypart": "NIGHT",
+      "sales_amount": 260000,
+      "qty": 31,
+      "food_cost": 88400,
+      "labor_cost": 22000,
+      "profit": 149600
+    },
+    {
+      "date": "2026-11-11",
+      "daypart": "LUNCH",
+      "sales_amount": 576000,
+      "qty": 68,
+      "food_cost": 195800,
+      "labor_cost": 55000,
+      "profit": 325200
+    },
+    {
+      "date": "2026-11-11",
+      "daypart": "DINNER",
+      "sales_amount": 811800,
+      "qty": 96,
+      "food_cost": 276000,
+      "labor_cost": 88000,
+      "profit": 447800
+    },
+    {
+      "date": "2026-11-11",
+      "daypart": "NIGHT",
+      "sales_amount": 255000,
+      "qty": 30,
+      "food_cost": 86700,
+      "labor_cost": 22000,
+      "profit": 146300
+    },
+    {
+      "date": "2026-11-12",
+      "daypart": "LUNCH",
+      "sales_amount": 618000,
+      "qty": 73,
+      "food_cost": 210100,
+      "labor_cost": 55000,
+      "profit": 352900
+    },
+    {
+      "date": "2026-11-12",
+      "daypart": "DINNER",
+      "sales_amount": 795400,
+      "qty": 94,
+      "food_cost": 270400,
+      "labor_cost": 88000,
+      "profit": 437000
+    },
+    {
+      "date": "2026-11-12",
+      "daypart": "NIGHT",
+      "sales_amount": 250000,
+      "qty": 29,
+      "food_cost": 85000,
+      "labor_cost": 22000,
+      "profit": 143000
+    },
+    {
+      "date": "2026-11-13",
+      "daypart": "LUNCH",
+      "sales_amount": 626200,
+      "qty": 74,
+      "food_cost": 212900,
+      "labor_cost": 55000,
+      "profit": 358300
+    },
+    {
+      "date": "2026-11-13",
+      "daypart": "DINNER",
+      "sales_amount": 936000,
+      "qty": 110,
+      "food_cost": 318200,
+      "labor_cost": 88000,
+      "profit": 529800
+    },
+    {
+      "date": "2026-11-13",
+      "daypart": "NIGHT",
+      "sales_amount": 294000,
+      "qty": 35,
+      "food_cost": 100000,
+      "labor_cost": 22000,
+      "profit": 172000
+    },
+    {
+      "date": "2026-11-14",
+      "daypart": "LUNCH",
+      "sales_amount": 693000,
+      "qty": 82,
+      "food_cost": 235600,
+      "labor_cost": 55000,
+      "profit": 402400
+    },
+    {
+      "date": "2026-11-14",
+      "daypart": "DINNER",
+      "sales_amount": 969000,
+      "qty": 114,
+      "food_cost": 329500,
+      "labor_cost": 88000,
+      "profit": 551500
+    },
+    {
+      "date": "2026-11-14",
+      "daypart": "NIGHT",
+      "sales_amount": 307200,
+      "qty": 36,
+      "food_cost": 104400,
+      "labor_cost": 22000,
+      "profit": 180800
+    },
+    {
+      "date": "2026-11-15",
+      "daypart": "LUNCH",
+      "sales_amount": 659600,
+      "qty": 78,
+      "food_cost": 224300,
+      "labor_cost": 55000,
+      "profit": 380300
+    },
+    {
+      "date": "2026-11-15",
+      "daypart": "DINNER",
+      "sales_amount": 880000,
+      "qty": 104,
+      "food_cost": 299200,
+      "labor_cost": 88000,
+      "profit": 492800
+    },
+    {
+      "date": "2026-11-15",
+      "daypart": "NIGHT",
+      "sales_amount": 267800,
+      "qty": 32,
+      "food_cost": 91100,
+      "labor_cost": 22000,
+      "profit": 154700
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "LUNCH",
+      "sales_amount": 624000,
+      "qty": 73,
+      "food_cost": 212200,
+      "labor_cost": 55000,
+      "profit": 356800
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "DINNER",
+      "sales_amount": 803600,
+      "qty": 95,
+      "food_cost": 273200,
+      "labor_cost": 88000,
+      "profit": 442400
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "NIGHT",
+      "sales_amount": 252500,
+      "qty": 30,
+      "food_cost": 85800,
+      "labor_cost": 22000,
+      "profit": 144700
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "LUNCH",
+      "sales_amount": 810000,
+      "qty": 95,
+      "food_cost": 275400,
+      "labor_cost": 55000,
+      "profit": 479600
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "DINNER",
+      "sales_amount": 787200,
+      "qty": 93,
+      "food_cost": 267600,
+      "labor_cost": 88000,
+      "profit": 431600
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "NIGHT",
+      "sales_amount": 247500,
+      "qty": 29,
+      "food_cost": 84200,
+      "labor_cost": 22000,
+      "profit": 141300
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "_설명": "예시 데이터. 매출 이상. 11/17 점심 실제 매출이 기준선보다 35% 많고 달력 태그가 없다. 11/17 22:30 재계산에서 찾는다. server/tests/planner/sample_inputs/demo_week_inputs.example.json 와 같다.",
+  "rows": [
+    {
+      "date": "2026-11-17",
+      "daypart": "LUNCH",
+      "actual_sales": 810000,
+      "baseline_sales": 600000,
+      "ratio": 1.35,
+      "known_reasons": [],
+      "detected_at": "2026-11-17T22:30:00+09:00"
+    }
+  ]
+}

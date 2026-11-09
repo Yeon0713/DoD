@@ -26,11 +26,30 @@
    - **형태**: 모바일 웹 (기준 폭 `375px`, PWA 매니페스트 지원)
 2. **단일 API 게이트웨이 원칙 (`frontend/lib/api.ts`)**:
    - 모든 데이터 조회 및 변경은 `frontend/lib/api.ts` 한 곳에서만 수행한다.
-   - 환경 변수(`NEXT_PUBLIC_USE_MOCK=true|false`) 하나로 **C3 고정 샘플(`contracts/fixtures/`)**과 **실제 백엔드 API(`S3 API v1`)**를 즉시 전환한다.
-3. **가상 시각 (`now`) 일관성**:
-   - 모든 API 요청은 `/api/v1/stores/{store_id}/...` 경로에 `now` 파라미터(Asia/Seoul, ISO 8601 `+09:00`, 예: `2026-11-17T14:00:00+09:00`)를 전달한다.
-   - 프론트엔드 전역 상태(Context/Store)에서 `now`를 관리하여 시뮬레이터에서 시각을 바꾸면 모든 화면(오늘의 카드, 달력, 설정 등)이 해당 시각 기준으로 동작한다.
-4. **코드값 한국어 변환 규칙**:
+   - 환경 변수(`NEXT_PUBLIC_USE_MOCK=true|false`) 하나로 **고정 샘플(`contracts/sample_responses/*.example.json`)**과 **실제 백엔드 API**를 즉시 전환한다.
+   - 서버 주소는 `NEXT_PUBLIC_API_BASE_URL`(예: `http://127.0.0.1:8000`)로 두고 코드에 직접 쓰지 않는다.
+3. **API 주소와 공통 규칙** (기준: [`docs/server-api-and-planner-guide.md`](./server-api-and-planner-guide.md) 4장):
+   - 모든 API는 `{BASE_URL}/api/{모듈이름}` 형태다. 매장 ID(`store_id`)는 경로에 넣지 않는다(매장 1곳 기준, `store_id`는 `GET /api/settings` 응답에 들어 있음).
+   - 기간 조건은 `?from=YYYY-MM-DD&to=YYYY-MM-DD`(양 끝 포함, 생략 가능). 시각은 서울 기준 ISO 8601 `+09:00`(예: `2026-11-17T14:00:00+09:00`).
+   - 모든 응답 맨 위에 `is_example`(예시 데이터 여부)가 있다. 오류는 항상 `{"error": {"code", "message"}}` 모양이므로 `error.code`로 구분하고 `error.message`를 보여준다.
+   - 지금 서버에 있는 API는 아래 7개뿐이다.
+
+     | API | 쓰는 화면 | 받는 값 |
+     |---|---|---|
+     | `GET /api/today` | 오늘의 카드 | 없음 |
+     | `GET /api/plan` | 오늘의 카드 | `from`, `to` |
+     | `GET /api/calendar` | 이번 주 달력 | `from`, `to` |
+     | `GET /api/sales` | 이번 주 달력 | `from`, `to`, `grain`(`day`·`week`·`month`·`weekday_daypart`) |
+     | `GET /api/reviews` | 카드의 근거 리뷰 | `from`, `to`, `quick` |
+     | `GET /api/settings` | 설정 | 없음 |
+     | `PATCH /api/settings` | 설정 | 바꿀 항목(`slots`, `dayparts`, `busy_dayparts`) |
+
+   - `today`의 카드 묶음에는 `plan_id`(또는 `notice_id`)만 있다. 카드 내용은 `plan` 응답에서 같은 id를 찾아 조인한다.
+4. **가상 시각 (`now`)** — ⚠️ 서버와 다시 정할 것:
+   - 서버는 **가상 시각을 쓰지 않기로** 했다. API에 `now` 파라미터가 없고, `today`는 서버의 실제 현재 시각(서울) 기준으로 동작한다.
+   - 따라서 프론트 전역 `now`(시뮬레이터 시각 변경)는 **고정 샘플 모드에서만** 화면 표시 기준으로 쓴다. 실제 API 모드에서 시각을 바꿔 보는 방식은 `[여헌]`과 다시 정한다(가이드 9장 "아직 안 된 것").
+5. **코드값 한국어 변환 규칙**:
+   - 코드값 전체 목록은 [가이드 부록 A](./server-api-and-planner-guide.md#부록-a-코드값-목록)를 따른다.
    - 서버와는 영문 대문자 코드값으로만 주고받고, 화면 표시 문구와 알림 문구는 프론트엔드(`frontend/lib/labels.ts`)에서 한국어로 변환한다.
    - 3P 문구 체계 적용:
      - **파악하기**: 이번 주 달력
@@ -44,9 +63,10 @@
 ```text
 DoD/
 ├── contracts/
-│   └── fixtures/                # C2, C3 고정 샘플 JSON (데모 주간 11/16 ~ 11/22 데이터)
+│   └── sample_responses/        # 서버와 같은 응답 예시 JSON (*.example.json, 데모 주간 11/16 ~ 11/22)
 ├── docs/
 │   ├── [영웅].md                # 영웅 담당 작업 카드 원문
+│   ├── server-api-and-planner-guide.md  # 서버 API·계획 엔진 안내 (API 기준 문서)
 │   └── frontend_plan.md         # 프론트엔드 상세 개발 계획서 (현재 문서)
 └── frontend/
     ├── public/
@@ -54,7 +74,7 @@ DoD/
     └── src/
         ├── app/
         │   ├── layout.tsx       # 375px 모바일 웹 프레임 + 가상 시각(now) 상단 바/시뮬레이터 배너 + 하단 네비게이션
-        │   ├── page.tsx         # [F4] 오늘의 카드 화면 (메인, /today 대응)
+        │   ├── page.tsx         # [F4] 오늘의 카드 화면 (메인, GET /api/today + /api/plan)
         │   ├── calendar/
         │   │   └── page.tsx     # [F3] 이번 주 달력 화면 (/calendar)
         │   ├── settings/
@@ -68,7 +88,7 @@ DoD/
         │   ├── settings/        # 알림 슬롯 시각 픽커, 장사/바쁜 시간대 설정 폼
         │   └── simulator/       # 가상 시각 컨트롤러, 데모 주간 타임라인 대조 뷰, 시연용 리뷰 추가 폼
         ├── context/
-        │   └── VirtualTimeContext.tsx  # 가상 시각(now) 및 매장 ID 전역 상태 관리
+        │   └── VirtualTimeContext.tsx  # 가상 시각(now) 전역 상태 (고정 샘플 모드 전용)
         ├── lib/
         │   ├── api.ts           # [필수] 단일 API 호출 모듈 (Mock Fixture ↔ Live API 스위칭)
         │   ├── labels.ts        # 영문 코드값 ↔ 한국어 문구/색상/아이콘 매핑 사전
@@ -82,13 +102,14 @@ DoD/
 ## 3. 단계별 상세 작업 계획 (작업 카드 K1 ~ T3 대응)
 
 ### Phase 1. [K1] 계약 확정 및 데이터 인터페이스 정의 (1일차)
-- **목표**: `openapi.yaml` 및 고정 샘플 JSON만으로 4개 화면을 모두 그릴 수 있는 타입과 목업 데이터 구조 확립
+- **목표**: 서버 응답 예시(`contracts/sample_responses/`)만으로 4개 화면을 모두 그릴 수 있는 타입과 목업 데이터 구조 확립
 - **세부 작업**:
-  1. `[여헌]`에게 전달할 **화면별 필수 응답 필드 목록** 정의:
-     - `GET /today` & `GET /notifications`: `notification_batch` 내 `entries` 렌더링을 위해 `plan_item` 상세(또는 조인된 카드 정보: `task_type`, `revisit_class`, `basis`, `target_date`, `approval_request_at`, `execute_at`, `deadline_at`, `reason_line`)와 `notice_item` 상세(`kind`, `refs`, `text`), 그리고 근거 리뷰(`reviews`) 연결 구조 확정
-     - `GET /calendar`: 날짜(`date`), 시간대(`daypart`), 수요 신호(`signal`), 기준선(`baseline_sales`), 예상 매출(`expected_sales`), 비율(`ratio`), 이유 태그 배열(`reasons`), 한 줄 이유(`reason_text`)
-     - `GET / (매장 설정)` & `PATCH /settings`: `slots`(`OPENING`, `AFTERNOON`, `CLOSING` 시각), `dayparts`(점심/저녁/야간 시작·종료), `busy_dayparts`
-  2. 데모 주간(`2026-11-16` 월 ~ `2026-11-22` 일) 전체 기대 결과를 담은 프론트엔드 고정 샘플(`fixtures`) 작성 (특히 화요일 `11/17` 하루 데이터 완벽 포함)
+  1. 서버 응답 예시를 기준으로 `types/contract.ts` 작성. 화면별로 쓰는 필드:
+     - `GET /api/today` + `GET /api/plan`: `batches[].entries`(`plan_id`/`notice_id`, `notify_kind`, `priority`)를 `plan` 응답의 `plan_item`(`task_type`, `revisit_class`, `basis`, `target_date`, `approval_request_at`, `execute_at`, `deadline_at`, `reason_line`) 및 `notice_item`(`kind`, `refs`, `text`)과 id로 조인
+     - `GET /api/calendar`: 날짜(`date`), 시간대(`daypart`), 수요 신호(`signal`), 기준선(`baseline_sales`), 예상 매출(`expected_sales`), 비율(`ratio`), 이유 태그 배열(`reasons`), 한 줄 이유(`reason_text`)
+     - `GET /api/settings` & `PATCH /api/settings`: `slots`(`OPENING`, `AFTERNOON`, `CLOSING` 시각), `dayparts`(점심/저녁/야간 시작·종료), `busy_dayparts`
+  2. `[여헌]`과 정할 것(가이드 9장): 근거 리뷰 본문을 카드에 넣을지(현재는 `GET /api/reviews`로 따로 조회), `today` 응답에 할 일 내용을 같이 넣을지, 기본 답변(`BASIC`) 여러 건을 서버와 화면 중 어디서 한 장으로 묶을지
+  3. 데모 주간(`2026-11-16` 월 ~ `2026-11-22` 일) 응답 예시에 화요일 `11/17` 하루 데이터가 빠짐없이 들어 있는지 확인하고, 부족하면 `[여헌]`에게 예시 보강 요청
 
 ---
 
@@ -101,11 +122,12 @@ DoD/
      - **수요 신호 (`signal`)**: `HIGH`(많음 - 강조 코랄/레드), `NORMAL`(보통 - 중립 그린/슬레이트), `LOW`(적음 - 소프트 블루/그레이)
      - **이유 태그 (`reason_tag`)**: `EVENT`(지역행사), `GAME`(경기), `WEATHER`(날씨 급변), `SEASON`(계절 전환) 전용 칩 스타일
      - **우선순위 (`priority`)**: `1`(빠른 응대 - 긴급 배지), `2`(위험 신호 개선 - 경고 배지), `3`(내일 실행할 카드), `4`(오늘 실행 알림 / 주간 예고 / 매출 이상)
-     - **4가지 일 (`task_type`) 아이콘 및 테마**:
+     - **일 종류 (`task_type`) 아이콘 및 테마**:
        - ① `REVISIT_REPLY` (손님 답글 / 시점 분류: `QUICK`, `WEEKLY`, `MONTHLY`, `BASIC`)
        - ② `MENU_ORDER` (메뉴판 순서 조정)
        - ③ `POSTER` (프로모션 포스터)
        - ④ `REVIEW_FIX` (리뷰 위험 신호 개선)
+       - `REORDER_NUDGE` (매달 단골 재주문 권유) — 서버 코드값에 있으므로 ① 답글 계열 테마로 함께 대응
   3. **3P 헤더/섹션 문구 배치**:
      - 달력 상단: *"우리 매장의 흐름을 미리 **파악하기**"*
      - 오늘의 카드 상단: *"오늘 사장님이 처리할 일을 **계획하기**"*
@@ -114,7 +136,7 @@ DoD/
 ---
 
 ### Phase 3. [F3] 이번 주 달력 화면 구현 (4~5일차)
-- **연동 API**: `GET /calendar?from&to`, `GET /sales?grain=weekday_daypart`
+- **연동 API**: `GET /api/calendar?from&to`, `GET /api/sales?from&to&grain=weekday_daypart`
 - **세부 작업**:
   1. **7일 × 3시간대(`LUNCH`, `DINNER`, `NIGHT`) 매트릭스 보드**:
      - 각 셀에 수요 신호(`HIGH`, `NORMAL`, `LOW`) 배경색과 이유 태그(`GAME`, `EVENT`, `WEATHER`, `SEASON`) 칩 표시
@@ -130,7 +152,7 @@ DoD/
 ---
 
 ### Phase 4. [F4] 오늘의 카드 및 설정 화면 구현 (5~6일차)
-- **연동 API**: `GET /today`, `GET /plan`, `GET /reviews`, `GET /`, `PATCH /settings`, `POST /recompute`
+- **연동 API**: `GET /api/today`, `GET /api/plan?from&to`, `GET /api/reviews?from&to&quick`, `GET /api/settings`, `PATCH /api/settings`
 - **세부 작업 (오늘의 카드)**:
   1. **슬롯별 묶음 표시**: `OPENING`(10:00), `AFTERNOON`(14:00), `CLOSING`(21:30) 알림 가능 시간별 묶음을 우선순위(`priority` 1 → 4, 동일 우선순위 내에서는 실행 기한 `deadline_at` 빠른 순)로 정렬
   2. **알림 종류(`notify_kind`) 4종 차별화 디자인**:
@@ -145,7 +167,9 @@ DoD/
 - **세부 작업 (설정 화면)**:
   1. 알림 가능 시간 3개(`OPENING`, `AFTERNOON`, `CLOSING`) 시각 편집 UI
   2. 점심(`LUNCH`), 저녁(`DINNER`), 야간(`NIGHT`) 장사 시간대 및 알림 제외 바쁜 시간대(`busy_dayparts`) 토글/시간 설정
-  3. `[저장하기]` 클릭 시 `PATCH /settings` 호출 후 자동으로 `POST /recompute`를 트리거하여 변경된 시간대에 맞춰 계획 묶음을 재계산
+  3. `[저장하기]` 클릭 시 `PATCH /api/settings` 호출 후 `GET /api/today`·`GET /api/plan`을 다시 불러온다.
+     - 저장 오류 `SLOT_IN_BUSY_DAYPART`, `SLOT_OUTSIDE_OPEN_HOURS`, `INVALID_INPUT`은 해당 입력칸 아래에 `error.message`로 표시
+     - ⚠️ 서버에 `POST /recompute`는 없다. 지금 설정은 서버 메모리에만 저장되고 계획도 다시 계산되지 않는다(DB·계획 엔진 연결 때 처리 예정). 화면에는 "다시 계산" 문구 대신 저장 완료만 안내한다.
 - **완료 기준 검증**:
   - `2026-11-17 14:00` 슬롯 조회 시 아래 4장의 카드가 정확한 순서로 표시됨:
     1. `① 빠른 응대, 배달 지연 리뷰 (우선순위 1)`
@@ -156,7 +180,9 @@ DoD/
 ---
 
 ### Phase 5. [F5] 개발용 시뮬레이터 화면 구현 (6일차)
-- **연동 API**: `GET /notifications?from&to`, `GET /reviews`, `POST /reviews`, `POST /dev/reset`
+- **연동 API**: `GET /api/plan?from&to`, `GET /api/reviews?from&to`
+  - ⚠️ 시뮬레이터용 API(`GET /notifications`, `POST /reviews`, `POST /dev/reset`)는 **서버에 없다**. 서버가 가상 시각을 쓰지 않기로 해서 방식을 `[여헌]`과 다시 정해야 한다(가이드 9장).
+  - 정해지기 전까지 시뮬레이터는 **고정 샘플 모드 전용**으로 만든다. 타임라인은 `plan` 응답의 `approval_request_at`·`execute_at`을 프론트에서 슬롯별로 묶어 그리고, 리뷰 추가·초기화는 프론트 메모리 상태로만 흉내 낸다.
 - **세부 작업**:
   1. **가상 시각(`now`) 컨트롤러**:
      - 데모 주간(`2026-11-16 월` ~ `2026-11-22 일`)의 각 요일 및 슬롯(`10:00`, `14:00`, `21:30`)을 원클릭으로 점프할 수 있는 프리셋 바 + 자유 일시 선택기 제공
@@ -164,15 +190,15 @@ DoD/
   2. **데모 주간 알림 타임라인 뷰**:
      - `11/16(월)`부터 `11/22(일)`까지 모든 슬롯의 알림 묶음을 한눈에 보여주고, 알림이 없는 슬롯은 비어 있음을 명확히 검증할 수 있는 타임라인 대조 화면 제공 (11/18 야구 경기가 과거 효과 없음으로 인해 제외되었는지도 확인)
   3. **시연용 불만 리뷰 추가 & 분류 확인**:
-     - 플랫폼, 별점, 리뷰 내용, 작성 시각을 입력해 `POST /reviews`로 전송하는 시연 폼
+     - 플랫폼, 별점, 리뷰 내용, 작성 시각을 입력하는 시연 폼 (서버 API가 생기기 전까지 프론트 상태에만 추가)
      - 불만 리뷰 등록 시 다음 알림 가능 시간에 `① 빠른 응대 (우선순위 1)`가 생성되는지 즉시 확인
-     - 하단에 리뷰 분류 결과(`sentiment`, `complaint_types`, `is_quick`, `labeler`) 목록 및 `[목업 v2 상태로 초기화 (POST /dev/reset)]` 버튼 제공
+     - 하단에 리뷰 분류 결과(`sentiment`, `complaint_types`, `is_quick`, `labeler`) 목록(`GET /api/reviews`) 및 `[목업 상태로 초기화]` 버튼 제공 (서버 초기화 API는 협의 후 연결)
 
 ---
 
 ### Phase 6. [F6 & T1~T3] 실제 API 연결 및 통합 점검 (7~10일차)
 - **세부 작업**:
-  1. **API 스위칭 검증 (`F6`)**: `frontend/lib/api.ts`에서 고정 샘플 모드와 실제 백엔드 서버(`http://localhost:8000/api/v1/stores/{store_id}`) 모드를 전환하며 동일한 화면 결과가 나오는지 검증
+  1. **API 스위칭 검증 (`F6`)**: `frontend/lib/api.ts`에서 고정 샘플 모드와 실제 백엔드 서버(`NEXT_PUBLIC_API_BASE_URL`, 로컬 `http://127.0.0.1:8000` → `/api/...`) 모드를 전환하며 동일한 화면 결과가 나오는지 검증
   2. **상태 처리 (`F6`)**: API 호출 중 스켈레톤 UI, 알림이 없는 시간대의 빈 상태(Empty State) 일러스트/문구, 네트워크 오류 시 재시도 UI 구현
   3. **데모 주간 정답 대조 (`T1~T2`)**: 월요일(`11/16`)부터 일요일(`11/22`)까지 10개 핵심 슬롯의 알림 묶음이 공통 명세의 '데모 주간 기대 결과'와 100% 일치하는지 시뮬레이터로 대조
   4. **도메인 리서치 체크리스트 병행 (`확인할 것`)**:

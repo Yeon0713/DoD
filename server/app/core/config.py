@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     app_name: str = "DoD API"
     cors_origins: list[str] = ["http://localhost:3000"]
 
+    # PostgreSQL (로컬은 docker-compose.yml 값)
+    database_url: str = "postgresql+psycopg://dod:dod@localhost:5432/dod"
+
     # 네이버 클라우드 API (콘솔 > 마이페이지 > 인증키 관리). SENS 도 이 키를 쓴다.
     ncloud_access_key: str = ""
     ncloud_secret_key: str = ""

@@ -1,0 +1,17 @@
+# 로컬 개발용 PostgreSQL. server/ 폴더에서 `docker compose up -d`
+# 계정 정보는 내 컴퓨터 안에서만 쓰는 개발용 값이다. 배포 DB에는 쓰지 않는다.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: dod
+      POSTGRES_PASSWORD: dod
+      POSTGRES_DB: dod
+      TZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - dod-pgdata:/var/lib/postgresql/data
+
+volumes:
+  dod-pgdata:

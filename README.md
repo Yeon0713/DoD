@@ -175,3 +175,36 @@ modules/review/
 
 - **API 키는 코드에 직접 쓰지 말고 `.env`에 넣습니다.** 읽어 오려면 `app/core/config.py`의 `Settings`에 항목을 추가하세요.
 - 새 패키지를 설치했다면 `requirements.txt`에도 추가하세요. 커밋 타입은 `chore`입니다.
+
+---
+
+## 4. DB (PostgreSQL + 목업 데이터)
+
+DB는 PostgreSQL(Docker)이고, 목업 데이터는 `db/mock/generate.py`가 만들어 DB에 넣습니다. `db/mock/out/*.csv`는 DB 없이 볼 수 있게 남겨 둔 같은 내용의 사본입니다.
+
+### 실행 (`server/` 폴더, Docker Desktop 켠 상태)
+
+```bash
+docker compose up -d           # PostgreSQL 켜기
+alembic upgrade head           # 테이블 만들기
+python -m db.mock.generate     # 목업 생성 → DB에 넣고 CSV도 갱신 (같은 시드 = 같은 데이터)
+```
+
+`.env`의 `DATABASE_URL`은 `.env.example` 값 그대로 쓰면 됩니다.
+
+### 테이블 (C1 원본)
+
+| 테이블 | 한 줄 = | 주요 열 |
+|---|---|---|
+| store | 매장 | 영업시간, `dayparts`·`busy_dayparts`·`slots`(JSON) |
+| menu | 메뉴 | name, category(`main`/`side`/`drink`), price |
+| orders | 주문 | `ordered_at`, channel(`hall`/`delivery`), `customer_key`, total_amount |
+| order_items | 주문 속 메뉴 | order_id, menu_id, quantity, unit_price |
+| reviews | 리뷰 | `written_at`, rating, content, order_id·`customer_key`(이어진 리뷰만), complaint_type(LLM이 채움) |
+| staff / shifts | 알바 / 근무 | starts_at, ends_at |
+| events | 행사 | kind, starts_at, ends_at, distance_km |
+| games | 경기 | sport, level(`national`/`pro`), starts_at |
+| weather_daily | 하루 날씨 | temp_max, temp_min, precip_mm |
+
+- 시각은 모두 `timestamptz`입니다. 서울 기준 날짜로 묶으려면 `(ordered_at AT TIME ZONE 'Asia/Seoul')::date`
+- 열 전체는 `db/models.py`에 있습니다.

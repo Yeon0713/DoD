@@ -1,0 +1,741 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 계획 엔진 테스트용 입력으로, 공통 문서의 데모 주간 사건(지호 D4)을 바탕으로 만들었습니다. 리뷰 문구, id, 매출 숫자는 지어낸 값입니다.",
+  "store": {
+    "store_id": "store_001",
+    "name": "춘천 대학가 국수집 (가상 매장)",
+    "category": "국수",
+    "lat": 37.8692,
+    "lng": 127.7437,
+    "open_time": "10:00",
+    "close_time": "22:00",
+    "dayparts": {
+      "LUNCH": {
+        "start": "11:00",
+        "end": "13:30"
+      },
+      "DINNER": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "NIGHT": {
+        "start": "21:00",
+        "end": "22:00"
+      }
+    },
+    "busy_dayparts": [
+      "LUNCH",
+      "DINNER"
+    ],
+    "slots": {
+      "OPENING": "10:00",
+      "AFTERNOON": "14:00",
+      "CLOSING": "21:30"
+    },
+    "closed_weekdays": []
+  },
+  "reviews": [
+    {
+      "review_id": "rv_087",
+      "platform": "BAEMIN",
+      "written_at": "2026-10-23T19:40:00+09:00",
+      "rating": 5,
+      "text": "국물이 진하고 면이 쫄깃해요. 한 달에 한 번은 꼭 생각나요.",
+      "customer_key": "c_m01",
+      "order_id": "ord_20261023_041",
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-10-23T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_102",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-11T21:10:00+09:00",
+      "rating": 5,
+      "text": "수요일마다 시켜 먹는데 항상 따뜻하게 와요.",
+      "customer_key": "c_w01",
+      "order_id": "ord_20261111_067",
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-11T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_105",
+      "platform": "COUPANG",
+      "written_at": "2026-11-12T21:00:00+09:00",
+      "rating": 2,
+      "text": "배달이 40분 넘게 걸려서 면이 다 불었어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-12T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_109",
+      "platform": "NAVER",
+      "written_at": "2026-11-14T19:00:00+09:00",
+      "rating": 4,
+      "text": "가게가 깔끔하고 양도 넉넉했어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-14T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_111",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-15T20:10:00+09:00",
+      "rating": 2,
+      "text": "주문하고 한 시간 가까이 기다렸어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-15T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_112",
+      "platform": "YOGIYO",
+      "written_at": "2026-11-16T13:00:00+09:00",
+      "rating": 5,
+      "text": "점심에 후루룩 먹기 딱 좋아요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-16T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_118",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-17T12:30:00+09:00",
+      "rating": 1,
+      "text": "배달이 너무 늦어서 다 식어서 왔어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-17T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_121",
+      "platform": "NAVER",
+      "written_at": "2026-11-17T20:30:00+09:00",
+      "rating": 4,
+      "text": "비빔국수 맛있어요. 조금 매웠지만 또 먹을래요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "MIXED",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-17T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_126",
+      "platform": "COUPANG",
+      "written_at": "2026-11-19T12:40:00+09:00",
+      "rating": 5,
+      "text": "요청사항을 꼼꼼히 챙겨 주셔서 좋았어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-19T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_131",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-20T19:30:00+09:00",
+      "rating": 2,
+      "text": "오늘은 국물이 너무 짰어요. 평소랑 맛이 달라요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "TASTE"
+        ],
+        "complaint_groups": [
+          "FOOD"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-20T21:20:00+09:00"
+      }
+    }
+  ],
+  "customer_cycles": [
+    {
+      "customer_key": "c_w01",
+      "cycle": "WEEKLY",
+      "next_expected_at": "2026-11-18T18:20:00+09:00",
+      "expected_daypart": "DINNER",
+      "intervals_days": [
+        7,
+        7,
+        7
+      ],
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "customer_key": "c_m01",
+      "cycle": "MONTHLY",
+      "next_expected_at": "2026-11-20T19:00:00+09:00",
+      "expected_daypart": "DINNER",
+      "intervals_days": [
+        28,
+        35
+      ],
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    }
+  ],
+  "calendar": [
+    {
+      "date": "2026-11-15",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 680000,
+      "expected_sales": 680000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-15",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 880000,
+      "expected_sales": 880000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-15",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 260000,
+      "expected_sales": 260000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 600000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 820000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 250000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 600000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 820000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 250000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 630000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 861000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 262500,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 630000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 820000,
+      "expected_sales": 1033200,
+      "ratio": 1.26,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "GAME",
+          "ref_id": "game_031",
+          "effect": 0.21
+        }
+      ],
+      "reason_text": "저녁에 국가대표 축구 경기가 있어 배달이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "NIGHT",
+      "signal": "HIGH",
+      "baseline_sales": 250000,
+      "expected_sales": 325000,
+      "ratio": 1.3,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "GAME",
+          "ref_id": "game_031",
+          "effect": 0.25
+        }
+      ],
+      "reason_text": "야간에 국가대표 축구 경기가 있어 배달이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 620000,
+      "expected_sales": 651000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 900000,
+      "expected_sales": 945000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 300000,
+      "expected_sales": 315000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "LUNCH",
+      "signal": "HIGH",
+      "baseline_sales": 700000,
+      "expected_sales": 945000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 점심 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 950000,
+      "expected_sales": 1282500,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 저녁 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "NIGHT",
+      "signal": "HIGH",
+      "baseline_sales": 320000,
+      "expected_sales": 432000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 야간 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "LUNCH",
+      "signal": "HIGH",
+      "baseline_sales": 680000,
+      "expected_sales": 918000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 점심 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 880000,
+      "expected_sales": 1188000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 저녁 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 260000,
+      "expected_sales": 273000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-23",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 630000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-23",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 861000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-23",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 262500,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    }
+  ],
+  "risk_signals": [
+    {
+      "risk_id": "risk_004",
+      "complaint_type": "DELIVERY_DELAY",
+      "review_ids": [
+        "rv_105",
+        "rv_111",
+        "rv_118"
+      ],
+      "first_at": "2026-11-12T21:00:00+09:00",
+      "last_at": "2026-11-17T12:30:00+09:00",
+      "detected_at": "2026-11-17T13:50:00+09:00",
+      "status": "OPEN"
+    }
+  ],
+  "sales_anomalies": [
+    {
+      "date": "2026-11-17",
+      "daypart": "LUNCH",
+      "actual_sales": 810000,
+      "baseline_sales": 600000,
+      "ratio": 1.35,
+      "known_reasons": [],
+      "detected_at": "2026-11-17T22:30:00+09:00"
+    }
+  ],
+  "events": [
+    {
+      "event_id": "event_012",
+      "kind": "LOCAL_FESTIVAL",
+      "title": "지역 축제",
+      "start_at": "2026-11-21T11:00:00+09:00",
+      "end_at": "2026-11-22T18:00:00+09:00",
+      "distance_km": 0.8
+    }
+  ],
+  "games": [
+    {
+      "game_id": "game_031",
+      "kind": "NATIONAL_TEAM",
+      "title": "국가대표 축구 경기",
+      "start_at": "2026-11-19T20:00:00+09:00"
+    },
+    {
+      "game_id": "game_028",
+      "kind": "BASEBALL",
+      "title": "프로야구 경기",
+      "start_at": "2026-11-18T18:30:00+09:00"
+    }
+  ]
+}

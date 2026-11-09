@@ -1,0 +1,274 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 데모 주간(2026-11-16~22)에 승인 요청이나 실행이 있는 할 일과 승인 없는 알림입니다. 리뷰 답글 새 규칙으로 계획 엔진이 계산한 결과입니다.",
+  "is_example": true,
+  "plan_items": [
+    {
+      "plan_id": "POSTER:game_031:2026-11-19",
+      "task_type": "POSTER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "GAME",
+        "ref_id": "game_031"
+      },
+      "target_date": "2026-11-19",
+      "approval_request_at": "2026-11-16T14:00:00+09:00",
+      "execute_at": "2026-11-17T10:00:00+09:00",
+      "deadline_at": "2026-11-19T20:00:00+09:00",
+      "reason_line": "목요일 국가대표 축구 경기 홍보 포스터를 올려요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "MENU_ORDER:2026-11-18:2026-11-18",
+      "task_type": "MENU_ORDER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CALENDAR_DAY",
+        "ref_id": "2026-11-18"
+      },
+      "target_date": "2026-11-18",
+      "approval_request_at": "2026-11-17T14:00:00+09:00",
+      "execute_at": "2026-11-18T10:00:00+09:00",
+      "deadline_at": "2026-11-18T22:00:00+09:00",
+      "reason_line": "계절 변화 때문에 메뉴판 순서를 바꿔요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "REVIEW_FIX:risk_004:2026-11-17",
+      "task_type": "REVIEW_FIX",
+      "revisit_class": null,
+      "basis": {
+        "kind": "RISK_SIGNAL",
+        "ref_id": "risk_004"
+      },
+      "target_date": "2026-11-17",
+      "approval_request_at": "2026-11-17T14:00:00+09:00",
+      "execute_at": null,
+      "deadline_at": null,
+      "reason_line": "최근 7일 동안 배달 지연 불만이 3건 들어왔어요.",
+      "planned_at": "2026-11-17T13:50:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_118:2026-11-17",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "QUICK",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_118"
+      },
+      "target_date": "2026-11-17",
+      "approval_request_at": "2026-11-17T14:00:00+09:00",
+      "execute_at": "2026-11-17T14:00:00+09:00",
+      "deadline_at": "2026-11-17T22:00:00+09:00",
+      "reason_line": "불만이 담긴 리뷰예요. 빨리 답글을 달아 주세요.",
+      "planned_at": "2026-11-17T12:30:00+09:00"
+    },
+    {
+      "plan_id": "MENU_ORDER:2026-11-19:2026-11-19",
+      "task_type": "MENU_ORDER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CALENDAR_DAY",
+        "ref_id": "2026-11-19"
+      },
+      "target_date": "2026-11-19",
+      "approval_request_at": "2026-11-18T14:00:00+09:00",
+      "execute_at": "2026-11-19T10:00:00+09:00",
+      "deadline_at": "2026-11-19T22:00:00+09:00",
+      "reason_line": "경기 때문에 메뉴판 순서를 바꿔요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "POSTER:event_012:2026-11-21",
+      "task_type": "POSTER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "EVENT",
+        "ref_id": "event_012"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-18T14:00:00+09:00",
+      "execute_at": "2026-11-19T10:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "토요일 지역 축제 홍보 포스터를 올려요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "MENU_ORDER:2026-11-20:2026-11-20",
+      "task_type": "MENU_ORDER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CALENDAR_DAY",
+        "ref_id": "2026-11-20"
+      },
+      "target_date": "2026-11-20",
+      "approval_request_at": "2026-11-19T14:00:00+09:00",
+      "execute_at": "2026-11-20T10:00:00+09:00",
+      "deadline_at": "2026-11-20T22:00:00+09:00",
+      "reason_line": "경기 기간이 끝나 메뉴판 순서를 되돌려요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "MENU_ORDER:2026-11-21:2026-11-21",
+      "task_type": "MENU_ORDER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CALENDAR_DAY",
+        "ref_id": "2026-11-21"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-20T14:00:00+09:00",
+      "execute_at": "2026-11-21T10:00:00+09:00",
+      "deadline_at": "2026-11-21T22:00:00+09:00",
+      "reason_line": "근처 행사 때문에 메뉴판 순서를 바꿔요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_131:2026-11-20",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "QUICK",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_131"
+      },
+      "target_date": "2026-11-20",
+      "approval_request_at": "2026-11-20T21:30:00+09:00",
+      "execute_at": "2026-11-20T21:30:00+09:00",
+      "deadline_at": "2026-11-20T22:00:00+09:00",
+      "reason_line": "불만이 담긴 리뷰예요. 빨리 답글을 달아 주세요.",
+      "planned_at": "2026-11-20T19:30:00+09:00"
+    },
+    {
+      "plan_id": "REORDER_NUDGE:c_m01:2026-11-21",
+      "task_type": "REORDER_NUDGE",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CUSTOMER",
+        "ref_id": "c_m01"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-21T10:00:00+09:00",
+      "execute_at": "2026-11-21T11:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "한 달에 한 번 오시는 단골 손님이 다시 주문할 때가 됐어요. 재주문 권유 메시지를 보내요.",
+      "planned_at": "2026-10-23T19:40:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_109:2026-11-21",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "BASIC",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_109"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-21T10:00:00+09:00",
+      "execute_at": "2026-11-21T11:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "이번 주에 들어온 리뷰예요. 토요일 11시에 답글을 함께 올려요.",
+      "planned_at": "2026-11-14T19:00:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_112:2026-11-21",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "BASIC",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_112"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-21T10:00:00+09:00",
+      "execute_at": "2026-11-21T11:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "이번 주에 들어온 리뷰예요. 토요일 11시에 답글을 함께 올려요.",
+      "planned_at": "2026-11-16T13:00:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_121:2026-11-21",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "BASIC",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_121"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-21T10:00:00+09:00",
+      "execute_at": "2026-11-21T11:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "이번 주에 들어온 리뷰예요. 토요일 11시에 답글을 함께 올려요.",
+      "planned_at": "2026-11-17T20:30:00+09:00"
+    },
+    {
+      "plan_id": "REVISIT_REPLY:rv_126:2026-11-21",
+      "task_type": "REVISIT_REPLY",
+      "revisit_class": "BASIC",
+      "basis": {
+        "kind": "REVIEW",
+        "ref_id": "rv_126"
+      },
+      "target_date": "2026-11-21",
+      "approval_request_at": "2026-11-21T10:00:00+09:00",
+      "execute_at": "2026-11-21T11:00:00+09:00",
+      "deadline_at": "2026-11-21T11:00:00+09:00",
+      "reason_line": "이번 주에 들어온 리뷰예요. 토요일 11시에 답글을 함께 올려요.",
+      "planned_at": "2026-11-19T12:40:00+09:00"
+    },
+    {
+      "plan_id": "MENU_ORDER:2026-11-23:2026-11-23",
+      "task_type": "MENU_ORDER",
+      "revisit_class": null,
+      "basis": {
+        "kind": "CALENDAR_DAY",
+        "ref_id": "2026-11-23"
+      },
+      "target_date": "2026-11-23",
+      "approval_request_at": "2026-11-22T14:00:00+09:00",
+      "execute_at": "2026-11-23T10:00:00+09:00",
+      "deadline_at": "2026-11-23T22:00:00+09:00",
+      "reason_line": "근처 행사 기간이 끝나 메뉴판 순서를 되돌려요.",
+      "planned_at": "2026-11-15T22:30:00+09:00"
+    }
+  ],
+  "notice_items": [
+    {
+      "notice_id": "WEEKLY_PREVIEW:2026-11-16",
+      "kind": "WEEKLY_PREVIEW",
+      "slot_at": "2026-11-16T10:00:00+09:00",
+      "refs": [
+        "2026-11-16",
+        "2026-11-17",
+        "2026-11-18",
+        "2026-11-19",
+        "2026-11-20",
+        "2026-11-21",
+        "2026-11-22",
+        "game_031",
+        "event_012",
+        "POSTER:game_031:2026-11-19",
+        "MENU_ORDER:2026-11-18:2026-11-18",
+        "REVIEW_FIX:risk_004:2026-11-17",
+        "REVISIT_REPLY:rv_118:2026-11-17",
+        "MENU_ORDER:2026-11-19:2026-11-19",
+        "POSTER:event_012:2026-11-21",
+        "MENU_ORDER:2026-11-20:2026-11-20",
+        "MENU_ORDER:2026-11-21:2026-11-21",
+        "REVISIT_REPLY:rv_131:2026-11-20",
+        "REORDER_NUDGE:c_m01:2026-11-21",
+        "REVISIT_REPLY:rv_109:2026-11-21",
+        "REVISIT_REPLY:rv_112:2026-11-21",
+        "REVISIT_REPLY:rv_121:2026-11-21",
+        "REVISIT_REPLY:rv_126:2026-11-21",
+        "MENU_ORDER:2026-11-23:2026-11-23"
+      ],
+      "text": "이번 주 미리보기: 수요일부터 계절이 바뀌어요, 목요일 국가대표 축구 경기, 토요일 지역 축제. 이번 주 할 일은 15개예요."
+    },
+    {
+      "notice_id": "SALES_ANOMALY:2026-11-17:LUNCH",
+      "kind": "SALES_ANOMALY",
+      "slot_at": "2026-11-18T10:00:00+09:00",
+      "refs": [
+        "2026-11-17"
+      ],
+      "text": "어제 점심 매출이 평소보다 35% 많았어요. 달력에 없던 일이에요."
+    }
+  ]
+}

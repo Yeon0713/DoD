@@ -2,11 +2,15 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
+from app.core.error_response import register_error_handlers
 from app.modules import load_modules
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title=settings.app_name)
+
+    # 모든 오류를 {"error": {"code", "message"}} 모양으로 통일
+    register_error_handlers(app)
 
     # 웹 프론트가 다른 주소에서 이 서버를 부를 수 있게 허용
     app.add_middleware(

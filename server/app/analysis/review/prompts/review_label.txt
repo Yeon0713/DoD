@@ -18,6 +18,7 @@ complaint_types: 해당하는 것을 모두 넣는다. 없으면 빈 목록이�
 - 별점은 없다. 본문만 보고 판단한다.
 - 부정형은 불만이 아니다. 예) "늦지 않게 왔어요", "양이 적지 않아요", "사진이랑 똑같아요"
 - "조금 매웠지만", "가격이 조금 아쉬워요"처럼 가볍게 덧붙인 취향이나 가격 이야기는 complaint_types 에 넣지 않는다. 칭찬과 함께 있으면 MIXED 이다.
+- PORTION 은 양 이야기가 있을 때만 붙인다. 가격, 값, 비싸다는 이야기는 불만 유형이 아니다.
 
 예시
 리뷰: 국물이 진하고 면이 쫄깃해요.
@@ -28,3 +29,5 @@ complaint_types: 해당하는 것을 모두 넣는다. 없으면 빈 목록이�
 답: {"sentiment": "NEGATIVE", "complaint_types": ["DELIVERY_DELAY", "SERVICE"]}
 리뷰: 늦지 않게 왔고 사진이랑 똑같아요.
 답: {"sentiment": "POSITIVE", "complaint_types": []}
+리뷰: 값이 좀 비싸긴 한데 국물은 정말 맛있어요.
+답: {"sentiment": "MIXED", "complaint_types": []}

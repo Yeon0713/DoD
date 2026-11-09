@@ -4,6 +4,7 @@ NAVER Cloud Hyper-Local AI 챌린지 팀 DoD의 저장소입니다.
 소상공인 가게 사장님을 위한 앱(주문, 매출 분석, 리뷰 응대, 마케팅, 일정 관리 등)을 만듭니다.
 
 - 커밋 · 브랜치 · PR 규칙: [commit_guide.md](commit_guide.md)
+- 화면용 API와 계획 엔진 자세한 사용법: [docs/server-api-and-planner-guide.md](docs/server-api-and-planner-guide.md)
 
 ---
 
@@ -14,22 +15,31 @@ DoD/
 ├── README.md                지금 보고 있는 문서
 ├── commit_guide.md          커밋 · 브랜치 · PR 규칙
 ├── .gitignore               GitHub에 올리면 안 되는 파일 목록 (.env, 가상환경 등)
+├── contracts/
+│   └── sample_responses/    화면용 API가 지금 돌려주는 응답 예시 JSON (5장)
+├── docs/                    자세한 사용 안내 문서
 └── server/                  백엔드 서버 (FastAPI)
     ├── requirements.txt     서버에 필요한 파이썬 패키지 목록
     ├── .env.example         설정 파일(.env)의 틀. 값은 비워서 공유
-    └── app/
-        ├── main.py          서버 시작점. modules/ 안의 기능을 자동으로 연결
-        ├── core/            모든 모듈이 같이 쓰는 코드
-        │   ├── config.py    .env에서 설정 값 읽기
-        │   ├── ncloud.py    네이버 클라우드 API 호출 (서명 자동 처리)
-        │   ├── clova.py     HyperCLOVA X 호출 (리뷰 답변, 마케팅 문구, 챗봇 대화 등)
-        │   ├── maps.py      Maps 호출 (주소 ↔ 좌표, 길찾기)
-        │   ├── api_hub.py   NAVER API HUB 호출 (지역·블로그 검색, 검색어 트렌드)
-        │   └── sens.py      SENS 문자 보내기 (예약 알림 등)
-        └── modules/         기능 모듈을 넣는 곳 ← 기능 개발은 여기서
-            ├── __init__.py  modules/ 안의 폴더를 찾아서 서버에 등록하는 코드 (수정 X)
-            └── _template/   새 기능을 만들 때 복사할 틀 (서버에 등록되지 않음)
-                └── router.py
+    ├── app/
+    │   ├── main.py          서버 시작점. modules/ 안의 기능을 자동으로 연결, 오류 응답 형식 등록
+    │   ├── core/            모든 모듈이 같이 쓰는 코드
+    │   │   ├── config.py    .env에서 설정 값 읽기
+    │   │   ├── ncloud.py    네이버 클라우드 API 호출 (서명 자동 처리)
+    │   │   ├── clova.py     HyperCLOVA X 호출 (리뷰 답변, 마케팅 문구, 챗봇 대화 등)
+    │   │   ├── maps.py      Maps 호출 (주소 ↔ 좌표, 길찾기)
+    │   │   ├── api_hub.py   NAVER API HUB 호출 (지역·블로그 검색, 검색어 트렌드)
+    │   │   ├── sens.py      SENS 문자 보내기 (예약 알림 등)
+    │   │   ├── seoul_time.py              서울 시각 도구
+    │   │   ├── error_response.py          오류 응답 형식 통일
+    │   │   └── sample_response_loader.py  응답 예시 JSON 읽기
+    │   ├── modules/         기능 모듈을 넣는 곳 ← 기능 개발은 여기서
+    │   │   ├── __init__.py  modules/ 안의 폴더를 찾아서 서버에 등록하는 코드 (수정 X)
+    │   │   ├── _template/   새 기능을 만들 때 복사할 틀 (서버에 등록되지 않음)
+    │   │   └── today/ plan/ calendar/ sales/ reviews/ settings/   화면용 API (5장)
+    │   └── planner/         계획 엔진: 언제 사장님께 무엇을 알릴지 계산 (5장)
+    ├── db/                  DB 스키마, 마이그레이션, 목업 데이터 (4장)
+    └── tests/               테스트 (server/ 에서 python -m pytest)
 ```
 
 ---
@@ -168,6 +178,8 @@ modules/review/
 └── prompts/         HyperCLOVA X 프롬프트 파일
 ```
 
+> 화면용 API 모듈(`today`, `plan` 등)은 같은 역할을 `response_format.py`(응답 모양)와 `data_provider.py`(데이터 가져오기)라는 이름으로 나눠 두었습니다. 파일 이름이 달라도 동작 방식은 같습니다.
+
 - 프롬프트를 바꿀 때는 커밋 타입 `prompt`를 씁니다. 예) `prompt(review): 답글 말투를 더 공손하게 변경`
 - 이름이 `_`로 시작하는 폴더는 서버에 등록되지 않습니다. 만들다 만 기능은 `_review`처럼 이름을 붙여 두면 서버에 안 붙어요.
 
@@ -208,3 +220,74 @@ python -m db.mock.generate     # 목업 생성 → DB에 넣고 CSV도 갱신 (�
 
 - 시각은 모두 `timestamptz`입니다. 서울 기준 날짜로 묶으려면 `(ordered_at AT TIME ZONE 'Asia/Seoul')::date`
 - 열 전체는 `db/models.py`에 있습니다.
+
+---
+
+## 5. 화면용 API와 계획 엔진
+
+사장님 화면(오늘의 카드, 이번 주 달력, 설정)에 데이터를 주는 API 6개와, **언제 사장님께 무엇을 알릴지 계산하는 계획 엔진**입니다.
+자세한 응답 필드, 규칙, 고치는 법은 [docs/server-api-and-planner-guide.md](docs/server-api-and-planner-guide.md)에 있습니다.
+
+> ⚠️ 지금 API는 **예시 데이터**(`contracts/sample_responses/`)를 돌려줍니다. 모든 응답에 `"is_example": true`가 붙습니다.
+> DB와 분석 결과가 준비되면 실제 데이터로 바꾸고, 그때 `false`가 됩니다. 응답 모양은 그대로라 화면 코드는 고칠 필요가 없습니다.
+> 예시 데이터 단계에서는 DB와 `.env` 없이도 서버가 켜집니다.
+
+### 5-1. API 목록
+
+서버를 켜고 http://localhost:8000/docs 에 들어가면 아래 API를 직접 호출해 볼 수 있습니다.
+
+| 주소 | 쓰는 화면 | 받는 값 | 돌려주는 것 |
+|---|---|---|---|
+| `GET /api/today` | 오늘의 카드 | 없음 | 오늘 알림 시각(10:00, 14:00, 21:30)별 카드 묶음. 우선순위 순서로 정렬됨 |
+| `GET /api/plan` | 오늘의 카드 | `from`, `to` | 할 일 목록(이유 한 줄, 승인 요청·실행 시각)과 승인 없는 알림(주간 예고, 매출 이상) |
+| `GET /api/calendar` | 이번 주 달력 | `from`, `to` | 날짜 × 시간대(점심, 저녁, 야간)별 수요 신호와 이유 |
+| `GET /api/sales` | 이번 주 달력 | `from`, `to`, `grain` | 매출 패턴. `grain`: `day`, `week`, `month`, `weekday_daypart` |
+| `GET /api/reviews` | 카드의 근거 리뷰 | `from`, `to`, `quick` | 리뷰와 분류 결과. `quick=true`면 불만 리뷰만 |
+| `GET /api/settings` | 설정 | 없음 | 매장 설정 (알림 시각, 장사 시간대) |
+| `PATCH /api/settings` | 설정 | 바꿀 항목 | 알림 시각, 시간대 고치기. 지금은 서버 메모리에만 저장 |
+
+예) `http://localhost:8000/api/plan?from=2026-11-16&to=2026-11-22`
+
+**today와 plan의 관계**: today의 카드 묶음에는 `plan_id`(또는 `notice_id`)만 있습니다. 카드에 보일 내용은 plan에서 같은 id를 찾아서 씁니다.
+
+### 5-2. 공통 규칙
+
+- 시각은 서울 기준, `"2026-11-17T14:00:00+09:00"` 형식입니다. 날짜는 `"2026-11-17"`입니다.
+- 코드값은 영어 대문자(`LUNCH`, `APPROVAL_REQUEST` 등)로 주고받고, 화면 문구는 프론트가 한국어로 바꿉니다.
+- 오류는 항상 같은 모양입니다.
+  ```json
+  {"error": {"code": "INVALID_DATE_RANGE", "message": "from 날짜가 to 날짜보다 늦습니다."}}
+  ```
+- 화면 주소가 `http://localhost:3000`이 아니면 `.env`의 `CORS_ORIGINS`에 추가해야 브라우저에서 호출됩니다.
+
+### 5-3. 계획 엔진 (`server/app/planner/`)
+
+분석 결과(리뷰 분류, 손님 주문 주기, 달력, 위험 신호)를 받아 **할 일마다 승인 요청 시각, 실행 시각, 우선순위**를 정하고 알림 시각별로 묶습니다. AI가 아니라 날짜·시간 규칙으로 계산합니다.
+
+| 할 일 | 승인 요청 | 실행 |
+|---|---|---|
+| 불만 리뷰 답글 | 리뷰 뒤 첫 알림 시각 | 승인과 동시 |
+| 그 밖의 리뷰 답글 (단골, 일반) | 리뷰가 달린 주의 토요일 10:00 | 승인되면 토요일 11:00 게시 |
+| 매달 단골 재주문 권유 | 답글 토요일 4주 뒤 토요일 10:00 | 같은 날 11:00 |
+| 메뉴판 바꾸기 | 바뀌는 날 전날 14:00 | 당일 10:00 |
+| 행사·경기 포스터 | 3일 전 14:00 | 2일 전 10:00 |
+| 반복 불만 개선 | 발견 뒤 첫 14:00 | 없음 |
+
+우선순위는 1 불만 리뷰, 2 반복 불만 개선, 3 내일 실행할 일, 4 그 밖입니다.
+
+```python
+from app.planner.make_plan import make_plan
+
+result = make_plan(inputs, now)   # inputs: PlanInputs, now: 기준 시각
+result.batches                    # /api/today 의 batches 와 같은 모양
+```
+
+규칙마다 파일이 나뉘어 있습니다(`rule_review_reply.py`, `rule_poster.py` 등). 규칙을 바꾸면 테스트도 같이 고쳐야 합니다.
+
+### 5-4. 테스트
+
+```bash
+python -m pytest -v
+```
+
+`server/` 폴더에서 실행합니다. 데모 주간(2026-11-16 ~ 11-22)을 계획 엔진에 넣었을 때 알림 타임라인이 정답과 같은지 확인합니다.

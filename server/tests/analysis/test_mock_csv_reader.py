@@ -27,6 +27,7 @@ def test_every_row_is_read(inputs):
     assert len(inputs.events) == csv_count("events")
     assert len(inputs.games) == csv_count("games")
     assert len(inputs.weather) == csv_count("weather_daily")
+    assert len(inputs.reviews) == csv_count("reviews")
 
 
 def test_codes_are_uppercase(inputs):
@@ -62,3 +63,12 @@ def test_store_uses_default_dayparts_and_times_are_seoul(inputs):
 def test_menu_cost_is_missing_and_wages_are_joined(inputs):
     assert all(menu.unit_cost is None for menu in inputs.menus)
     assert all(shift.hourly_wage > 0 for shift in inputs.shifts)
+
+
+def test_reviews_are_unlabeled_with_prefixed_ids(inputs):
+    review = inputs.reviews[0]
+    assert review.review_id == "rv_001" and review.label is None and review.text
+    order_ids = {order.order_id for order in inputs.orders}
+    for review in inputs.reviews:
+        assert review.platform == ("BAEMIN" if review.order_id else "NAVER")
+        assert review.order_id is None or review.order_id in order_ids

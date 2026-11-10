@@ -1,7 +1,7 @@
 """분석에 넣는 입력 모양. 목업 CSV 든 DB 든 이 모양으로 바꿔서 넣는다.
 
-행사와 경기는 계획 엔진(app/planner/data_shapes.py)의 Event, Game 을 그대로 쓴다.
-달력의 근거 id(ref_id)와 계획 엔진에 넘기는 행사·경기 id 가 같아야 하기 때문이다.
+행사, 경기, 리뷰는 계획 엔진(app/planner/data_shapes.py)의 Event, Game, Review 를 그대로 쓴다.
+분석 결과의 근거 id(ref_id, review_ids)와 계획 엔진에 넘기는 id 가 같아야 하기 때문이다.
 """
 
 import datetime as dt
@@ -9,7 +9,7 @@ import datetime as dt
 from pydantic import BaseModel, model_validator
 
 from app.analysis.result_shapes import AnalysisDaypart
-from app.planner.data_shapes import Event, Game, Weekday
+from app.planner.data_shapes import Event, Game, Review, Weekday
 
 
 class DaypartRange(BaseModel):
@@ -96,3 +96,4 @@ class AnalysisInputs(BaseModel):
     events: list[Event] = []
     games: list[Game] = []
     weather: list[WeatherDay] = []
+    reviews: list[Review] = []  # 분류 전 리뷰는 label 이 None

@@ -4,6 +4,8 @@
 - 행사·경기 id 는 문자열로 바꾼다. 예) 1 → event_001, game_001
 - 행사·경기 종류는 계약 코드값으로 바꾼다.
 - 목업 매장의 dayparts 는 예전 시간대(점심·저녁·야간)라 읽지 않는다. 분석은 기본 경계를 쓴다.
+- 리뷰 id 는 rv_001 형식, 본문(content)은 text 로 옮긴다. 목업에 리뷰 플랫폼 열이 없어서
+  주문과 이어진 리뷰는 BAEMIN, 나머지는 NAVER 로 채운다(임시값). 분류 결과(label)는 비워 둔다.
 """
 
 import csv
@@ -20,7 +22,7 @@ from app.analysis.input_shapes import (
     StoreInfo,
     WeatherDay,
 )
-from app.planner.data_shapes import Event, Game
+from app.planner.data_shapes import Event, Game, Review
 
 # server/app/analysis/ 에서 두 단계 위가 server/
 MOCK_DIR = Path(__file__).resolve().parents[2] / "db" / "mock" / "out"
@@ -129,5 +131,17 @@ def read_mock_csv(directory: Path = MOCK_DIR) -> AnalysisInputs:
                 rain_mm=float(row["precip_mm"]),
             )
             for row in _rows(directory, "weather_daily")
+        ],
+        reviews=[
+            Review(
+                review_id=f"rv_{int(row['review_id']):03d}",
+                platform="BAEMIN" if row["order_id"] else "NAVER",
+                written_at=dt.datetime.fromisoformat(row["written_at"]),
+                rating=int(row["rating"]),
+                text=row["content"],
+                customer_key=_or_none(row["customer_key"]),
+                order_id=_or_none(row["order_id"]),
+            )
+            for row in _rows(directory, "reviews")
         ],
     )

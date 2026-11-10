@@ -1,0 +1,150 @@
+"""시간대 판정과 하루 × 시간대 매출 (app/analysis/pattern/daypart_time.py, sales_daily.py)."""
+
+import datetime as dt
+
+import pytest
+
+from app.analysis.input_shapes import AnalysisInputs, DaypartRange, Menu, Order, OrderItem, Shift, StoreInfo
+from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.pattern.daypart_time import daypart_at, dayparts_of
+from app.analysis.pattern.sales_daily import build_sales_daily
+from app.core.seoul_time import SEOUL
+
+STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
+DAY = dt.date(2026, 11, 2)  # 월요일
+
+
+def at(hour: int, minute: int = 0, day: dt.date = DAY) -> dt.datetime:
+    return dt.datetime(day.year, day.month, day.day, hour, minute, tzinfo=SEOUL)
+
+
+def order(order_id: str, t: dt.datetime, amount: int) -> Order:
+    return Order(order_id=order_id, ordered_at=t, channel="HALL", total_amount=amount)
+
+
+def by_daypart(result, day: dt.date = DAY):
+    return {row.daypart: row for row in result.rows if row.date == day}
+
+
+# ── 시간대 판정 ──
+
+
+def test_default_dayparts_follow_open_and_close():
+    ranges = dayparts_of(STORE)
+    assert [(r.daypart, str(r.start), str(r.end)) for r in ranges] == [
+        ("MORNING", "10:00:00", "11:00:00"),
+        ("LUNCH", "11:00:00", "17:00:00"),
+        ("DINNER", "17:00:00", "22:00:00"),
+    ]
+
+
+@pytest.mark.parametrize("hour, minute, expected", [
+    (9, 59, None), (10, 0, "MORNING"), (10, 59, "MORNING"), (11, 0, "LUNCH"),
+    (16, 59, "LUNCH"), (17, 0, "DINNER"), (21, 59, "DINNER"), (22, 0, None),
+])
+def test_daypart_boundaries(hour, minute, expected):
+    assert daypart_at(at(hour, minute), dayparts_of(STORE)) == expected
+
+
+def test_owner_dayparts_are_used_when_set():
+    store = STORE.model_copy(update={"dayparts": [
+        DaypartRange(daypart="MORNING", start=dt.time(10), end=dt.time(11, 30)),
+        DaypartRange(daypart="LUNCH", start=dt.time(11, 30), end=dt.time(16)),
+        DaypartRange(daypart="DINNER", start=dt.time(16), end=dt.time(22)),
+    ]})
+    assert daypart_at(at(11, 15), dayparts_of(store)) == "MORNING"
+    assert daypart_at(at(16, 30), dayparts_of(store)) == "DINNER"
+
+
+# ── 하루 × 시간대 매출 ──
+
+
+def sample_inputs(**changes) -> AnalysisInputs:
+    data = dict(
+        store=STORE,
+        orders=[order("1", at(10, 30), 9000), order("2", at(12), 15000), order("3", at(18), 20000)],
+        order_items=[
+            OrderItem(order_id="1", menu_id="m1", quantity=1, unit_price=9000),
+            OrderItem(order_id="2", menu_id="m1", quantity=1, unit_price=9000),
+            OrderItem(order_id="2", menu_id="m2", quantity=2, unit_price=3000),
+            OrderItem(order_id="3", menu_id="m1", quantity=2, unit_price=10000),
+        ],
+        menus=[Menu(menu_id="m1", name="국수", category="MAIN", price=9000), Menu(menu_id="m2", name="김밥", category="SIDE", price=3000)],
+        shifts=[Shift(shift_id="1", staff_key="staff_001", starts_at=at(10, 30), ends_at=at(14), hourly_wage=10000)],
+    )
+    data.update(changes)
+    return AnalysisInputs(**data)
+
+
+END_OF_DAY = at(23)
+
+
+def test_sales_and_qty_per_daypart():
+    rows = by_daypart(build_sales_daily(sample_inputs(), END_OF_DAY))
+    assert (rows["MORNING"].sales_amount, rows["MORNING"].qty) == (9000, 1)
+    assert (rows["LUNCH"].sales_amount, rows["LUNCH"].qty) == (15000, 3)
+    assert (rows["DINNER"].sales_amount, rows["DINNER"].qty) == (20000, 2)
+
+
+def test_labor_cost_is_split_by_overlap():
+    """10:30~14:00 근무, 시급 10,000원 → 아침 30분 5,000원, 점심 3시간 30,000원, 저녁 0원."""
+    rows = by_daypart(build_sales_daily(sample_inputs(), END_OF_DAY))
+    assert [rows[d].labor_cost for d in ("MORNING", "LUNCH", "DINNER")] == [5000, 30000, 0]
+
+
+def test_missing_menu_cost_leaves_food_cost_empty_and_profit_uses_known_items():
+    rows = by_daypart(build_sales_daily(sample_inputs(), END_OF_DAY))
+    assert rows["LUNCH"].food_cost is None
+    assert rows["LUNCH"].profit == 15000 - 30000
+    assert rows["LUNCH"].platform_fee is None and rows["LUNCH"].delivery_fee is None and rows["LUNCH"].payment_fee is None
+
+
+def test_known_menu_cost_fills_food_cost():
+    menus = [
+        Menu(menu_id="m1", name="국수", category="MAIN", price=9000, unit_cost=3000),
+        Menu(menu_id="m2", name="김밥", category="SIDE", price=3000, unit_cost=1000),
+    ]
+    rows = by_daypart(build_sales_daily(sample_inputs(menus=menus), END_OF_DAY))
+    assert rows["LUNCH"].food_cost == 3000 + 2 * 1000
+    assert rows["LUNCH"].profit == 15000 - 5000 - 30000
+
+
+def test_no_shifts_leaves_labor_cost_empty():
+    rows = by_daypart(build_sales_daily(sample_inputs(shifts=[]), END_OF_DAY))
+    assert all(row.labor_cost is None for row in rows.values())
+    assert rows["DINNER"].profit == 20000
+
+
+def test_orders_after_now_and_unfinished_days_are_left_out():
+    before_close = at(21)
+    assert build_sales_daily(sample_inputs(), before_close).rows == []  # 그 날 마감 전
+    next_day_orders = [*sample_inputs().orders, order("4", at(12, day=DAY + dt.timedelta(1)), 7000)]
+    result = build_sales_daily(sample_inputs(orders=next_day_orders), END_OF_DAY)
+    assert {row.date for row in result.rows} == {DAY}
+
+
+def test_outside_orders_are_counted_not_added():
+    orders = [*sample_inputs().orders, order("9", at(9, 30), 5000), order("10", at(22, 10), 5000)]
+    result = build_sales_daily(sample_inputs(orders=orders), END_OF_DAY)
+    assert result.outside_order_count == 2
+    assert sum(row.sales_amount for row in result.rows) == 9000 + 15000 + 20000
+
+
+def test_closed_weekday_has_no_rows_and_empty_day_has_zero_rows():
+    store = STORE.model_copy(update={"closed_weekdays": ["TUE"]})
+    later = at(23, day=DAY + dt.timedelta(2))
+    result = build_sales_daily(sample_inputs(store=store), later)
+    assert {row.date for row in result.rows} == {DAY, DAY + dt.timedelta(2)}
+    assert all(row.sales_amount == 0 for row in result.rows if row.date == DAY + dt.timedelta(2))
+
+
+@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
+def test_mock_sales_daily_covers_all_orders_until_now():
+    inputs = read_mock_csv()
+    now = dt.datetime(2026, 11, 15, 22, 30, tzinfo=SEOUL)
+    result = build_sales_daily(inputs, now)
+    days = {row.date for row in result.rows}
+    assert len(result.rows) == len(days) * 3
+    assert result.outside_order_count == 0
+    assert sum(row.sales_amount for row in result.rows) == sum(o.total_amount for o in inputs.orders if o.ordered_at <= now)
+    assert all(row.food_cost is None and row.labor_cost is not None for row in result.rows)

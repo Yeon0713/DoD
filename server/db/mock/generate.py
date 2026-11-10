@@ -77,7 +77,32 @@ MENU = [
 MAIN_WEIGHT = {"잔치국수": 20, "비빔국수": 15, "멸치국수": 10, "칼국수": 18, "들깨칼국수": 10, "장칼국수": 15}
 KONGGUKSU_BY_MONTH = {8: 14, 9: 8, 10: 3, 11: 1}  # 콩국수는 여름 메뉴
 
-STAFF = [("알바A", 10320), ("알바B", 10320), ("알바C", 10320)]
+STAFF = [("김민준", 10320), ("이서연", 10320), ("박도윤", 10320), ("최하은", 10320), ("정우진", 10320)]
+
+# ── 근무표 ───────────────────────────────────────────
+# 근무 칸: (출근, 퇴근). 영업 10:00~22:00 내내 동시 근무 2~3명.
+# 교대는 15:30, 16:30 두 번에 나눠 해서 인원이 1명이나 4명이 되지 않게 한다.
+SHIFT_SLOTS = {
+    "open1": ((9, 30), (15, 30)),
+    "open2": ((10, 0), (16, 30)),
+    "close1": ((15, 30), (22, 30)),
+    "close2": ((16, 30), (22, 0)),
+    "lunch": ((11, 0), (14, 0)),  # 보조
+    "dinner": ((17, 0), (21, 0)),  # 보조
+}
+# 요일(0=월)별 {칸: staff_id}. 1인 주 6일 (이서연만 주 5일).
+# 3명은 가장 바쁜 금요일 점심·저녁만 (정우진이 브레이크타임을 끼고 나눠 근무).
+SHIFT_TEMPLATE = {
+    0: {"open1": 2, "open2": 3, "close1": 4, "close2": 5},  # 김민준 휴무
+    1: {"open1": 3, "open2": 4, "close1": 5, "close2": 1},  # 이서연 휴무
+    2: {"open1": 4, "open2": 5, "close1": 1, "close2": 2},  # 박도윤 휴무
+    3: {"open1": 5, "open2": 1, "close1": 2, "close2": 3},  # 최하은 휴무
+    4: {"open1": 1, "open2": 2, "close1": 3, "close2": 4, "lunch": 5, "dinner": 5},
+    5: {"open1": 2, "open2": 3, "close1": 4, "close2": 1},  # 정우진 휴무
+    6: {"open1": 4, "open2": 5, "close1": 1, "close2": 3},  # 이서연 휴무
+}
+CLOCK_IN_EARLY_MAX = 10  # 출근은 예정보다 0~10분 일찍
+CLOCK_OUT_LATE_MAX = 15  # 퇴근은 예정보다 0~15분 늦게
 
 # ── 행사·경기 (모두 가상) ────────────────────────────
 EVENTS = [
@@ -315,18 +340,16 @@ def gen_reviews(rng: random.Random, orders: list[dict]) -> list[dict]:
     return rows
 
 
-def gen_shifts() -> list[dict]:
-    # 요일별(월~일) 점심 담당, 저녁 담당. 금·토 저녁은 한 명 더.
-    lunch = [1, 2, 3, 1, 2, 3, 1]
-    dinner = [2, 3, 1, 2, 3, 1, 2]
-    extra = {4: 3, 5: 2}
+def gen_shifts(rng: random.Random) -> list[dict]:
+    """실제 출퇴근 기록. 예정 시각에서 출근은 조금 일찍, 퇴근은 조금 늦게 찍힌다."""
     rows = []
     for d in days(START, END):
-        wd = d.weekday()
-        rows.append((lunch[wd], kst(d, 10, 30), kst(d, 14)))
-        rows.append((dinner[wd], kst(d, 16, 30), kst(d, 22)))
-        if wd in extra:
-            rows.append((extra[wd], kst(d, 17, 30), kst(d, 21, 30)))
+        for slot, staff_id in SHIFT_TEMPLATE[d.weekday()].items():
+            (h1, m1), (h2, m2) = SHIFT_SLOTS[slot]
+            start = kst(d, h1, m1) - timedelta(minutes=rng.randint(0, CLOCK_IN_EARLY_MAX))
+            end = kst(d, h2, m2) + timedelta(minutes=rng.randint(0, CLOCK_OUT_LATE_MAX))
+            rows.append((staff_id, start, end))
+    rows.sort(key=lambda r: (r[1], r[0]))
     return [{"shift_id": i, "staff_id": s, "starts_at": a, "ends_at": b} for i, (s, a, b) in enumerate(rows, start=1)]
 
 
@@ -341,7 +364,7 @@ def build(seed: int) -> dict[str, list[dict]]:
                  for i, (n, c, p) in enumerate(MENU, start=1)],
         "staff": [{"staff_id": i, "store_id": STORE_ID, "name": n, "hourly_wage": w}
                   for i, (n, w) in enumerate(STAFF, start=1)],
-        "shifts": gen_shifts(),
+        "shifts": gen_shifts(rng),
         "events": [{"event_id": i, "name": n, "kind": k, "starts_at": s.replace(tzinfo=KST),
                     "ends_at": e.replace(tzinfo=KST), "lat": la, "lng": ln, "distance_km": km}
                    for i, (n, k, s, e, la, ln, km) in enumerate(EVENTS, start=1)],

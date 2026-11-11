@@ -25,15 +25,31 @@ def baseline_for(
     daypart: AnalysisDaypart,
 ) -> int | None:
     """day 의 daypart 칸 기준선. day 직전 8주의 같은 요일 칸을 쓴다."""
+    return median_before(rows, excluded, day, daypart, same_weekday=True, minimum=MIN_WEEKS)
+
+
+def median_before(
+    rows: list[SalesDailyRow],
+    excluded: set[Cell],
+    day: dt.date,
+    daypart: AnalysisDaypart,
+    *,
+    same_weekday: bool,
+    minimum: int,
+) -> int | None:
+    """day 직전 8주(day 당일 제외) daypart 칸 중 특별한 칸을 뺀 매출의 중앙값. minimum 개 미만이면 None.
+
+    same_weekday 면 day 와 같은 요일 칸만 쓴다(기준선). 아니면 모든 날을 쓴다.
+    """
     values = [
         r.sales_amount
         for r in rows
         if r.daypart == daypart
-        and r.date.weekday() == day.weekday()
+        and (not same_weekday or r.date.weekday() == day.weekday())
         and day - WINDOW <= r.date < day
         and (r.date, r.daypart) not in excluded
     ]
-    if len(values) < MIN_WEEKS:
+    if len(values) < minimum:
         return None
     return _median_half_up(values)
 

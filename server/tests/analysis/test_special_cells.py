@@ -104,6 +104,23 @@ def test_days_outside_the_range_and_closed_days_are_left_out():
     assert {day for day, *_ in found} == {DAY, DAY + dt.timedelta(2)}  # 전날·화요일(휴무)·범위 뒤는 없다
 
 
+def test_each_cell_carries_the_kind_of_its_reason():
+    """과거 효과를 종류별로 묶을 수 있게 칸마다 행사·경기·날씨 종류를 함께 준다."""
+    inputs = AnalysisInputs(
+        store=STORE,
+        events=[Event(event_id="event_001", kind="UNIV_FESTIVAL", title="축제", start_at=at(12), end_at=at(13), distance_km=0.5)],
+        games=[Game(game_id="game_001", kind="NATIONAL_TEAM", title="경기", start_at=at(18))],
+        weather=[WeatherDay(date=DAY, temp_max=-3, temp_min=-12, rain_mm=6)],
+    )
+    kinds = {(c.daypart, c.tag, c.kind, c.ref_id) for c in find_special_cells(inputs, DAY, DAY)}
+    assert kinds == {
+        ("LUNCH", "EVENT", "UNIV_FESTIVAL", "event_001"),
+        ("DINNER", "GAME", "NATIONAL_TEAM", "game_001"),
+        *((p, "WEATHER", "RAIN", "weather:2026-11-02:RAIN") for p in ("MORNING", "LUNCH", "DINNER")),
+        *((p, "WEATHER", "COLD", "weather:2026-11-02:COLD") for p in ("MORNING", "LUNCH", "DINNER")),
+    }
+
+
 # 9/23~11/17 사이 목업의 특별한 칸. 원본 행사·경기·날씨 CSV를 보고 손으로 정했다.
 ALL = ("MORNING", "LUNCH", "DINNER")
 MOCK_SPECIAL_BY_HAND = {

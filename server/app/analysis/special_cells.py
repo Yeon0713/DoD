@@ -15,6 +15,7 @@ from app.analysis.input_shapes import AnalysisInputs, WeatherDay
 from app.analysis.pattern.daypart_time import daypart_at, dayparts_of, is_closed_day, overlap_minutes, window
 from app.analysis.result_shapes import AnalysisDaypart
 from app.core.seoul_time import to_seoul
+from app.planner.data_shapes import EventKind, GameKind
 
 EVENT_RADIUS_KM = 2.0
 RAIN_MM = 5.0
@@ -22,6 +23,8 @@ HEAT_MAX_C = 33.0
 COLD_MIN_C = -12.0
 
 SpecialTag = Literal["EVENT", "GAME", "WEATHER"]
+WeatherKind = Literal["RAIN", "HEAT", "COLD"]
+SpecialKind = EventKind | GameKind | WeatherKind
 
 
 @dataclass(frozen=True)
@@ -29,6 +32,7 @@ class SpecialCell:
     date: dt.date
     daypart: AnalysisDaypart
     tag: SpecialTag
+    kind: SpecialKind  # 행사·경기 종류, 또는 날씨 종류. 과거 효과를 이 종류로 묶는다
     ref_id: str  # event_012, game_031, weather:2026-11-17:RAIN
 
 
@@ -46,7 +50,7 @@ def find_special_cells(inputs: AnalysisInputs, start: dt.date, end: dt.date) -> 
                 cell_start, cell_end = window(day, r)
                 for e in nearby_events:
                     if overlap_minutes(e.start_at, e.end_at, cell_start, cell_end) > 0:
-                        result.append(SpecialCell(day, r.daypart, "EVENT", e.event_id))
+                        result.append(SpecialCell(day, r.daypart, "EVENT", e.kind, e.event_id))
             for g in inputs.games:
                 if to_seoul(g.start_at).date() != day:
                     continue
@@ -55,10 +59,10 @@ def find_special_cells(inputs: AnalysisInputs, start: dt.date, end: dt.date) -> 
                     continue
                 i = [r.daypart for r in ranges].index(start_daypart)
                 for r in ranges[i : i + 2]:
-                    result.append(SpecialCell(day, r.daypart, "GAME", g.game_id))
+                    result.append(SpecialCell(day, r.daypart, "GAME", g.kind, g.game_id))
             for kind in _weather_kinds(weather.get(day)):
                 for r in ranges:
-                    result.append(SpecialCell(day, r.daypart, "WEATHER", f"weather:{day.isoformat()}:{kind}"))
+                    result.append(SpecialCell(day, r.daypart, "WEATHER", kind, f"weather:{day.isoformat()}:{kind}"))
         day += dt.timedelta(days=1)
     return result
 
@@ -68,11 +72,11 @@ def cell_keys(cells: list[SpecialCell]) -> set[tuple[dt.date, AnalysisDaypart]]:
     return {(c.date, c.daypart) for c in cells}
 
 
-def _weather_kinds(w: WeatherDay | None) -> list[str]:
+def _weather_kinds(w: WeatherDay | None) -> list[WeatherKind]:
     """그날 걸린 날씨 조건. 여러 개일 수 있다."""
     if w is None:
         return []
-    kinds = []
+    kinds: list[WeatherKind] = []
     if w.rain_mm >= RAIN_MM:
         kinds.append("RAIN")
     if w.temp_max >= HEAT_MAX_C:

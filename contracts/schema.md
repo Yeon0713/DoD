@@ -15,24 +15,29 @@ C1 데이터 계약, C2 분석 결과 계약, C3 계획 결과와 API 계약. �
 - **고정 샘플**: `contracts/fixtures/analysis/<테이블>.example.json` (데모 주간). 설명은 같은 폴더 `README.md`.
 - **공통 규칙**: 시각은 서울 기준 ISO 8601에 `+09:00`을 붙인다(`2026-11-17T13:50:00+09:00`). 날짜는 `YYYY-MM-DD`. 코드값은 영어 대문자. 금액은 원 단위 정수.
 - **`now` 규칙**: 모든 재계산은 `now`를 받고 `now` 이전에 생긴 데이터만 쓴다. 각 행의 `computed_at`·`labeled_at`·`detected_at`은 그 재계산의 `now`다. 읽는 쪽은 그 시각이 `now` 이전인 행만 쓴다.
+- **시간대**: `MORNING`(오픈~11:00), `LUNCH`(11:00~17:00), `DINNER`(17:00~마감). 영업시간 전체가 세 칸에 들어간다. 경계는 매장 설정에서 사장님이 바꿀 수 있고, 설정이 없으면 이 기본 경계를 쓴다. 계획 엔진이 새 코드값을 받을 때까지는 분석 결과에 `NIGHT`도 허용한다(기존 고정 샘플).
 - **재계산 시각 [가정]**: 매일 22:30(sales_daily, calendar_day, customer_cycle, sales_anomaly)과 알림 시각 10분 전(review_label, risk_signal).
 
 ### sales_daily: 하루 × 시간대 매출 (N2)
 
-키: `(date, daypart)`. 월·주·요일 묶음은 API(`/api/sales`)가 만든다.
+키: `(date, daypart)`. 월·주·요일 묶음은 API(`/api/sales`)가 만든다. 마감 시각이 지난 날만 만든다.
 
 | 열 | 타입 | 뜻 |
 |---|---|---|
 | `date` | date | 서울 기준 날짜 |
-| `daypart` | `LUNCH` \| `DINNER` \| `NIGHT` | 시간대. 범위는 매장 설정 `dayparts` |
+| `daypart` | `MORNING` \| `LUNCH` \| `DINNER` | 시간대 |
 | `sales_amount` | int | 그 칸에 주문된 매출 합 |
 | `qty` | int | 판매 수량 합 |
-| `food_cost` | int | 메뉴 원가 합(수량 × 원가) |
-| `labor_cost` | int | 그 시간대와 겹치는 근무 시간 × 시급. 여러 시간대에 걸친 근무는 겹친 만큼 나눈다 |
-| `profit` | int | `sales_amount - food_cost - labor_cost` |
+| `food_cost` | int \| null | 메뉴 원가 합(수량 × 원가). 메뉴 원가가 하나라도 없으면 null |
+| `labor_cost` | int \| null | 그 시간대와 겹치는 근무 시간 × 시급. 근무표가 없으면 null |
+| `platform_fee` | int \| null | 배달앱 중개수수료 |
+| `delivery_fee` | int \| null | 사장님이 내는 배달비 |
+| `payment_fee` | int \| null | 결제수수료 |
+| `profit` | int | `sales_amount` − 값이 있는 빠지는 항목의 합 |
 
-- [가정] 영업 시간대(`dayparts`) 밖의 주문은 sales_daily 에 넣지 않는다.
-- [미정] 메뉴 원가 열(`menu.unit_cost`)이 아직 C1에 없다. 받기 전까지 `food_cost`는 계산할 수 없다.
+- 빠지는 항목은 실제로 가져올 수 있는 데이터가 있을 때만 채운다. 비율로 지어내지 않는다.
+- 배달앱 수수료는 앱, 매장 매출 구간, 배달 방식에 따라 매장마다 다르다. 정산서 금액이나 매장 설정값이 생기면 채운다.
+- 영업시간 밖 주문은 넣지 않고 건수만 센다(목업 v1 에는 없다).
 
 ### calendar_day: 우리 매장 달력 (N3)
 

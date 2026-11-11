@@ -190,25 +190,32 @@ modules/review/
 
 ---
 
-## 4. DB (PostgreSQL + 목업 데이터)
+## 4. DB (SQLite + 목업 데이터)
 
-DB는 PostgreSQL(Docker)이고, 목업 데이터는 `db/mock/generate.py`가 만들어 DB에 넣습니다. `db/mock/out/*.csv`는 DB 없이 볼 수 있게 남겨 둔 같은 내용의 사본입니다.
+개발 DB는 **SQLite 파일**이고 git에 같이 올라갑니다. `git pull`만 하면 DB까지 받고, 서버가 DB에 처음 접속할 때 파일을 엽니다. 따로 설치하거나 켤 것은 없습니다.
 
-### 실행 (`server/` 폴더, Docker Desktop 켠 상태)
-
-```bash
-docker compose up -d           # PostgreSQL 켜기
-alembic upgrade head           # 테이블 만들기
-python -m db.mock.generate     # 목업 생성 → DB에 넣고 CSV도 갱신 (같은 시드 = 같은 데이터)
+```
+server/db/data/common.db   공통 테이블 (events, games, weather_daily)
+server/db/data/s001.db     s001 한림국수 전용 테이블
+server/db/data/s002.db     s002 두리맥주 전용 테이블
+server/db/data/s003.db     s003 석사돈가스 전용 테이블
 ```
 
-`.env`의 `DATABASE_URL`은 `.env.example` 값 그대로 쓰면 됩니다.
+매장 파일은 매장 이름으로 붙어서 `s001.orders`처럼 씁니다. `db/mock/out/` 아래 CSV는 같은 내용의 사본입니다 (`out/s001/orders.csv`, `out/common/weather_daily.csv` …).
+
+### 목업 다시 만들기 (`server/` 폴더)
+
+```bash
+python -m db.mock.generate     # db/data/*.db 를 새로 만들고 CSV도 갱신 (같은 시드 = 같은 데이터)
+```
+
+DB 파일은 바이너리라 git이 합칠 수 없습니다. 두 사람이 동시에 고쳐 올리지 않도록, 목업을 다시 만들 사람을 정해 두세요.
 
 ### 테이블 (C1 원본)
 
 | 테이블 | 한 줄 = | 주요 열 |
 |---|---|---|
-| store | 매장 | 영업시간, `dayparts`·`busy_dayparts`·`slots`(JSON) |
+| store | 매장 | 영업시간, 휴무 요일·`slots`(JSON) |
 | menu | 메뉴 | name, category(`main`/`side`/`drink`), price |
 | orders | 주문 | `ordered_at`, channel(`hall`/`delivery`), `customer_key`, total_amount |
 | order_items | 주문 속 메뉴 | order_id, menu_id, quantity, unit_price |
@@ -218,8 +225,15 @@ python -m db.mock.generate     # 목업 생성 → DB에 넣고 CSV도 갱신 (�
 | games | 경기 | sport, level(`national`/`pro`), starts_at |
 | weather_daily | 하루 날씨 | temp_max, temp_min, precip_mm |
 
-- 시각은 모두 `timestamptz`입니다. 서울 기준 날짜로 묶으려면 `(ordered_at AT TIME ZONE 'Asia/Seoul')::date`
+- 매장 테이블(store ~ staff / shifts)은 매장 파일마다 하나씩 있고, id는 매장마다 1부터 매깁니다. 행사·경기·날씨는 `common.db`에 하나만 있습니다.
+- 코드에서는 `db.session.store_engine("s001")`로 연결하면 `models.Order` 등이 그 매장 테이블을 가리킵니다.
+- 시각은 서울 시간으로 저장되고, 읽으면 서울 시간대가 붙은 `datetime`이 나옵니다.
 - 열 전체는 `db/models.py`에 있습니다.
+
+**배포 때 PostgreSQL로 옮길 수 있게** 지금부터 지킬 것:
+- 쿼리는 SQLAlchemy 문법으로 씁니다. `::date`, `AT TIME ZONE` 같은 DB 전용 SQL 문자열은 쓰지 않습니다.
+- 열 타입은 `db/models.py`에 있는 공통 타입(`JSON`, 서울 시각 `TZ` 등)만 씁니다.
+- 옮길 때는 `db/session.py`의 접속을 PostgreSQL로 바꾸고, 매장마다 스키마(`s001` …)를 만든 뒤 생성기로 다시 넣으면 됩니다.
 
 ---
 

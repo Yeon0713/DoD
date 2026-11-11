@@ -47,7 +47,7 @@ def find_special_cells(inputs: AnalysisInputs, start: dt.date, end: dt.date) -> 
     while day <= end:
         if not is_closed_day(day, store):
             for r in ranges:
-                cell_start, cell_end = window(day, r)
+                cell_start, cell_end = window(day, r, store)
                 for e in nearby_events:
                     if overlap_minutes(e.start_at, e.end_at, cell_start, cell_end) > 0:
                         result.append(SpecialCell(day, r.daypart, "EVENT", e.kind, e.event_id))

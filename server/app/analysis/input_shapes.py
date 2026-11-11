@@ -16,21 +16,25 @@ from app.planner.data_shapes import Event, Game, Review, Weekday
 
 
 class DaypartRange(BaseModel):
-    """시간대 하나의 시작과 끝. [start, end) 이다."""
+    """시간대 하나의 시작과 끝. [start, end) 이다. 끝이 시작보다 이르면 자정을 넘는다. 예) 17:00~03:00"""
 
     daypart: AnalysisDaypart
     start: dt.time
     end: dt.time
 
     @model_validator(mode="after")
-    def _start_before_end(self):
-        if self.start >= self.end:
-            raise ValueError("시간대 시작이 끝보다 빨라야 합니다.")
+    def _start_not_end(self):
+        if self.start == self.end:
+            raise ValueError("시간대 시작과 끝이 같을 수 없습니다.")
         return self
 
 
 class StoreInfo(BaseModel):
-    """분석에 쓰는 매장 정보. 마감은 같은 날 안이다(자정을 넘기지 않는다)."""
+    """분석에 쓰는 매장 정보.
+
+    마감이 오픈보다 이르면 자정을 넘겨 다음 날 새벽에 마감한다. 예) 17:00~03:00
+    그런 매장은 영업일 기준으로 센다. 마감 전 새벽 주문(1/2 01:00)은 전날(1/1) 영업일이다.
+    """
 
     store_id: str
     name: str
@@ -42,10 +46,15 @@ class StoreInfo(BaseModel):
     dayparts: list[DaypartRange] | None = None  # 사장님이 정한 시간대. 없으면 기본 경계를 쓴다
 
     @model_validator(mode="after")
-    def _open_before_close(self):
-        if self.open_time >= self.close_time:
-            raise ValueError("영업 시작이 마감보다 빨라야 합니다.")
+    def _open_not_close(self):
+        if self.open_time == self.close_time:
+            raise ValueError("영업 시작과 마감이 같을 수 없습니다.")
         return self
+
+    @property
+    def overnight(self) -> bool:
+        """자정을 넘겨 다음 날 새벽에 마감하는지."""
+        return self.close_time < self.open_time
 
 
 class Order(BaseModel):

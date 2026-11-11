@@ -32,6 +32,8 @@ yarn-error.*
 
 # local env files
 .env*.local
+# 단, 앱을 우리 서버에 붙이는 설정(.env.local)은 비밀 값이 없어서 팀이 같이 쓰도록 올린다
+!.env.local
 
 # typescript
 *.tsbuildinfo

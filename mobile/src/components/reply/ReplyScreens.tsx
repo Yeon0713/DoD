@@ -15,7 +15,7 @@ import { PLATFORM_KO } from "@/lib/labels";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { clockKo, relativeDay } from "@/lib/time";
 import { useHome } from "@/lib/useHome";
-import { mockDraft, mockNudge } from "@/mocks/extras";
+import { draftFor } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { PlanItem, Review } from "@/types/contract";
 import { PhotoViewer } from "./PhotoViewer";
@@ -84,7 +84,7 @@ export function ReplyScreen() {
   }
   const nudge = p.task_type === "REORDER_NUDGE";
   // 빈 글이 저장돼 있으면 도나 초안을 쓴다 (빈 답글은 올리지 않는다).
-  const text = saved[planId]?.trim() ? saved[planId] : nudge ? mockNudge(review) : mockDraft(review);
+  const text = saved[planId]?.trim() ? saved[planId] : draftFor(p, review);
   const regular = p.revisit_class === "WEEKLY" || p.revisit_class === "MONTHLY" || nudge;
   const exec = p.execute_at ?? p.approval_request_at;
   // 실행 시각이 지났으면 지금 올리고, 아직이면 그때 올리도록 맡긴다.
@@ -150,7 +150,7 @@ export function EditReplyScreen() {
   if (!data) return <LoadingSub title="답글 고쳐 쓰기" />;
   const p = data.plan.plan_items.find((x) => x.plan_id === planId);
   const review = findReview(p, data.reviews.reviews);
-  const value = text ?? (saved[planId]?.trim() ? saved[planId] : p?.task_type === "REORDER_NUDGE" ? mockNudge(review) : mockDraft(review));
+  const value = text ?? (saved[planId]?.trim() ? saved[planId] : draftFor(p, review));
   // 빈 글이나 공백만 있는 글은 저장하지 않는다.
   const empty = value.trim().length === 0;
 
@@ -158,7 +158,7 @@ export function EditReplyScreen() {
     setBusy(true);
     setFailed(false);
     try {
-      setText(await rewriteReply(value, style));
+      setText(await rewriteReply(value, style, planId));
     } catch {
       setFailed(true);
     } finally {
@@ -257,7 +257,7 @@ export function BatchReplyScreen() {
       >
         <View className="gap-5">
           <ReviewWithPhotos key={it.p.plan_id} review={it.r} />
-          <DraftBubble text={saved[it.p.plan_id] ?? mockDraft(it.r)} />
+          <DraftBubble text={saved[it.p.plan_id] ?? draftFor(it.p, it.r)} />
           <Note icon="clock">{`주말 주문 전에 손님이 보게\n${when}에 함께 올려요`}</Note>
           <Text className="text-small text-ink-3">
             {n}개 중 {i + 1}번째

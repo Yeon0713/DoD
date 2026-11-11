@@ -2,7 +2,7 @@
 // 카드 모양과 문구는 Figma 06 시안(06-4, 06-10, 06-12, 06-13, 06-14, 06-15, 06-16, 06-17, 06-31, 06-39, 06-41)을 따른다.
 import type { IconName } from "@/components/icons/Icon";
 import type { CalendarCell, ComplaintType, PlanItem, Review, StoreSettings } from "@/types/contract";
-import { LAST_WEEK_LINE, mockDraft, storeMenus } from "@/mocks/extras";
+import { LAST_WEEK_LINE, draftFor, storeMenus } from "@/mocks/extras";
 import { USE_MOCK } from "./api";
 import { COMPLAINT_FOUND, COMPLAINT_ICON, COMPLAINT_REPEAT, COMPLAINT_SHORT, COMPLAINT_TITLE, PLATFORM_KO } from "./labels";
 import type { QueueEntry } from "./queue";
@@ -168,7 +168,7 @@ function quickReply(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
 /** 05-4, 05-11, 05-35, 05-39: 답글 초안을 카드에 보여 주고 주 버튼으로 바로 단다. */
 function replyDraft(p: PlanItem, r: Review | undefined, ctx: CardContext): Pick<CardView, "primary" | "draft"> {
   // 빈 글이 저장돼 있으면 도나 초안을 쓴다.
-  const text = ctx.drafts[p.plan_id]?.trim() ? ctx.drafts[p.plan_id] : mockDraft(r);
+  const text = ctx.drafts[p.plan_id]?.trim() ? ctx.drafts[p.plan_id] : draftFor(p, r);
   const exec = p.execute_at ?? p.approval_request_at;
   // 불만 답글은 늘 지금 올린다. 단골 답글만 실행 시각(주문하는 날)에 올리도록 맡긴다.
   const later = p.revisit_class !== "QUICK" && new Date(exec).getTime() > ctx.now.getTime();

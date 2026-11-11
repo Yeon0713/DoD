@@ -40,6 +40,12 @@ export function mockNudge(r: Review | undefined): string {
   return "지난번에 찾아 주셔서 감사해요. 이번 주말에도 맛있게 준비해 두고 기다릴게요.";
 }
 
+/** 화면에 보일 답글 초안: 서버가 CLOVA X로 쓴 초안(draft_text)이 있으면 그것을, 없으면 위의 기본 문장을 쓴다. */
+export function draftFor(p: PlanItem | undefined, r: Review | undefined): string {
+  if (p?.draft_text?.trim()) return p.draft_text;
+  return p?.task_type === "REORDER_NUDGE" ? mockNudge(r) : mockDraft(r);
+}
+
 /** 04-21 "더 짧게", "더 정중하게" */
 export function mockRewrite(text: string, style: "short" | "polite"): string {
   const sentences = text.split(/(?<=[.!?요다])\s+/).filter(Boolean);

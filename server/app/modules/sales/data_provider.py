@@ -1,15 +1,14 @@
-"""매출 패턴 데이터 가져오기.
+"""매출 패턴 데이터 가져오기 (GET /api/sales?grain=...).
 
-응답 예시(sales_response.example.json)는 하루 × 시간대 단위(grain=day)로 적혀 있고,
-요청한 단위(week, month, weekday_daypart)로 여기서 묶는다.
-태성의 분석 결과(sales_daily)가 나오면 그걸 읽도록 바꾸고, 묶는 방법은 그대로 쓴다.
+DB → 태성 분석(sales_daily, 하루 × 시간대, 마감이 지난 날만)을 요청한 단위(week, month, weekday_daypart)로 묶는다.
+매출 탭 화면 6개는 dashboard_data_provider.py 에 있다.
 """
 
 import datetime as dt
 from collections import defaultdict
 
-from app.core.sample_response_loader import load_sample_response
 from app.core.seoul_time import is_within_dates
+from app.data_pipeline.store_snapshot_cache import get_snapshot
 from app.modules.sales.response_format import Grain, SalesResponse, SalesRow
 
 AMOUNT_FIELDS = ("sales_amount", "qty", "food_cost", "labor_cost", "profit")
@@ -17,10 +16,23 @@ WEEKDAY_CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 DAYPART_ORDER = ("LUNCH", "DINNER", "NIGHT")
 
 
-def get_sales(from_date: dt.date | None, to_date: dt.date | None, grain: Grain) -> SalesResponse:
-    daily = SalesResponse.model_validate(load_sample_response("sales"))
-    rows = [row for row in daily.rows if is_within_dates(dt.date.fromisoformat(row.period), from_date, to_date)]
-    return SalesResponse(is_example=daily.is_example, grain=grain, rows=_group_rows(rows, grain))
+def get_sales(store_id: str, from_date: dt.date | None, to_date: dt.date | None, grain: Grain) -> SalesResponse:
+    snapshot = get_snapshot(store_id)
+    rows = [
+        SalesRow(
+            period=row.date.isoformat(),
+            daypart=row.daypart,
+            days_counted=1,
+            sales_amount=row.sales_amount,
+            qty=row.qty,
+            food_cost=row.food_cost,
+            labor_cost=row.labor_cost,
+            profit=row.profit,
+        )
+        for row in snapshot.sales_daily
+        if is_within_dates(row.date, from_date, to_date)
+    ]
+    return SalesResponse(is_example=False, grain=grain, rows=_group_rows(rows, grain))
 
 
 def _period_of(day: dt.date, grain: Grain) -> str:
@@ -33,6 +45,11 @@ def _period_of(day: dt.date, grain: Grain) -> str:
     return WEEKDAY_CODES[day.weekday()]
 
 
+def _sum(values: list[int | None]) -> int | None:
+    """하나라도 값이 없으면(데이터가 없는 항목) 합도 없다."""
+    return None if any(v is None for v in values) else sum(values)
+
+
 def _group_rows(daily_rows: list[SalesRow], grain: Grain) -> list[SalesRow]:
     groups: dict[tuple[str, str], list[SalesRow]] = defaultdict(list)
     for row in daily_rows:
@@ -40,9 +57,9 @@ def _group_rows(daily_rows: list[SalesRow], grain: Grain) -> list[SalesRow]:
 
     result = []
     for (period, daypart), members in groups.items():
-        totals = {field: sum(getattr(member, field) for member in members) for field in AMOUNT_FIELDS}
+        totals = {field: _sum([getattr(member, field) for member in members]) for field in AMOUNT_FIELDS}
         if grain == "weekday_daypart":  # 요일 패턴은 평균
-            totals = {field: round(value / len(members)) for field, value in totals.items()}
+            totals = {field: None if value is None else round(value / len(members)) for field, value in totals.items()}
         result.append(SalesRow(period=period, daypart=daypart, days_counted=len(members), **totals))
 
     def sort_key(row: SalesRow):

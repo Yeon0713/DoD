@@ -1,4 +1,4 @@
-"""GET /api/sales 응답 모양."""
+"""GET /api/sales 응답 모양. 매출 탭 화면 6개의 모양은 dashboard_response_format.py 에 있다."""
 
 from typing import Literal
 
@@ -16,9 +16,9 @@ class SalesRow(BaseModel):
     days_counted: int  # 이 줄에 합치거나 평균 낸 날 수
     sales_amount: int
     qty: int
-    food_cost: int
-    labor_cost: int
-    profit: int  # 매출 - 메뉴 원가 - 인건비
+    food_cost: int | None  # 메뉴 원가 합. DB 에 메뉴 원가가 없으면 None
+    labor_cost: int | None  # 인건비. 근무 기록이 없으면 None
+    profit: int  # 매출 - 값이 있는 빠지는 항목(원가, 인건비 등)의 합
 
 
 class SalesResponse(BaseModel):

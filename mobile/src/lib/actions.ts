@@ -1,7 +1,7 @@
 // 서버에 아직 없는 동작(답글 올리기, 다시 쓰기, 메뉴 순서 바꾸기, 포스터 만들기)의 목업.
 // 실제 API가 생기면 이 함수 안만 바꾼다. 화면 코드는 그대로 둔다.
 import { mockRewrite } from "@/mocks/extras";
-import { ApiFailure, isOffline } from "./api";
+import { api, ApiFailure, isOffline, USE_MOCK } from "./api";
 import { devFlags } from "./dev";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -18,8 +18,9 @@ export async function publishReply(_planId: string, _text?: string) {
   failIfOffline();
 }
 
-/** 제안: POST /api/replies/{plan_id}/rewrite */
-export async function rewriteReply(text: string, style: "short" | "polite") {
+/** 실제 서버에 붙었으면 POST /api/replies/rewrite (CLOVA X가 다시 씀), 목업이면 문장을 자르거나 인사말을 붙이는 흉내 */
+export async function rewriteReply(text: string, style: "short" | "polite", planId?: string) {
+  if (!USE_MOCK) return (await api.rewriteReply(text, style, planId)).text;
   await wait(800);
   failIfOffline();
   return mockRewrite(text, style);

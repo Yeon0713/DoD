@@ -6,6 +6,7 @@
   - 인건비: 근무 시간 중 그 시간대와 겹친 시간 × 시급. 근무표가 비어 있으면 None
   - 배달앱 수수료, 배달비, 결제수수료: 지금은 가져올 데이터가 없어서 None
 - 영업시간 밖 주문은 칸에 넣지 않고 건수만 센다.
+- 날짜는 영업일이다. 자정 넘어 영업하는 매장의 새벽 주문은 전날 칸에 들어간다.
 """
 
 import datetime as dt
@@ -14,6 +15,7 @@ from dataclasses import dataclass
 
 from app.analysis.input_shapes import AnalysisInputs, DaypartRange
 from app.analysis.pattern.daypart_time import (
+    business_date,
     daypart_at,
     dayparts_of,
     is_closed_day,
@@ -22,7 +24,6 @@ from app.analysis.pattern.daypart_time import (
     window,
 )
 from app.analysis.result_shapes import SalesDailyRow
-from app.core.seoul_time import to_seoul
 
 
 @dataclass
@@ -54,7 +55,7 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
         if daypart is None:
             outside += 1
             continue
-        key = (to_seoul(order.ordered_at).date(), daypart)
+        key = (business_date(order.ordered_at, store), daypart)
         sales[key] += order.total_amount
         for item in items_by_order[order.order_id]:
             qty[key] += item.quantity
@@ -64,7 +65,7 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
             else:
                 food_cost[key] += cost * item.quantity
 
-    first_day = min(to_seoul(order.ordered_at).date() for order in orders)
+    first_day = min(business_date(order.ordered_at, store) for order in orders)
     rows = []
     day = first_day
     while is_day_finished(day, store, now):
@@ -91,7 +92,7 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
 
 def _labor_cost(inputs: AnalysisInputs, day: dt.date, r: DaypartRange) -> int:
     """그 날 그 시간대와 겹친 근무 시간 × 시급의 합(원 단위 반올림)."""
-    start, end = window(day, r)
+    start, end = window(day, r, inputs.store)
     total = 0.0
     for shift in inputs.shifts:
         minutes = overlap_minutes(shift.starts_at, shift.ends_at, start, end)

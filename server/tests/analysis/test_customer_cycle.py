@@ -93,3 +93,15 @@ def test_mock_orders_give_one_row_per_customer():
     assert all(row.computed_at == NOW for row in rows)
     for row in rows:
         assert (row.next_expected_at is None) == (row.cycle == "NONE")
+
+
+def test_overnight_store_counts_after_midnight_visits_on_business_day():
+    """17:00~03:00 매장. 금요일 밤 자정 전후 방문은 모두 금요일 영업일이다."""
+    pub = StoreInfo(store_id="s2", name="술집", lat=0, lng=0, open_time=dt.time(17), close_time=dt.time(3))
+    orders = orders_of("c_n01", "2026-10-24 00:30", "2026-10-30 23:50", "2026-11-07 00:10", "2026-11-14 00:20")
+    row = build_customer_cycles(AnalysisInputs(store=pub, orders=orders), NOW)[0]
+    assert row.cycle == "WEEKLY"
+    assert row.intervals_days == [7, 7, 7]
+    # 다음 금요일(11/20) 영업일, 시각은 23:50·00:10·00:20·00:30 의 중앙값 00:15 → 11/21 00:15
+    assert row.next_expected_at == at("2026-11-21 00:15")
+    assert row.expected_daypart == "DINNER"

@@ -148,3 +148,56 @@ def test_mock_sales_daily_covers_all_orders_until_now():
     assert result.outside_order_count == 0
     assert sum(row.sales_amount for row in result.rows) == sum(o.total_amount for o in inputs.orders if o.ordered_at <= now)
     assert all(row.food_cost is None and row.labor_cost is not None for row in result.rows)
+
+
+# ── 자정 넘어 영업하는 매장 (17:00 ~ 다음 날 03:00) ──
+
+PUB = StoreInfo(store_id="s2", name="술집", lat=0, lng=0, open_time=dt.time(17), close_time=dt.time(3))
+
+
+def test_store_open_and_close_cannot_be_same():
+    with pytest.raises(ValueError):
+        StoreInfo(store_id="s", name="x", lat=0, lng=0, open_time=dt.time(9), close_time=dt.time(9))
+
+
+def test_overnight_store_has_one_dinner_daypart_past_midnight():
+    assert PUB.overnight and not STORE.overnight
+    assert [(r.daypart, str(r.start), str(r.end)) for r in dayparts_of(PUB)] == [("DINNER", "17:00:00", "03:00:00")]
+
+
+def test_late_opening_store_has_no_morning():
+    store = STORE.model_copy(update={"open_time": dt.time(12)})
+    assert [r.daypart for r in dayparts_of(store)] == ["LUNCH", "DINNER"]
+
+
+@pytest.mark.parametrize("hour, minute, expected", [
+    (16, 59, None), (17, 0, "DINNER"), (23, 59, "DINNER"), (0, 0, "DINNER"), (2, 59, "DINNER"), (3, 0, None),
+])
+def test_overnight_daypart_boundaries(hour, minute, expected):
+    assert daypart_at(at(hour, minute), dayparts_of(PUB)) == expected
+
+
+def test_overnight_orders_after_midnight_belong_to_previous_business_day():
+    next_day = DAY + dt.timedelta(days=1)
+    orders = [
+        order("o1", at(20), 10000),
+        order("o2", at(1, 30, next_day), 20000),  # DAY 영업일의 새벽
+        order("o3", at(18, 0, next_day), 5000),
+    ]
+    shift = Shift(shift_id="sh1", staff_key="staff_001", hourly_wage=10000,
+                  starts_at=at(21, 30), ends_at=at(3, 30, next_day))
+    now = at(3, 0, DAY + dt.timedelta(days=2))  # next_day 영업일 마감 시각
+    result = build_sales_daily(AnalysisInputs(store=PUB, orders=orders, shifts=[shift]), now)
+
+    assert result.outside_order_count == 0
+    assert [(row.date, row.daypart, row.sales_amount) for row in result.rows] == [
+        (DAY, "DINNER", 30000),
+        (next_day, "DINNER", 5000),
+    ]
+    assert by_daypart(result)["DINNER"].labor_cost == 55000  # 21:30 ~ 다음 날 03:00, 5.5시간
+
+
+def test_overnight_day_is_unfinished_until_closing_next_morning():
+    orders = [order("o1", at(20), 10000), order("o2", at(1, 30, DAY + dt.timedelta(days=1)), 20000)]
+    result = build_sales_daily(AnalysisInputs(store=PUB, orders=orders), at(2, 59, DAY + dt.timedelta(days=1)))
+    assert result.rows == []

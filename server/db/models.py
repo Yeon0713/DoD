@@ -77,7 +77,7 @@ class Store(Base):
     lng: Mapped[float] = mapped_column(Double)
     open_time: Mapped[dt.time] = mapped_column(Time)
     close_time: Mapped[dt.time] = mapped_column(Time)
-    closed_weekdays: Mapped[list] = mapped_column(JSON)
+    closed_weekdays: Mapped[list] = mapped_column(JSON)  # 휴무 요일. 예) ["MON"]
     slots: Mapped[list] = mapped_column(JSON)
 
 

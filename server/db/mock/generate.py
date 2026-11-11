@@ -24,6 +24,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import insert
+from sqlalchemy.schema import CreateIndex, CreateTable
 
 from db import models
 from db.session import DATA_DIR, engine, store_engine
@@ -249,7 +250,7 @@ STORES = [
             "lng": 127.7480,
             "open_time": time(11, 0),
             "close_time": time(21, 0),
-            "closed_weekdays": [0],  # 월요일 휴무
+            "closed_weekdays": ["MON"],  # 월요일 휴무
             "slots": ["10:30", "15:30", "20:30"],
         },
         "menu": [
@@ -414,6 +415,9 @@ RAIN_PROB = [0.10, 0.10, 0.15, 0.20, 0.20, 0.30, 0.45, 0.35, 0.25, 0.15, 0.12, 0
 OVERTIME_PROB = 0.15  # 근무는 30분 단위. 가끔 퇴근이 30분 늦어진다 (연장)
 
 
+WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]  # closed_weekdays 에 쓰는 요일 코드 (플래너와 같다)
+
+
 def kst(d: date, hour: int, minute: int = 0, second: int = 0) -> datetime:
     return datetime(d.year, d.month, d.day, hour, minute, second, tzinfo=KST)
 
@@ -483,7 +487,7 @@ def gen_store_orders(rng: random.Random, cfg: dict, weather: dict[date, dict]) -
 
     orders = []
     for d in days(START, END):
-        if d.weekday() in store["closed_weekdays"]:
+        if WEEKDAYS[d.weekday()] in store["closed_weekdays"]:
             continue
         total = cfg["base_orders"] * cfg["weekday_factor"][d.weekday()] * MONTH_FACTOR[d.month - 1]
         festival = rng.uniform(*FESTIVAL_LIFT) if d in FESTIVAL_DATES else 1.0
@@ -671,6 +675,15 @@ def write_csv(data: dict[str, dict[str, list[dict]]]) -> None:
                     w.writerow([to_csv_value(r[c]) for c in cols])
 
 
+def create_tables(conn, tables) -> None:
+    """테이블과 인덱스를 만든다. 인덱스는 이름 순서로 만들어 DB 파일이 실행마다 똑같이 나오게 한다
+    (create_all 은 인덱스 순서가 실행마다 달라질 수 있다)."""
+    for table in tables:
+        conn.execute(CreateTable(table))
+        for index in sorted(table.indexes, key=lambda i: i.name):
+            conn.execute(CreateIndex(index))
+
+
 def load_db(data: dict[str, dict[str, list[dict]]]) -> None:
     """db/data/*.db 를 지우고 새로 만든다. 공통 테이블은 common.db, 매장 테이블은 매장 파일(s001.db ...)."""
     engine.dispose()  # 열려 있는 연결이 옛 파일을 붙잡고 있지 않게
@@ -684,12 +697,12 @@ def load_db(data: dict[str, dict[str, list[dict]]]) -> None:
     common = [TABLES[name].__table__ for name in models.COMMON_TABLES]
     per_store = [TABLES[name].__table__ for name in models.STORE_TABLES]
     with engine.begin() as conn:
-        models.Base.metadata.create_all(conn, tables=common)
+        create_tables(conn, common)
         for name in models.COMMON_TABLES:
             conn.execute(insert(TABLES[name]), table_rows(name, data["common"][name]))
     for sid in store_ids:
         with store_engine(sid).begin() as conn:
-            models.Base.metadata.create_all(conn, tables=per_store)
+            create_tables(conn, per_store)
             for name in models.STORE_TABLES:  # 부모 테이블부터
                 conn.execute(insert(TABLES[name]), table_rows(name, data[sid][name]))
     engine.dispose()

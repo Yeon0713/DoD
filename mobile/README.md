@@ -2,6 +2,9 @@
 
 iOS · Android · 웹을 한 코드로 만드는 앱이다. Expo SDK 58, Expo Router, NativeWind 4, TanStack Query, Noto Sans KR.
 
+- 처음이라면: [docs/guide_for_collaborators.md](../docs/guide_for_collaborators.md) (디자인 보기, 내 컴퓨터에서 켜서 웹으로 확인하기)
+- 서버, DB, 클라우드 연결: [docs/backend_integration.md](../docs/backend_integration.md)
+
 ## 실행
 
 ```bash

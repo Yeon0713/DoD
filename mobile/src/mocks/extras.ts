@@ -1,6 +1,7 @@
 // 시안에는 있지만 서버에 아직 없는 값들의 프론트 목업 (docs/frontend_plan_v4.md 7-2).
 // 서버가 같은 값을 주기 시작하면 이 파일에서 하나씩 지운다. 문구는 Figma 04 시안을 따른다.
 import { storage } from "@/lib/storage";
+import { activePersona } from "./personas";
 import type { NoticeItem, PlanItem, Review, StoreSettings, TodayBatch } from "@/types/contract";
 
 /** 답글 초안. 서버에 draft_text가 생기기 전까지 쓴다. */
@@ -19,6 +20,8 @@ const DRAFTS: Record<string, string> = {
 
 export function mockDraft(r: Review | undefined): string {
   if (!r) return "찾아 주셔서 감사합니다. 다음에도 맛있게 준비할게요.";
+  const own = activePersona()?.drafts?.[r.review_id];
+  if (own) return own;
   if (DRAFTS[r.review_id]) return DRAFTS[r.review_id];
   return r.label?.sentiment === "NEGATIVE"
     ? "불편을 드려 죄송합니다. 말씀해 주신 점을 꼭 고칠게요."
@@ -31,6 +34,8 @@ const NUDGES: Record<string, string> = {
 };
 
 export function mockNudge(r: Review | undefined): string {
+  const own = r ? activePersona()?.nudges?.[r.review_id] : undefined;
+  if (own) return own;
   if (r && NUDGES[r.review_id]) return NUDGES[r.review_id];
   return "지난번에 찾아 주셔서 감사해요. 이번 주말에도 맛있게 준비해 두고 기다릴게요.";
 }
@@ -60,7 +65,44 @@ const MENUS: Record<string, { name: string; tags: ("SEASON" | "GAME" | "EVENT")[
     { name: "곱창전골", tags: ["SEASON"] },
     { name: "볶음밥", tags: [] },
   ],
+  // 아래는 개발 화면 매장 시나리오(mocks/personas.ts)의 가게들
+  치킨: [
+    { name: "후라이드치킨", tags: [] },
+    { name: "반반치킨", tags: ["GAME"] },
+    { name: "치킨 맥주 세트", tags: ["GAME", "EVENT"] },
+    { name: "닭볶음탕", tags: ["SEASON"] },
+    { name: "감자튀김", tags: ["GAME"] },
+  ],
+  닭갈비: [
+    { name: "철판 닭갈비", tags: [] },
+    { name: "숯불 닭갈비", tags: ["EVENT"] },
+    { name: "막국수", tags: ["EVENT"] },
+    { name: "닭갈비 전골", tags: ["SEASON"] },
+    { name: "볶음밥", tags: [] },
+  ],
+  백반: [
+    { name: "제육볶음 백반", tags: [] },
+    { name: "된장찌개 백반", tags: ["SEASON"] },
+    { name: "오징어볶음 백반", tags: ["EVENT"] },
+    { name: "김치찌개 백반", tags: ["SEASON"] },
+    { name: "계란말이", tags: ["GAME"] },
+  ],
+  국밥: [
+    { name: "순대국밥", tags: ["SEASON"] },
+    { name: "돼지국밥", tags: [] },
+    { name: "모둠순대", tags: ["GAME"] },
+    { name: "얼큰국밥", tags: ["SEASON"] },
+    { name: "수육 한 접시", tags: ["EVENT"] },
+  ],
 };
+
+/** 포스터 큰 글자에 쓰는 음식 한마디 ("축구 보며 국수 한 그릇") */
+const FOOD: Record<string, string> = { 국수: "국수 한 그릇", 곱창: "곱창 한 판", 치킨: "치킨 한 마리", 닭갈비: "닭갈비 한 판", 백반: "따뜻한 밥 한 상", 국밥: "국밥 한 그릇" };
+
+export function foodPhrase(category: string): string {
+  const key = Object.keys(FOOD).find((k) => category.includes(k));
+  return key ? FOOD[key] : `${category} 한 그릇`;
+}
 
 export function storeMenus(category: string) {
   const key = Object.keys(MENUS).find((k) => category.includes(k)) ?? "국수";

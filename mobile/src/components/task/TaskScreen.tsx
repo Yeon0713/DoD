@@ -110,7 +110,7 @@ function DraftRow({ draft }: { draft: NonNullable<CardView["draft"]> }) {
 }
 
 function TaskBody() {
-  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useTodayCards();
+  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, scope } = useTodayCards();
   const stage = useWaitStage(isPending);
   const [laterFor, setLaterFor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -126,9 +126,9 @@ function TaskBody() {
   const card = view && pinnedId ? (view.open.find((c) => c.id === pinnedId) ?? view.cards.find((c) => c.id === pinnedId)) : undefined;
 
   // 모아 보기: 이 카드가 온 때를 지금으로 본다. 답글, 메뉴판, 포스터 화면도 그 때 기준으로 움직인다.
-  const moment = allWeek && card ? view?.momentOf[card.id] : undefined;
+  const moment = scope.all && card ? view?.momentOf[card.id] : undefined;
   useEffect(() => {
-    if (moment && devFlags.read().scene !== moment) devFlags.write({ scene: moment });
+    if (moment && devFlags.read().cardNow !== moment) devFlags.write({ cardNow: moment });
   }, [moment]);
 
   // 카드를 끝내면(여기서든 답글, 점검 화면에서든) 홈으로 돌아간다. 이 화면이 보일 때만 움직인다.

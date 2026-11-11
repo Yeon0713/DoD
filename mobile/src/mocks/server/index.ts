@@ -8,6 +8,7 @@ import type { Review, StoreSettings, Weekday } from "@/types/contract";
 import calendar from "../data/samples/calendar.json";
 import plan from "../data/samples/plan.json";
 import reviews from "../data/samples/reviews.json";
+import { activePersona } from "../personas";
 import sales from "../data/samples/sales.json";
 import settings from "../data/samples/settings.json";
 import today from "../data/samples/today.json";
@@ -36,7 +37,9 @@ const REVIEW_PATCH: Record<string, Partial<Review>> = {
 
 function reviewsBody() {
   const body = clone(reviews) as { reviews: Review[] };
-  body.reviews = body.reviews.map((r) => ({ photos: [], ordered_at: null, ...r, ...REVIEW_PATCH[r.review_id] }));
+  // 개발 화면에서 고른 매장이 있으면 그 가게 손님 글로 바꾼다 (mocks/personas.ts)
+  const own = activePersona()?.reviews ?? {};
+  body.reviews = body.reviews.map((r) => ({ photos: [], ordered_at: null, ...r, ...REVIEW_PATCH[r.review_id], ...(own[r.review_id] ? { text: own[r.review_id] } : {}) }));
   return body;
 }
 
@@ -61,6 +64,11 @@ function currentSettings(): StoreSettings {
 
 export function resetMockSettings() {
   storage.removeItem(SETTINGS_KEY);
+}
+
+/** 개발 화면 매장 시나리오: 가게 이름과 업종을 그 매장으로 바꾼다. 장사 시간과 알림 시각은 그대로 둔다 (카드 시각이 같아야 한다). */
+export function setMockStore(name: string, category: string) {
+  storage.setItem(SETTINGS_KEY, JSON.stringify({ ...readOverride(), name, category }));
 }
 
 const HHMM = /^\d\d:\d\d$/;

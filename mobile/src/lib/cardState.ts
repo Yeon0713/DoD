@@ -1,6 +1,6 @@
 // 카드 처리 상태(다 했어요, 나중에). 서버 API(PATCH /api/plan/{id})가 생기기 전까지 이 기기에만 저장한다.
 import { createStore } from "./store";
-import { currentNow } from "./time";
+import { stampNow } from "./time";
 
 /** 끝낸 일(07): at = 끝낸 시각, note = 홈 "오늘 끝낸 일"에 쓸 말("답글을 올렸어요"), reply = 올린 답글 */
 export type DoneInfo = { note?: string; reply?: string };
@@ -10,12 +10,12 @@ type Store = Record<string, CardStatus>;
 const state = createStore<Store>("dona.cardState.v1", {});
 
 export function markDone(cardId: string, info: DoneInfo = {}) {
-  state.replace({ ...state.read(), [cardId]: { kind: "done", at: currentNow().toISOString(), ...info } });
+  state.replace({ ...state.read(), [cardId]: { kind: "done", at: stampNow().toISOString(), ...info } });
 }
 
 /** 계획 하나를 끝냈다. 그 계획의 승인 요청 카드와 실행 알림 카드를 함께 끝낸다 (답글을 바로 올렸을 때, 포스터를 올렸을 때). */
 export function markPlanDone(planId: string, info: DoneInfo = {}) {
-  const at = currentNow().toISOString();
+  const at = stampNow().toISOString();
   const done = { kind: "done" as const, at, ...info };
   state.replace({ ...state.read(), [`APPROVAL_REQUEST:${planId}`]: done, [`EXECUTE_REMINDER:${planId}`]: done });
 }

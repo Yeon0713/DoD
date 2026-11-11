@@ -307,7 +307,8 @@ function menuOrder(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
       id: q.cardId,
       tone: "done",
       pill: { icon: "check", text: "바꿔 뒀어요" },
-      title: `메뉴판을\n${what.short === "바꿀 시간이에요" ? "계절 맞춤으로" : what.short} 바꿨어요`,
+      // short가 "원래대로 바꿔요"면 "원래대로"만 쓴다 ("원래대로 바꿔요 바꿨어요"가 되지 않게)
+      title: `메뉴판을\n${what.short === "바꿀 시간이에요" ? "계절 맞춤으로" : what.short.replace(/ 바꿔요$/, "")} 바꿨어요`,
       blocks: [
         { type: "iconLine", icons: [what.arrow, what.icon], text: what.line.replace("메뉴판 맨 위로", "맨 위로 올렸어요") },
         { type: "text", text: `${weekdayName(exec)} ${clockKo(exec)}에 도나가 바꿨어요` },

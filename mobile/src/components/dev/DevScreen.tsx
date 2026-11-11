@@ -6,19 +6,21 @@ import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { back, go } from "@/components/ui/nav";
+import { back, go, goHome } from "@/components/ui/nav";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Toggle } from "@/components/ui/sub";
 import { USE_MOCK } from "@/lib/api";
 import { resetCardState, useCardState } from "@/lib/cardState";
-import { devFlags, type DevFlags } from "@/lib/dev";
+import { devFlags, virtualNow, type DevFlags } from "@/lib/dev";
 import { drafts, flashToast, prefs, type Prefs } from "@/lib/localStore";
 import { storage } from "@/lib/storage";
 import { DEMO_NOW, hhmm, monthDay, weekdayName } from "@/lib/time";
 import { buildTodayCards } from "@/lib/todayCards";
 import { useHome } from "@/lib/useHome";
 import { readRule, RULE_KEY, type ReplyRule } from "@/mocks/extras";
-import { resetMockSettings } from "@/mocks/server";
+import { MAIN_PERSONA, type Persona, type Scene } from "@/mocks/personas";
+import { resetMockSettings, setMockStore } from "@/mocks/server";
+import { StoreScenarios } from "./StoreScenarios";
 import tokens from "@/theme/tokens.json";
 import type { NotifyKind, PlanItem } from "@/types/contract";
 
@@ -296,9 +298,16 @@ export function DevScreen() {
 
   const open = (g: Go) => {
     const before = devFlags.read();
-    // 바로 가기는 Figma 화면 한 장의 때를 그대로 만든다. 그래서 한 주 모아 보기를 끄고 그 시각까지 온 카드만 보여 준다.
-    const patch: Partial<DevFlags> = { card: g.card ?? null, offline: false, fresh: false, delay: null, scene: null, allWeek: !g.now, ...g.flags };
-    if (g.now) patch.now = g.now;
+    // 바로 가기는 Figma 화면 한 장의 때를 그대로 만든다. 시각을 정하는 바로 가기는 매장 시나리오와 한 주 모아 보기를 끄고,
+    // 메인 가게(국수집) 데이터로 그 시각까지 온 카드만 보여 준다.
+    const patch: Partial<DevFlags> = { card: g.card ?? null, offline: false, fresh: false, delay: null, cardNow: null, ...g.flags };
+    if (g.now) {
+      Object.assign(patch, { ...virtualNow(g.now), persona: null, personaScene: null, allWeek: false });
+      if (before.persona !== MAIN_PERSONA.id || before.allWeek) {
+        setMockStore(MAIN_PERSONA.store.name, MAIN_PERSONA.store.category);
+        reload();
+      }
+    }
     devFlags.write(patch);
     prefs.write({ ...DEFAULT_PREFS, ...g.prefs });
     resetCardState();
@@ -306,6 +315,17 @@ export function DevScreen() {
     if (g.flags || before.offline || before.fresh || before.delay !== null) reload();
     if (g.toast) flashToast(g.toast[0], g.toast[1]);
     go(g.href);
+  };
+
+  /** 매장 시나리오 고르기: 그 가게 이름과 업종, 그 장면의 시각과 설정으로 홈을 새로 연다. */
+  const pickStore = (per: Persona, sc: Scene) => {
+    devFlags.write({ persona: per.id, personaScene: sc.id, allWeek: false, ...virtualNow(sc.now), card: null, cardNow: null, offline: false, fresh: false, delay: null });
+    prefs.write({ ...DEFAULT_PREFS, ...sc.prefs });
+    resetCardState();
+    setMockStore(per.store.name, per.store.category);
+    reload();
+    flashToast(per.store.name, `${sc.label}, 할 일 ${sc.cards.length}개`);
+    goHome();
   };
 
   const resetAll = () => {
@@ -322,6 +342,8 @@ export function DevScreen() {
 
   // 지금 가상 시각까지 온 카드 (오늘 화면과 같은 규칙). 카드 기록은 보지 않는다.
   const cards = data ? buildTodayCards(data, now, p, {}, null, savedDrafts) : null;
+  // 데모 한 주 카드 전부. 매장 시나리오가 빠뜨린 카드가 있는지 본다.
+  const week = data ? buildTodayCards(data, now, p, {}, null, savedDrafts, { all: true }) : null;
   const cardState = useCardState();
 
   // 데모 주간 타임라인: 오늘 화면이 쓰는 알림 묶음 그대로 보여 준다.
@@ -351,11 +373,15 @@ export function DevScreen() {
           </Text>
         </View>
 
+        <Section title="매장 시나리오" sub="같은 동네(춘천 대학가), 같은 한 주라도 가게마다 할 일이 달라요. 매장과 장면을 누르면 그 가게 할 일 3~6개로 홈을 열어요.">
+          <StoreScenarios personaId={flags.persona} sceneId={flags.personaScene} allWeek={flags.allWeek} week={week} onPick={pickStore} />
+        </Section>
+
         <Section title="화면 열기" sub="지금 상태 그대로 열어요">
           <View className="flex-row flex-wrap gap-1.5">
             {(
               [
-                ["home", "오늘", "/"],
+                ["home", "홈", "/"],
                 ["week", "이번 주", "/week"],
                 ["sales", "매출", "/sales"],
                 ["settings", "설정", "/settings"],
@@ -393,18 +419,27 @@ export function DevScreen() {
                   {monthDay(d)} {weekdayName(d)[0]}
                 </Text>
                 {SLOTS.map(([t, label]) => (
-                  <SmallButton key={t} testID={`dev-now-${d}T${t}`} label={label} on={flags.now === `${d}T${t}`} onPress={() => setFlags({ now: `${d}T${t}` })} />
+                  <SmallButton key={t} testID={`dev-now-${d}T${t}`} label={label} on={flags.now === `${d}T${t}`} onPress={() => setFlags(virtualNow(`${d}T${t}`))} />
                 ))}
               </View>
             ))}
           </View>
-          <SecondaryButton testID="dev-now-default" outline onPress={() => setFlags({ now: null })}>
+          <SecondaryButton testID="dev-now-default" outline onPress={() => setFlags(virtualNow(null))}>
             {`기본으로 (${monthDay(DEMO_NOW)} 오후 2시 5분)`}
           </SecondaryButton>
         </Section>
 
         <Section title="문제 상황">
-          <SwitchRow testID="dev-all-week" label="데모 한 주 할 일 모두 홈에 모아 보기" checked={flags.allWeek} onChange={(v) => setFlags({ allWeek: v, scene: null })} />
+          <SwitchRow
+            testID="dev-all-week"
+            label="데모 한 주 할 일 28개 모두 홈에 모아 보기"
+            checked={flags.allWeek}
+            onChange={(v) => {
+              // 모아 보기는 메인 가게(국수집) 데이터로 본다
+              if (v) setMockStore(MAIN_PERSONA.store.name, MAIN_PERSONA.store.category);
+              setFlags({ allWeek: v, cardNow: null }, true);
+            }}
+          />
           <SwitchRow testID="dev-fail" label="올리기, 바꾸기 실패시키기" checked={flags.fail} onChange={(v) => setFlags({ fail: v })} />
           <SwitchRow testID="dev-offline" label="인터넷 끊김" checked={flags.offline} onChange={(v) => setFlags({ offline: v }, true)} />
           <SwitchRow testID="dev-fresh" label="저장해 둔 홈 데이터 쓰지 않기" checked={flags.fresh} onChange={(v) => setFlags({ fresh: v }, true)} />

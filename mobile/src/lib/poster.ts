@@ -1,4 +1,5 @@
 // 포스터 공통 값. 미리 보기(04-63), 그림 파일 만들기, 오늘 카드 썸네일(05-31n)이 같이 쓴다.
+import { foodPhrase } from "@/mocks/extras";
 import type { StoreSettings } from "@/types/contract";
 
 export type Theme = "dark" | "light" | "brand";
@@ -11,7 +12,7 @@ export const THEME_STYLE: Record<Theme, { bg: string; text: string; sub: string;
 
 /** 포스터 큰 글자는 두 줄 안에 들어가게 업종 이름으로 쓴다 (예: "곱창 한 판", "국수 한 그릇"). h는 lib/cards.ts happening() 결과 */
 export function defaultHeadline(h: { kind: "GAME" | "EVENT" | null; label: string } | null, s: StoreSettings) {
-  const food = s.category.includes("곱창") ? "곱창 한 판" : `${s.category} 한 그릇`;
+  const food = foodPhrase(s.category);
   if (!h) return `오늘은\n${food}`;
   if (h.kind === "GAME") {
     const sport = h.label.match(/(축구|야구|농구|배구|e스포츠)/)?.[0] ?? "경기";

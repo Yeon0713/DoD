@@ -15,9 +15,17 @@ export function nowFrom(q: string | null): Date {
   return q ? parseNow(q) : new Date(DEMO_NOW);
 }
 
+/** 끝낸 일에 남길 시각. 가상 시각과 그 카드가 온 시각 중 늦은 쪽에, 가상 시각을 고른 뒤 실제로 흐른 시간(3시간까지)을 더한다. */
+export function stampNow(): Date {
+  const f = devFlags.read();
+  const base = Math.max(nowFrom(f.now).getTime(), f.cardNow ? nowFrom(f.cardNow).getTime() : 0);
+  const elapsed = USE_MOCK && f.nowSetAt ? Math.min(Math.max(Date.now() - f.nowSetAt, 0), 3 * 3600 * 1000) : 0;
+  return new Date(base + elapsed);
+}
+
 export function currentNow(): Date {
   const f = devFlags.read();
-  return nowFrom(f.scene ?? f.now);
+  return nowFrom(f.cardNow ?? f.now);
 }
 
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];

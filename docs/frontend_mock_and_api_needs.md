@@ -240,7 +240,7 @@
 | `dona.prefs.v1` | localStorage | 처음 쓰는 날, 알림 꺼 둠, 첫날 카드, 네이버 연결, 알아서 바꾸기, "직접 할게요" | 3장 H, N으로 옮김 |
 | `dona.drafts.v1` | localStorage | 고쳐 쓴 답글 (plan_id → 글), 만들어 둔 포스터 (`poster:{plan_id}` → 메뉴, 글자, 색) | 3장 C, E, I로 보냄 |
 | `dona.toast` | sessionStorage | 화면을 옮긴 뒤 위에 띄울 띠 | 그대로 둠 |
-| `dona.dev.v1` | 앱 저장소 | 앱 `/dev` 스위치. `allWeek`(데모 한 주 카드 모아 보기, 기본 켬), `scene`(모아 보기에서 연 카드의 시각) 포함 | 고정 샘플 모드에서만 씀 |
+| `dona.dev.v1` | 앱 저장소 | 앱 `/dev` 스위치. `persona`, `personaScene`(매장 시나리오, 기본 국수집 화요일 오후), `allWeek`(카드 28장 모아 보기, 기본 끔), `cardNow`(시나리오에서 연 카드의 시각), `nowSetAt`(끝낸 일 시각에 흐른 시간 더하기) 포함 | 고정 샘플 모드에서만 씀 |
 | `dona.now`, `dona.rule`, `dona.delay` | localStorage | `/dev` 시뮬레이터 값 (가상 시각, 답글 시각 규칙, 일부러 늦추기) | 고정 샘플 모드에서만 씀 |
 
 ---

@@ -16,10 +16,16 @@ export interface TodayCards {
   done: number;
 }
 
+/** 어떤 카드를 보여 줄지 (목업 검토용). all: 데모 한 주 카드를 모두, only: 그중 이 카드들만 (매장 시나리오) */
+export interface CardScope {
+  all?: boolean;
+  only?: readonly string[];
+}
+
 /** 알림이 오고 5분 뒤. /dev 바로 가기(10:05, 14:05, 21:35)와 같은 때에 카드를 연 것으로 본다 */
 const MOMENT_MS = 5 * 60 * 1000;
 
-/** all: 목업 모아 보기. 데모 한 주의 카드를 모두 넣고, 카드마다 그 카드가 온 때를 지금으로 보고 만든다. 그래야 "내일부터 추워져요" 같은 글이 Figma와 같다. */
+/** scope.all: 목업 모아 보기. 데모 한 주의 카드를 넣고, 카드마다 그 카드가 온 때를 지금으로 보고 만든다. 그래야 "내일부터 추워져요" 같은 글이 Figma와 같다. */
 export function buildTodayCards(
   data: HomeData,
   now: Date,
@@ -27,8 +33,9 @@ export function buildTodayCards(
   store: Record<string, CardStatus>,
   focus?: string | null,
   drafts: Record<string, string> = {},
-  all = false,
+  scope: CardScope = {},
 ): TodayCards {
+  const all = !!scope.all;
   const queue = buildQueue(data.today, data.plan, now, data.results, all);
   const ctx = {
     now,
@@ -46,10 +53,16 @@ export function buildTodayCards(
   for (const q of queue) {
     const at = all ? new Date(new Date(q.slotAt).getTime() + MOMENT_MS) : now;
     const c = toCard(q, all ? { ...ctx, now: at } : ctx);
-    if (!c) continue;
+    if (!c || (scope.only && !scope.only.includes(c.id))) continue;
     cards.push(c);
     slotOf[c.id] = q.slotAt;
     momentOf[c.id] = at.toISOString();
+  }
+  // 매장 시나리오는 한 주 이야기 순서(날짜)대로 놓고, 같은 날 안에서는 우선순위대로 둔다.
+  if (scope.only) {
+    const day = (c: CardView) => slotOf[c.id]?.slice(0, 10) ?? "";
+    const rank = new Map(cards.map((c, i) => [c.id, i]));
+    cards.sort((a, b) => day(a).localeCompare(day(b)) || rank.get(a.id)! - rank.get(b.id)!);
   }
   const open = cards.filter((c) => isOpen(store, c.id, now));
   // 검토용: /dev에서 고른 카드를 맨 앞으로 꺼낸다.

@@ -138,7 +138,7 @@ function List({ rows, testID }: { rows: Row[]; testID: string }) {
 }
 
 function HomeBody() {
-  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useTodayCards();
+  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek, persona, scene } = useTodayCards();
   const stage = useWaitStage(isPending);
 
   if (!data || !view) {
@@ -165,9 +165,10 @@ function HomeBody() {
 
   const nextRows: Row[] = [
     ...rest.map((c) => {
-      // 모아 보기에서는 언제 온 카드인지 같이 적는다 (Figma 06 화면 이름의 "목 오전" 같은 때)
+      // 목업 검토: 다른 날 온 카드는 언제 온 카드인지 같이 적는다 (Figma 06 화면 이름의 "목 오전" 같은 때). 모아 보기는 늘 적는다.
       const slot = view.slotOf[c.id];
-      const when = allWeek && slot ? `${dayOf(slot, now)} ${hhmm(slot)} 알림` : null;
+      const otherDay = !!slot && slot.slice(0, 10) !== ymd(now);
+      const when = slot && (allWeek || (persona && otherDay)) ? `${dayOf(slot, now)} ${hhmm(slot)} 알림` : null;
       const sub = [c.pill?.text, when].filter(Boolean).join(", ") || "할 일";
       return { id: c.id, title: oneLine(c.title), sub, icon: c.pill?.icon ?? "bell", href: taskHref(c.id) };
     }),
@@ -195,6 +196,10 @@ function HomeBody() {
           <Text testID="home-all-week" className="mt-2 text-small text-ink-3">
             검토용 목업: 데모 한 주(11월 16일~25일) 할 일을 모두 모아 보여 줘요
           </Text>
+        ) : persona && scene && !persona.main ? (
+          <Text testID="home-persona" className="mt-2 text-small text-ink-3">
+            검토용 목업: {persona.store.name}, {scene.label}
+          </Text>
         ) : null}
       </View>
       {first ? (
@@ -220,10 +225,10 @@ function HomeBody() {
 
 export function HomeScreen() {
   const { refetch } = useHome();
-  // 모아 보기에서 연 카드의 시각(scene)은 홈으로 돌아오면 비운다. 홈은 늘 가상 시각 기준이다.
+  // 모아 보기에서 연 카드의 시각(cardNow)은 홈으로 돌아오면 비운다. 홈은 늘 가상 시각 기준이다.
   useFocusEffect(
     useCallback(() => {
-      if (devFlags.read().scene) devFlags.write({ scene: null });
+      if (devFlags.read().cardNow) devFlags.write({ cardNow: null });
     }, []),
   );
   const [pulling, setPulling] = useState(false);

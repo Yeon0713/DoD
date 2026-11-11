@@ -1,6 +1,8 @@
 """하루 × 시간대 매출(sales_daily)을 만든다.
 
-- now 이전 주문만 쓰고, 마감 시각이 지난 날만 만든다. 첫 주문 날부터 휴무일을 빼고 날마다 모든 시간대 칸을 만든다(주문이 없으면 0).
+- now 이전 주문만 쓰고, 마감 시각이 지난 날만 만든다. 첫 주문 날부터 마지막 주문 날까지 휴무일을 빼고
+  날마다 모든 시간대 칸을 만든다(주문이 없으면 0). 마지막 주문 날 뒤는 데이터가 안 들어온 날과
+  손님이 없던 날을 구별할 수 없어서 만들지 않는다.
 - 빠지는 항목은 데이터가 있을 때만 채운다.
   - 메뉴 원가: 그 칸에 팔린 메뉴의 원가가 모두 있을 때만 수량 × 원가. 하나라도 없거나, 메뉴 원가 데이터가 아예 없으면 None
   - 인건비: 근무 시간 중 그 시간대와 겹친 시간 × 시급. 근무표가 비어 있으면 None
@@ -13,7 +15,7 @@ import datetime as dt
 from collections import defaultdict
 from dataclasses import dataclass
 
-from app.analysis.input_shapes import AnalysisInputs, DaypartRange
+from app.analysis.input_shapes import AnalysisInputs, DaypartRange, require_aware
 from app.analysis.pattern.daypart_time import (
     business_date,
     daypart_at,
@@ -33,6 +35,7 @@ class SalesDailyResult:
 
 
 def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyResult:
+    require_aware(now)
     store = inputs.store
     ranges = dayparts_of(store)
     orders = [order for order in inputs.orders if order.ordered_at <= now]
@@ -65,10 +68,11 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
             else:
                 food_cost[key] += cost * item.quantity
 
-    first_day = min(business_date(order.ordered_at, store) for order in orders)
+    order_days = [business_date(order.ordered_at, store) for order in orders]
+    last_day = max(order_days)
     rows = []
-    day = first_day
-    while is_day_finished(day, store, now):
+    day = min(order_days)
+    while day <= last_day and is_day_finished(day, store, now):
         if not is_closed_day(day, store):
             for r in ranges:
                 key = (day, r.daypart)

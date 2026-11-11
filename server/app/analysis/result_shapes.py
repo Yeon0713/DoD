@@ -72,9 +72,15 @@ class ReviewLabelRow(ReviewLabel):
 
 
 class CalendarDayRow(CalendarCell):
-    """calendar_day 한 줄. 키는 (date, daypart, computed_at). 시간대만 분석 결과 코드값으로 받는다."""
+    """calendar_day 한 줄. 키는 (date, daypart, computed_at). 시간대만 분석 결과 코드값으로 받는다.
+
+    기준선이 없는 칸(같은 요일 칸이 4주 미만)은 기준선·예상 매출·비율이 None 이고 신호는 NORMAL, 이유는 없다.
+    """
 
     daypart: AnalysisDaypart
+    baseline_sales: int | None
+    expected_sales: int | None
+    ratio: float | None
 
 
 class CustomerCycleRow(CustomerCycle):

@@ -52,6 +52,40 @@ def test_game_kinds():
     assert game_kind("baseball", "national") == "NATIONAL_TEAM"
     assert game_kind("baseball", "pro") == "BASEBALL"
     assert game_kind("soccer", "pro") == "FOOTBALL"
+    assert game_kind("esports", "pro") == "ESPORTS"
+
+
+def copy_mock_with(tmp_path, table: str, column: str, row_index: int, value: str):
+    """목업 CSV 를 tmp_path 로 복사하고 한 칸만 바꾼다."""
+    for src in MOCK_DIR.glob("*.csv"):
+        (tmp_path / src.name).write_bytes(src.read_bytes())
+    path = tmp_path / f"{table}.csv"
+    with path.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        fields, rows = reader.fieldnames, list(reader)
+    rows[row_index][column] = value
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(rows)
+    return tmp_path, rows[row_index]
+
+
+def test_unknown_event_kind_is_kept_as_local_event(tmp_path, caplog):
+    """행사는 종류와 관계없이 특별한 칸이라 버리지 않는다."""
+    directory, changed = copy_mock_with(tmp_path, "events", "kind", 0, "concert")
+    inputs = read_mock_csv(directory)
+    assert len(inputs.events) == csv_count("events")
+    assert {event.title: event.kind for event in inputs.events}[changed["name"]] == "LOCAL_EVENT"
+    assert "concert" in caplog.text
+
+
+def test_unknown_sport_is_skipped_with_warning(tmp_path, caplog):
+    directory, _ = copy_mock_with(tmp_path, "games", "sport", 1, "curling")
+    inputs = read_mock_csv(directory)
+    assert len(inputs.games) == csv_count("games") - 1
+    assert len(inputs.orders) == csv_count("orders")  # 나머지 입력은 그대로 읽는다
+    assert "curling" in caplog.text
 
 
 def test_store_uses_default_dayparts_and_times_are_seoul(inputs):

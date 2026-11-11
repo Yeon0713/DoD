@@ -7,12 +7,43 @@ const PREFIX = "dona.";
 const mem = new Map<string, string>();
 let ready = false;
 
+// 실제 서버에 붙었을 때(EXPO_PUBLIC_USE_MOCK=false): 서버를 다시 켜면 앱도 처음 상태로 시작한다.
+// 서버 /health 의 boot_id 는 서버가 켜질 때마다 바뀐다. 지난번에 본 값과 다르면 이 기기에 저장한 값(가입, 처음 쓰는 날,
+// 끝낸 카드, 고쳐 쓴 답글 등)을 모두 지운다. 같은 서버가 켜져 있는 동안에는 새로 고침해도 지우지 않는다.
+// api.ts 를 가져오면 순환 참조가 생겨서 환경 변수를 여기서 직접 읽는다.
+const USE_SERVER = process.env.EXPO_PUBLIC_USE_MOCK === "false";
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const BOOT_KEY = `${PREFIX}serverBoot`;
+
+async function serverBootId(): Promise<string | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
+  try {
+    const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal });
+    const body = (await res.json()) as { boot_id?: string };
+    return body.boot_id ?? null;
+  } catch {
+    return null; // 서버가 꺼져 있으면 지우지 않는다
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function hydrateStorage(): Promise<void> {
   if (ready) return;
   try {
     const keys = (await AsyncStorage.getAllKeys()).filter((k) => k.startsWith(PREFIX));
     const pairs = await AsyncStorage.multiGet(keys);
     for (const [k, v] of pairs) if (v !== null) mem.set(k, v);
+    if (USE_SERVER) {
+      const boot = await serverBootId();
+      if (boot && mem.get(BOOT_KEY) !== boot) {
+        await AsyncStorage.multiRemove(keys);
+        mem.clear();
+        mem.set(BOOT_KEY, boot);
+        await AsyncStorage.setItem(BOOT_KEY, boot);
+      }
+    }
   } catch {
     /* 읽지 못하면 빈 상태로 시작한다 */
   }

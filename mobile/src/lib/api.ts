@@ -43,8 +43,9 @@ export function isOffline(): boolean {
 
 const OFFLINE = () => new ApiFailure("OFFLINE", "인터넷이 잠시 끊겼어요.", true);
 
-async function request<T>(method: "GET" | "PATCH", module: string, query: Record<string, string | undefined> = {}, body?: unknown): Promise<T> {
+async function request<T>(method: "GET" | "PATCH" | "POST", module: string, query: Record<string, string | undefined> = {}, body?: unknown): Promise<T> {
   if (USE_MOCK) {
+    if (method === "POST") throw new ApiFailure("UNKNOWN", "목업에는 없는 요청이에요.");
     await new Promise((r) => setTimeout(r, devFlags.read().offline ? 300 : mockDelay()));
     if (isOffline()) throw OFFLINE();
     const res = handleMock(method, module, query, body);
@@ -114,4 +115,7 @@ export const api = {
   settings: () => get<SettingsResponse>("settings"),
   updateSettings: (update: SettingsUpdate) => request<SettingsResponse>("PATCH", "settings", {}, update),
   naverPlace: () => request<{ is_example: boolean; place: NaverPlace }>("GET", "naver/place"),
+  /** 답글 다시 쓰기 (더 짧게 / 더 정중하게). 서버가 CLOVA X로 다시 쓴다. POST /api/replies/rewrite */
+  rewriteReply: (text: string, style: "short" | "polite", planId?: string) =>
+    request<{ text: string }>("POST", "replies/rewrite", {}, { text, style, plan_id: planId }),
 };

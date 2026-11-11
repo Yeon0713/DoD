@@ -229,6 +229,7 @@
 ### Z2. 07 홈: 오늘 끝낸 일 (07-1, 07-2, 07-4)
 - 홈의 "오늘 끝낸 일"은 지금 이 기기의 카드 상태(`dona.cardState.v1`)에서 만든다. 끝낼 때 **끝낸 시각(`at`)**, **한 일(`note`, 예: "답글을 올렸어요")**, **올린 답글(`reply`)**을 같이 저장한다. 다른 기기에서 열거나 앱을 지우면 사라진다.
 - 서버 연결 후 필요한 것: 오늘 처리한 일 목록. 제안: `GET /api/today/done` → `[{ plan_id, notify_kind, done_at, action: "PUBLISHED" | "SCHEDULED" | "ACKED" | "MENU_APPLIED" | "POSTER_KEPT", reply_text? }]`. 또는 3장 D의 카드 상태 API가 `done_at`과 `action`을 함께 돌려주면 된다.
+- 다 끝낸 홈의 "오늘 함께 한 일"(Figma 08)은 오늘 끝낸 카드의 계획 종류로 센다 (`lib/todayCards.ts` `countDone`). 답글(REVISIT_REPLY, REORDER_NUDGE), 점검(REVIEW_FIX), 메뉴판(MENU_ORDER), 포스터(POSTER). 같은 계획은 한 번, 좋은 리뷰 묶음은 답글 수만큼. 서버 연결 후에는 위 오늘 처리한 일 목록의 `action`과 계획 종류로 같은 값을 만들 수 있다.
 - "나중에"로 미룬 일은 홈 "다음 할 일"에 다시 알릴 시각과 함께 보인다. 서버가 미룬 시각(`snoozed_until`)을 돌려줘야 한다 (3장 D).
 
 ## 4. 이 기기에만 저장하는 값

@@ -16,6 +16,7 @@ import { devFlags } from "@/lib/dev";
 import { slotLabel } from "@/lib/hours";
 import { nextSlot } from "@/lib/queue";
 import { addDays, dateOnly, hhmm, monthDay, relativeDay, weekdayName, ymd } from "@/lib/time";
+import { countDone, DONE_KINDS, type DoneKind } from "@/lib/todayCards";
 import { useHome, useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Slot, StoreSettings } from "@/types/contract";
@@ -88,13 +89,55 @@ function NowCard({ card }: { card: CardView }) {
   );
 }
 
-/** 07-2: 다 끝냈을 때(또는 지금은 할 일이 없을 때) 지금 할 일 자리 */
-function RestBox({ title, settings, now }: { title: string; settings: StoreSettings; now: Date }) {
+const DONE_TILE: Record<DoneKind, { icon: IconName; label: string; unit: string }> = {
+  reply: { icon: "message", label: "답글", unit: "개" },
+  check: { icon: "repeat", label: "점검", unit: "번" },
+  menu: { icon: "list", label: "메뉴판", unit: "번" },
+  poster: { icon: "image", label: "포스터", unit: "장" },
+};
+
+/** 08-2: 오늘 함께 한 일. 네 칸은 늘 같은 자리, 하지 않은 일은 0으로 쓰고 회색. 아낀 시간 같은 자랑하는 말은 넣지 않는다. */
+function DoneTiles({ counts }: { counts: Record<DoneKind, number> }) {
+  return (
+    <View className="w-full gap-2.5">
+      <Text className="text-center text-label text-ink-2">오늘 함께 한 일</Text>
+      <View testID="home-done-tiles" className="flex-row gap-2">
+        {DONE_KINDS.map((k) => {
+          const n = counts[k];
+          const on = n > 0;
+          const t = DONE_TILE[k];
+          return (
+            <View
+              key={k}
+              testID={`home-done-tile-${k}`}
+              accessible
+              accessibilityLabel={`${t.label} ${n}${t.unit}`}
+              className={`flex-1 items-center gap-1 rounded-[14px] pb-2.5 pt-3 ${on ? "bg-done-soft" : "border border-line bg-paper"}`}
+            >
+              <Icon name={t.icon} size={24} color={on ? C.done : C["ink-3"]} />
+              <Text className={`text-title ${on ? "text-ink" : "text-ink-3"}`}>{n}</Text>
+              <Text className={`text-small ${on ? "text-ink-2" : "text-ink-3"}`}>{t.label}</Text>
+            </View>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+/** 07-2, 08-2: 다 끝냈을 때(또는 지금은 할 일이 없을 때) 지금 할 일 자리. counts가 있으면(다 끝냈을 때) 오늘 함께 한 일을 함께 보여 준다. */
+function RestBox({ title, settings, now, counts }: { title: string; settings: StoreSettings; now: Date; counts?: Record<DoneKind, number> }) {
   const next = nextSlot(settings.slots, now);
   return (
-    <View testID="home-rest" className="items-center gap-2 rounded-card bg-surface px-[22px] pb-[22px] pt-5">
-      <DonnaImage img="b4-2" size={120} />
+    <View testID="home-rest" className={`items-center rounded-card bg-surface px-[22px] pb-[22px] pt-5 ${counts ? "gap-2.5" : "gap-2"}`}>
+      <DonnaImage img="b4-2" size={counts ? 96 : 120} />
       <Text className="text-center text-title text-ink">{title}</Text>
+      {counts ? (
+        <>
+          <DoneTiles counts={counts} />
+          <View className="h-px w-full bg-line" />
+        </>
+      ) : null}
       <View className="flex-row items-center gap-2">
         <Icon name={NEXT_ICON[next.slot as Slot]} size={24} color={C["ink-2"]} />
         <Text className="text-body text-ink-2">
@@ -207,7 +250,12 @@ function HomeBody() {
           <NowCard card={first} />
         </Group>
       ) : (
-        <RestBox title={remaining > 0 ? "지금은 할 일이 없어요" : "수고하셨어요"} settings={settings} now={now} />
+        <RestBox
+          title={remaining > 0 ? "지금은 할 일이 없어요" : "수고하셨어요"}
+          settings={settings}
+          now={now}
+          counts={remaining > 0 ? undefined : countDone(view, doneCards.map(({ c }) => c.id))}
+        />
       )}
       {nextRows.length > 0 ? (
         <Group title="다음 할 일" count={nextRows.length}>

@@ -12,6 +12,8 @@ export interface TodayCards {
   slotOf: Record<string, string>;
   /** 카드 id → 카드를 만들 때 지금으로 본 시각 (모아 보기에서는 알림 시각 5분 뒤, 아니면 지금) */
   momentOf: Record<string, string>;
+  /** 카드 id → 그 카드가 다루는 계획 id들 (좋은 리뷰 묶음은 여러 개). 08 "오늘 함께 한 일"을 셀 때 쓴다 */
+  plansOf: Record<string, string[]>;
   total: number;
   done: number;
 }
@@ -49,6 +51,7 @@ export function buildTodayCards(
   };
   const slotOf: Record<string, string> = {};
   const momentOf: Record<string, string> = {};
+  const plansOf: Record<string, string[]> = {};
   const cards: CardView[] = [];
   for (const q of queue) {
     const at = all ? new Date(new Date(q.slotAt).getTime() + MOMENT_MS) : now;
@@ -57,6 +60,7 @@ export function buildTodayCards(
     cards.push(c);
     slotOf[c.id] = q.slotAt;
     momentOf[c.id] = at.toISOString();
+    plansOf[c.id] = q.group ? q.group.map((p) => p.plan_id) : q.plan ? [q.plan.plan_id] : [];
   }
   // 매장 시나리오는 한 주 이야기 순서(날짜)대로 놓고, 같은 날 안에서는 우선순위대로 둔다.
   if (scope.only) {
@@ -73,5 +77,33 @@ export function buildTodayCards(
     const basic = data.plan.plan_items.filter((x) => x.task_type === "REVISIT_REPLY" && x.revisit_class === "BASIC");
     if (basic.length) open.push(firstDayCard(basic[0].plan_id, basic.length));
   }
-  return { cards, open, slotOf, momentOf, total: Math.max(cards.length, open.length), done: cards.length - open.filter((c) => c.id !== "FIRST_DAY").length };
+  return { cards, open, slotOf, momentOf, plansOf, total: Math.max(cards.length, open.length), done: cards.length - open.filter((c) => c.id !== "FIRST_DAY").length };
+}
+
+/** 08 "오늘 함께 한 일"의 네 가지 */
+export type DoneKind = "reply" | "check" | "menu" | "poster";
+export const DONE_KINDS: DoneKind[] = ["reply", "check", "menu", "poster"];
+
+/** 계획 id 앞부분(task_type)으로 어떤 일인지 정한다. 알림만 확인한 카드(미리 보기, 매출, 결과 알림)는 계획이 없어서 세지 않는다. */
+function kindOf(planId: string): DoneKind | null {
+  const type = planId.split(":")[0];
+  if (type === "REVISIT_REPLY" || type === "REORDER_NUDGE") return "reply";
+  if (type === "REVIEW_FIX") return "check";
+  if (type === "MENU_ORDER") return "menu";
+  if (type === "POSTER") return "poster";
+  return null;
+}
+
+/**
+ * 끝낸 카드로 오늘 함께 한 일을 센다 (Figma 08-0 규칙).
+ * 같은 계획의 승인 카드와 실행 카드를 둘 다 끝내도 한 번만 센다. 좋은 리뷰 묶음은 답글 수만큼 센다.
+ */
+export function countDone(view: TodayCards, doneIds: string[]): Record<DoneKind, number> {
+  const plans = new Set(doneIds.flatMap((id) => view.plansOf[id] ?? []));
+  const out: Record<DoneKind, number> = { reply: 0, check: 0, menu: 0, poster: 0 };
+  for (const id of plans) {
+    const k = kindOf(id);
+    if (k) out[k] += 1;
+  }
+  return out;
 }

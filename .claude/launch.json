@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "port": 3000
+    },
+    {
+      "name": "mobile-web",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd mobile && npx expo start --web --clear --port 8082"],
+      "port": 8082
+    }
+  ]
+}

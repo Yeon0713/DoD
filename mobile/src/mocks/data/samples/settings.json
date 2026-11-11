@@ -1,0 +1,37 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 가상 매장(춘천 대학가 국수집)의 설정입니다. 위도·경도는 지어낸 값입니다.",
+  "is_example": true,
+  "settings": {
+    "store_id": "store_001",
+    "name": "춘천 대학가 국수집 (가상 매장)",
+    "category": "국수",
+    "lat": 37.8692,
+    "lng": 127.7437,
+    "open_time": "10:00",
+    "close_time": "22:00",
+    "dayparts": {
+      "LUNCH": {
+        "start": "11:00",
+        "end": "13:30"
+      },
+      "DINNER": {
+        "start": "17:00",
+        "end": "21:00"
+      },
+      "NIGHT": {
+        "start": "21:00",
+        "end": "22:00"
+      }
+    },
+    "busy_dayparts": [
+      "LUNCH",
+      "DINNER"
+    ],
+    "slots": {
+      "OPENING": "10:00",
+      "AFTERNOON": "14:00",
+      "CLOSING": "21:30"
+    },
+    "closed_weekdays": []
+  }
+}

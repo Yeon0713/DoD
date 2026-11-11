@@ -1,0 +1,43 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 데모 주간 화요일(2026-11-17)의 오늘의 카드입니다. 리뷰 답글 새 규칙(토요일 10시 승인, 11시 발송)으로 계획 엔진이 계산한 결과입니다. 각 줄의 내용은 plan_response 의 같은 plan_id, notice_id 를 보면 됩니다.",
+  "is_example": true,
+  "date": "2026-11-17",
+  "batches": [
+    {
+      "slot_at": "2026-11-17T10:00:00+09:00",
+      "slot": "OPENING",
+      "entries": [
+        {
+          "plan_id": "POSTER:game_031:2026-11-19",
+          "notice_id": null,
+          "notify_kind": "EXECUTE_REMINDER",
+          "priority": 4
+        }
+      ]
+    },
+    {
+      "slot_at": "2026-11-17T14:00:00+09:00",
+      "slot": "AFTERNOON",
+      "entries": [
+        {
+          "plan_id": "REVISIT_REPLY:rv_118:2026-11-17",
+          "notice_id": null,
+          "notify_kind": "APPROVAL_REQUEST",
+          "priority": 1
+        },
+        {
+          "plan_id": "REVIEW_FIX:risk_004:2026-11-17",
+          "notice_id": null,
+          "notify_kind": "APPROVAL_REQUEST",
+          "priority": 2
+        },
+        {
+          "plan_id": "MENU_ORDER:2026-11-18:2026-11-18",
+          "notice_id": null,
+          "notify_kind": "APPROVAL_REQUEST",
+          "priority": 3
+        }
+      ]
+    }
+  ]
+}

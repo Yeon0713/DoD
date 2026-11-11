@@ -37,8 +37,6 @@ class Store(Base):
     open_time: Mapped[dt.time] = mapped_column(Time)
     close_time: Mapped[dt.time] = mapped_column(Time)
     closed_weekdays: Mapped[list] = mapped_column(JSONB)
-    dayparts: Mapped[list] = mapped_column(JSONB)
-    busy_dayparts: Mapped[list] = mapped_column(JSONB)
     slots: Mapped[list] = mapped_column(JSONB)
 
 

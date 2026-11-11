@@ -208,7 +208,7 @@ python -m db.mock.generate     # 목업 생성 → DB에 넣고 CSV도 갱신 (�
 
 | 테이블 | 한 줄 = | 주요 열 |
 |---|---|---|
-| store | 매장 | 영업시간, `dayparts`·`busy_dayparts`·`slots`(JSON) |
+| store | 매장 | 영업시간, 휴무 요일·`slots`(JSON) |
 | menu | 메뉴 | name, category(`main`/`side`/`drink`), price |
 | orders | 주문 | `ordered_at`, channel(`hall`/`delivery`), `customer_key`, total_amount |
 | order_items | 주문 속 메뉴 | order_id, menu_id, quantity, unit_price |

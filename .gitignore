@@ -15,3 +15,5 @@ venv/
 
 # 개인용 API 연결 점검 스크립트
 server/check_apis.py
+
+jh/

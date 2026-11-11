@@ -1,6 +1,9 @@
 # 비밀 값 (API 키 등)
 .env
 
+# 개인 작업 문서 (GitHub에 올리지 않음)
+personal_docs/
+
 # Python
 __pycache__/
 *.pyc

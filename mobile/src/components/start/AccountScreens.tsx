@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, type ComponentRef } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "@/components/icons/Icon";
+import { NaverLogo } from "@/components/icons/NaverLogo";
 import { back, go, goHome, replace } from "@/components/ui/nav";
 import { DonnaImage, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Note, SubPage } from "@/components/ui/sub";
@@ -30,7 +31,7 @@ const modeOf = (v: string | string[] | undefined): Mode => {
   return m === "login" || m === "link" ? m : "signup";
 };
 
-/** 네이버 로그인 버튼 (네이버 로그인 버튼 모양: 초록 바탕, 흰 N). 토큰 밖 색은 이것 하나다. */
+/** 네이버 로그인 버튼. 네이버 로그인 디자인 가이드: 초록 바탕(#03C75A), 흰 공식 로고와 흰 글자. 높이와 둥글기는 도나 버튼(56, 14). 토큰 밖 색은 이것 하나다. */
 export function NaverButton({ children, onPress, testID = "naver-button", disabled }: { children: string; onPress: () => void; testID?: string; disabled?: boolean }) {
   return (
     <Pressable
@@ -39,9 +40,9 @@ export function NaverButton({ children, onPress, testID = "naver-button", disabl
       accessibilityLabel={children}
       disabled={disabled}
       onPress={onPress}
-      className={`h-14 w-full flex-row items-center justify-center gap-2.5 rounded-button bg-naver active:opacity-90 ${disabled ? "opacity-50" : ""}`}
+      className={`h-14 w-full flex-row items-center justify-center gap-3 rounded-button bg-naver active:opacity-90 ${disabled ? "opacity-50" : ""}`}
     >
-      <Text className="text-title text-white">N</Text>
+      <NaverLogo size={16} />
       <Text className="text-button text-white">{children}</Text>
     </Pressable>
   );
@@ -153,7 +154,7 @@ export function NaverLoginScreen() {
       <TitleWithDonna title={"네이버에서\n확인해 주세요"} sub="네이버 화면이 열려요. 거기서 로그인하고 동의를 누르면 돌아와요" />
       <View testID="naver-handoff" className="mt-6 h-[200px] items-center justify-center gap-2.5 rounded-2xl border-[1.5px] border-dashed border-line bg-surface px-6">
         <View className="h-14 w-14 items-center justify-center rounded-[14px] bg-naver">
-          <Text className="text-display text-white">N</Text>
+          <NaverLogo size={24} />
         </View>
         <Text className="text-label text-ink-2">{failed ? "연결하지 못했어요" : "네이버 로그인 화면"}</Text>
         <Text className="text-center text-small text-ink-3">{failed ? "인터넷을 확인하고 다시 해 주세요" : "이 자리는 네이버가 그려요. 도나가 따로 만들지 않아요"}</Text>

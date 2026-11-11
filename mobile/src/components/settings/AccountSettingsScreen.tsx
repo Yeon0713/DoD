@@ -3,6 +3,7 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import { Icon, type IconName } from "@/components/icons/Icon";
+import { NaverLogo } from "@/components/icons/NaverLogo";
 import { NaverButton } from "@/components/start/AccountScreens";
 import { storeName } from "@/components/start/flow";
 import { back, go } from "@/components/ui/nav";
@@ -86,7 +87,7 @@ export function AccountSettingsScreen() {
         <Card testID={linked ? "account-naver-linked" : "account-naver-unlinked"}>
           <View className="flex-row items-center gap-3">
             <View className="h-10 w-10 items-center justify-center rounded-[10px] bg-naver">
-              <Text className="text-title text-white">N</Text>
+              <NaverLogo size={16} />
             </View>
             <View className="flex-1">
               <Text className="text-body font-bold text-ink">네이버 계정</Text>

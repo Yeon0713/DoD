@@ -132,10 +132,17 @@ def test_outside_orders_are_counted_not_added():
 
 def test_closed_weekday_has_no_rows_and_empty_day_has_zero_rows():
     store = STORE.model_copy(update={"closed_weekdays": ["TUE"]})
-    later = at(23, day=DAY + dt.timedelta(2))
-    result = build_sales_daily(sample_inputs(store=store), later)
-    assert {row.date for row in result.rows} == {DAY, DAY + dt.timedelta(2)}
-    assert all(row.sales_amount == 0 for row in result.rows if row.date == DAY + dt.timedelta(2))
+    thursday = DAY + dt.timedelta(3)
+    orders = [*sample_inputs().orders, order("4", at(12, day=thursday), 7000)]
+    result = build_sales_daily(sample_inputs(store=store, orders=orders), at(23, day=thursday))
+    assert {row.date for row in result.rows} == {DAY, DAY + dt.timedelta(2), thursday}  # 화요일 휴무
+    assert all(row.sales_amount == 0 for row in result.rows if row.date == DAY + dt.timedelta(2))  # 주문 없는 수요일
+
+
+def test_no_rows_after_the_last_order_day():
+    """주문 데이터가 끝난 뒤의 날은 0원 칸을 만들지 않는다. 데이터가 안 들어온 날과 손님이 없던 날을 구별할 수 없다."""
+    result = build_sales_daily(sample_inputs(), at(23, day=DAY + dt.timedelta(5)))
+    assert {row.date for row in result.rows} == {DAY}
 
 
 @pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")

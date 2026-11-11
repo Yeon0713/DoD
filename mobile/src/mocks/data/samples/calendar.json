@@ -1,0 +1,362 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 데모 주간(2026-11-16~22) 7일 × 시간대 3개 달력입니다. 기준 매출과 효과 숫자는 지어낸 값입니다.",
+  "is_example": true,
+  "cells": [
+    {
+      "date": "2026-11-16",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 600000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 820000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-16",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 250000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 600000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 820000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-17",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 250000,
+      "ratio": 1,
+      "reasons": [],
+      "reason_text": "평소와 비슷할 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 630000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 820000,
+      "expected_sales": 861000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-18",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 250000,
+      "expected_sales": 262500,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 600000,
+      "expected_sales": 630000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 820000,
+      "expected_sales": 1033200,
+      "ratio": 1.26,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "GAME",
+          "ref_id": "game_031",
+          "effect": 0.21
+        }
+      ],
+      "reason_text": "저녁에 국가대표 축구 경기가 있어 배달이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-19",
+      "daypart": "NIGHT",
+      "signal": "HIGH",
+      "baseline_sales": 250000,
+      "expected_sales": 325000,
+      "ratio": 1.3,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "GAME",
+          "ref_id": "game_031",
+          "effect": 0.25
+        }
+      ],
+      "reason_text": "야간에 국가대표 축구 경기가 있어 배달이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "LUNCH",
+      "signal": "NORMAL",
+      "baseline_sales": 620000,
+      "expected_sales": 651000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "DINNER",
+      "signal": "NORMAL",
+      "baseline_sales": 900000,
+      "expected_sales": 945000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-20",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 300000,
+      "expected_sales": 315000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "LUNCH",
+      "signal": "HIGH",
+      "baseline_sales": 700000,
+      "expected_sales": 945000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 점심 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 950000,
+      "expected_sales": 1282500,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 저녁 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-21",
+      "daypart": "NIGHT",
+      "signal": "HIGH",
+      "baseline_sales": 320000,
+      "expected_sales": 432000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 야간 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "LUNCH",
+      "signal": "HIGH",
+      "baseline_sales": 680000,
+      "expected_sales": 918000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 점심 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "DINNER",
+      "signal": "HIGH",
+      "baseline_sales": 880000,
+      "expected_sales": 1188000,
+      "ratio": 1.35,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        },
+        {
+          "tag": "EVENT",
+          "ref_id": "event_012",
+          "effect": 0.3
+        }
+      ],
+      "reason_text": "가게 근처 지역 축제로 저녁 손님이 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    },
+    {
+      "date": "2026-11-22",
+      "daypart": "NIGHT",
+      "signal": "NORMAL",
+      "baseline_sales": 260000,
+      "expected_sales": 273000,
+      "ratio": 1.05,
+      "reasons": [
+        {
+          "tag": "SEASON",
+          "ref_id": "season_winter",
+          "effect": 0.05
+        }
+      ],
+      "reason_text": "추워지면서 따뜻한 메뉴 주문이 조금 늘 것 같아요",
+      "computed_at": "2026-11-15T22:30:00+09:00"
+    }
+  ]
+}

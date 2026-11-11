@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 웹: 한국어 문장이 단어 중간에서 끊기지 않게 한다. (앱은 components/ui/Text.tsx) */
+html,
+body {
+  word-break: keep-all;
+}

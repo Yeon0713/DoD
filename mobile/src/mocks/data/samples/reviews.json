@@ -1,0 +1,192 @@
+{
+  "_설명": "예시 데이터입니다. 실제 데이터가 아닙니다. 데모 주간 전후 리뷰와 분류 결과입니다. 리뷰 문구, id 는 지어낸 값입니다.",
+  "is_example": true,
+  "reviews": [
+    {
+      "review_id": "rv_087",
+      "platform": "BAEMIN",
+      "written_at": "2026-10-23T19:40:00+09:00",
+      "rating": 5,
+      "text": "국물이 진하고 면이 쫄깃해요. 한 달에 한 번은 꼭 생각나요.",
+      "customer_key": "c_m01",
+      "order_id": "ord_20261023_041",
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-10-23T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_102",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-11T21:10:00+09:00",
+      "rating": 5,
+      "text": "수요일마다 시켜 먹는데 항상 따뜻하게 와요.",
+      "customer_key": "c_w01",
+      "order_id": "ord_20261111_067",
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-11T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_105",
+      "platform": "COUPANG",
+      "written_at": "2026-11-12T21:00:00+09:00",
+      "rating": 2,
+      "text": "배달이 40분 넘게 걸려서 면이 다 불었어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-12T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_109",
+      "platform": "NAVER",
+      "written_at": "2026-11-14T19:00:00+09:00",
+      "rating": 4,
+      "text": "가게가 깔끔하고 양도 넉넉했어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-14T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_111",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-15T20:10:00+09:00",
+      "rating": 2,
+      "text": "주문하고 한 시간 가까이 기다렸어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-15T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_112",
+      "platform": "YOGIYO",
+      "written_at": "2026-11-16T13:00:00+09:00",
+      "rating": 5,
+      "text": "점심에 후루룩 먹기 딱 좋아요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-16T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_118",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-17T12:30:00+09:00",
+      "rating": 1,
+      "text": "배달이 너무 늦어서 다 식어서 왔어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "DELIVERY_DELAY"
+        ],
+        "complaint_groups": [
+          "DELIVERY"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-17T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_121",
+      "platform": "NAVER",
+      "written_at": "2026-11-17T20:30:00+09:00",
+      "rating": 4,
+      "text": "비빔국수 맛있어요. 조금 매웠지만 또 먹을래요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "MIXED",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-17T21:20:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_126",
+      "platform": "COUPANG",
+      "written_at": "2026-11-19T12:40:00+09:00",
+      "rating": 5,
+      "text": "요청사항을 꼼꼼히 챙겨 주셔서 좋았어요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "POSITIVE",
+        "complaint_types": [],
+        "complaint_groups": [],
+        "is_quick": false,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-19T13:50:00+09:00"
+      }
+    },
+    {
+      "review_id": "rv_131",
+      "platform": "BAEMIN",
+      "written_at": "2026-11-20T19:30:00+09:00",
+      "rating": 2,
+      "text": "오늘은 국물이 너무 짰어요. 평소랑 맛이 달라요.",
+      "customer_key": null,
+      "order_id": null,
+      "label": {
+        "sentiment": "NEGATIVE",
+        "complaint_types": [
+          "TASTE"
+        ],
+        "complaint_groups": [
+          "FOOD"
+        ],
+        "is_quick": true,
+        "labeler": "HCX",
+        "labeled_at": "2026-11-20T21:20:00+09:00"
+      }
+    }
+  ]
+}

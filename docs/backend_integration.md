@@ -7,7 +7,7 @@
 - 앱을 켜는 법: [guide_for_collaborators.md](./guide_for_collaborators.md)
 
 > 기준: 앱은 브랜치 `jheroorehj/feat-frontend` (2026-11-11), 서버는 `main`.
-> ⚠️ **이 브랜치는 `main`보다 12커밋 뒤에 있습니다.** 서버 코드(`server/`)의 최신은 `main`입니다. 연결 작업 전에 `main`을 이 브랜치로 **병합**(덮어쓰기 아님)하거나, 앱 코드를 `main`으로 PR하는 것부터 정해야 합니다.
+> 2026-11-11에 `main`(리뷰 분류, 분석 결과 계약까지)을 이 브랜치로 병합했습니다. 아직 `main`에 들어가지 않은 팀원 브랜치(`taeseong/feat-review`의 주문 주기와 위험 신호, `jiho/data-shifts`의 알바 근무 목업)는 이 브랜치에 없습니다. 연결 작업 전에 앱 코드를 `main`으로 PR할지 정해야 합니다.
 
 ---
 
@@ -158,7 +158,7 @@ src/lib/api.ts                     src/lib/actions.ts            src/lib/cardSta
 각 단계는 "다 됐다"를 확인할 방법과 함께 적었습니다.
 
 **0단계. 브랜치 맞추기**
-- `main`을 이 브랜치로 병합하거나 앱을 `main`으로 PR. 서버는 `main`의 것을 기준으로.
+- `main`은 이 브랜치에 병합해 두었습니다 (2026-11-11). 앱을 `main`으로 PR하고, 팀원 브랜치가 `main`에 들어오면 다시 받아옵니다. 서버는 `main`의 것을 기준으로.
 - 확인: 한 브랜치에서 `server/`와 `mobile/`이 함께 켜짐.
 
 **1단계. 읽기 API를 실제 서버로 (예시 데이터 그대로)**

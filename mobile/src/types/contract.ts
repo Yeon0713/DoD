@@ -46,6 +46,8 @@ export interface PlanItem {
   deadline_at: string | null;
   reason_line: string;
   planned_at: string;
+  /** 리뷰 답글·재주문 인사 초안. 서버가 CLOVA X로 리뷰를 읽고 쓴다. 없으면 앱 기본 문장(mocks/extras.ts)을 쓴다 */
+  draft_text?: string | null;
 }
 
 export interface NoticeItem {

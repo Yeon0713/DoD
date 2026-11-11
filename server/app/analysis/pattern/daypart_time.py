@@ -9,9 +9,11 @@ import datetime as dt
 
 from app.analysis.input_shapes import DaypartRange, StoreInfo
 from app.core.seoul_time import SEOUL, to_seoul
+from app.planner.data_shapes import Weekday
 
 LUNCH_START = dt.time(11, 0)
 DINNER_START = dt.time(17, 0)
+WEEKDAYS: tuple[Weekday, ...] = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")  # date.weekday() 순서
 
 
 def dayparts_of(store: StoreInfo) -> list[DaypartRange]:
@@ -50,6 +52,11 @@ def is_day_finished(day: dt.date, store: StoreInfo, now: dt.datetime) -> bool:
     return dt.datetime.combine(day, store.close_time, SEOUL) <= to_seoul(now)
 
 
+def weekday_of(day: dt.date) -> Weekday:
+    """요일 코드값. 예) 2026-11-16 → MON"""
+    return WEEKDAYS[day.weekday()]
+
+
 def is_closed_day(day: dt.date, store: StoreInfo) -> bool:
     """정기 휴무일인지."""
-    return ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")[day.weekday()] in store.closed_weekdays
+    return weekday_of(day) in store.closed_weekdays

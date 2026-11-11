@@ -12,14 +12,13 @@ import { DraftBubble } from "@/components/ui/sub";
 import { back, go } from "@/components/ui/nav";
 import { publishReply } from "@/lib/actions";
 import { ApiFailure } from "@/lib/api";
-import { markDone, snooze, useCardState } from "@/lib/cardState";
+import { markDone, snooze, markPlanDone } from "@/lib/cardState";
 import type { CardAction, CardView } from "@/lib/cards";
 import { devFlags } from "@/lib/dev";
 import { slotLabel } from "@/lib/hours";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { addDays, ymd } from "@/lib/time";
-import { buildTodayCards } from "@/lib/todayCards";
-import { useHome } from "@/lib/useHome";
+import { useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Slot, StoreSettings } from "@/types/contract";
 import { Checking, Loading, NEXT_ICON, NotifyOffBanner, Offline, Scroll, useWaitStage } from "./states";
@@ -111,10 +110,7 @@ function DraftRow({ draft }: { draft: NonNullable<CardView["draft"]> }) {
 }
 
 function TaskBody() {
-  const { data, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useHome();
-  const store = useCardState();
-  const savedDrafts = drafts.useValue();
-  const focus = devFlags.useValue().card;
+  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useTodayCards();
   const stage = useWaitStage(isPending);
   const [laterFor, setLaterFor] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -123,12 +119,10 @@ function TaskBody() {
   const { id, sheet } = useLocalSearchParams<{ id?: string; sheet?: string }>();
   const [sheetAsked, setSheetAsked] = useState(sheet === "later");
 
-  const view = useMemo(() => (data ? buildTodayCards(data, now, p, store, focus, savedDrafts, allWeek) : null), [data, now, p, store, focus, savedDrafts, allWeek]);
   // 처리하는 동안 카드가 바뀌지 않게, 처음 고른 카드를 붙잡아 둔다.
   const [pinnedId, setPinnedId] = useState<string | null>(id ?? null);
-  useEffect(() => {
-    if (!pinnedId && view?.open[0]) setPinnedId(view.open[0].id);
-  }, [pinnedId, view]);
+  const firstId = view?.open[0]?.id;
+  if (!pinnedId && firstId) setPinnedId(firstId);
   const card = view && pinnedId ? (view.open.find((c) => c.id === pinnedId) ?? view.cards.find((c) => c.id === pinnedId)) : undefined;
 
   // 모아 보기: 이 카드가 온 때를 지금으로 본다. 답글, 메뉴판, 포스터 화면도 그 때 기준으로 움직인다.
@@ -145,11 +139,10 @@ function TaskBody() {
     }, [finished]),
   );
 
-  useEffect(() => {
-    if (!sheetAsked || !card) return;
+  if (sheetAsked && card) {
     setSheetAsked(false);
     setLaterFor(card.id);
-  }, [sheetAsked, card]);
+  }
 
   if (!data) {
     const header = <Header total={1} done={0} />;
@@ -202,8 +195,7 @@ function TaskBody() {
           setSending(false);
         }
         const sent = { note: "답글을 올렸어요", reply: r.text };
-        markDone(`APPROVAL_REQUEST:${r.planId}`, sent);
-        markDone(`EXECUTE_REMINDER:${r.planId}`, sent);
+        markPlanDone(r.planId, sent);
         flashToast("답글을 올렸어요", `${r.platform}에서 볼 수 있어요`);
         return;
       }

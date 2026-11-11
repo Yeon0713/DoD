@@ -3,8 +3,8 @@ import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon } from "@/components/icons/Icon";
-import { goToday } from "@/components/today/goToday";
 import { Bone, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
+import { goHome } from "@/components/ui/nav";
 import { SubPage } from "@/components/ui/sub";
 import { markDone } from "@/lib/cardState";
 import { checkData, OTHER_STORES } from "@/lib/check";
@@ -71,7 +71,7 @@ export function CheckScreen() {
   const finish = (title: string) => {
     markDone(`APPROVAL_REQUEST:${planId}`, { note: "점검했어요" });
     flashToast(title, "일주일 뒤에 줄었는지 알려 드릴게요");
-    goToday();
+    goHome();
   };
 
   return (

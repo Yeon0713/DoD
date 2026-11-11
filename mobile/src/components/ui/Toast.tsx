@@ -11,10 +11,10 @@ export function ToastHost() {
   const t = useToast();
   const [shown, setShown] = useState<Toast | null>(null);
   const insets = useSafeAreaInsets();
+  // 새 띠가 오면 바로 보여 주고, 저장해 둔 띠는 지운다 (다음 화면에서 또 뜨지 않게)
+  if (t && t !== shown) setShown(t);
   useEffect(() => {
-    if (!t) return;
-    setShown(t);
-    clearToast();
+    if (t) clearToast();
   }, [t]);
   useEffect(() => {
     if (!shown) return;

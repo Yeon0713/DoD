@@ -13,16 +13,19 @@ export function markDone(cardId: string, info: DoneInfo = {}) {
   state.replace({ ...state.read(), [cardId]: { kind: "done", at: currentNow().toISOString(), ...info } });
 }
 
+/** 계획 하나를 끝냈다. 그 계획의 승인 요청 카드와 실행 알림 카드를 함께 끝낸다 (답글을 바로 올렸을 때, 포스터를 올렸을 때). */
+export function markPlanDone(planId: string, info: DoneInfo = {}) {
+  const at = currentNow().toISOString();
+  const done = { kind: "done" as const, at, ...info };
+  state.replace({ ...state.read(), [`APPROVAL_REQUEST:${planId}`]: done, [`EXECUTE_REMINDER:${planId}`]: done });
+}
+
 export function snooze(cardId: string, untilIso: string) {
   state.replace({ ...state.read(), [cardId]: { kind: "snoozed", until: untilIso } });
 }
 
 export function resetCardState() {
   state.replace({});
-}
-
-export function readCardState(): Store {
-  return state.read();
 }
 
 export function useCardState(): Store {

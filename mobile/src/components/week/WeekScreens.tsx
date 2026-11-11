@@ -2,7 +2,7 @@
 // 시안 C "하루씩 크게": 위에 요일 7칸, 아래에 고른 날의 점심, 저녁, 밤.
 // 06: 추워지는 날 이유에는 온도계 아이콘. 쉬는 요일(요일별 장사 시간)은 "쉬는 날"로 보여 준다.
 import { useLocalSearchParams } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon, type IconName } from "@/components/icons/Icon";
@@ -174,7 +174,12 @@ export function WeekScreen() {
   // 개발 화면에서 /week?day=2026-11-19 처럼 고른 날로 연다 (06-7-월~일 검토용)
   const params = useLocalSearchParams<{ day?: string }>();
   const [picked, setPicked] = useState<string | null>(null);
-  useEffect(() => setPicked(null), [params.day]);
+  // 주소의 day가 바뀌면 고른 날을 비운다 (렌더 중에 바로 맞춘다)
+  const [dayParam, setDayParam] = useState(params.day);
+  if (dayParam !== params.day) {
+    setDayParam(params.day);
+    setPicked(null);
+  }
   const today = ymd(now);
 
   if (!data) {

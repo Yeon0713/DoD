@@ -22,7 +22,7 @@ import { STORE_ADDRESS } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { Slot } from "@/types/contract";
 import { closingNotes, saveWeek, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
-import { errorText, goHome, NAVER_PLACE_KEY, param, PLATFORM_ORDER, PLATFORM_SHORT, STEPS, storeName } from "./flow";
+import { errorText, enterApp, NAVER_PLACE_KEY, param, PLATFORM_ORDER, PLATFORM_SHORT, STEPS, storeName } from "./flow";
 import { turnOnNotifications } from "./notify";
 
 const C = tokens.colors;
@@ -505,7 +505,7 @@ export function NotifyOnScreen() {
   const time = s?.slots.AFTERNOON ?? "14:00";
   const finish = (notifyOff: boolean) => {
     prefs.write({ onboarded: true, notifyOff, firstDayPending: true });
-    goHome();
+    enterApp();
   };
   const turnOn = async () => {
     setBusy(true);

@@ -17,8 +17,8 @@ export function storeName(name: string) {
   return name.replace(/\s*\(.*\)\s*/g, "").trim();
 }
 
-/** 쌓인 화면을 모두 닫고 오늘 화면으로 간다. */
-export function goHome() {
+/** 처음 설정을 마치고 앱으로 들어간다. 처음 설정 화면으로 뒤로 가지 못하게 바꿔 끼운다. */
+export function enterApp() {
   if (router.canDismiss()) router.dismissAll();
   router.replace("/" as Href);
 }

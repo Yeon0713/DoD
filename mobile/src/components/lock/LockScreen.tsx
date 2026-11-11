@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import { Image, Pressable, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { goTask } from "@/components/today/goToday";
+import { goTask } from "@/components/ui/nav";
 import { DONNA_IMG } from "@/components/ui/donna";
 import { useCardState } from "@/lib/cardState";
 import { devFlags } from "@/lib/dev";

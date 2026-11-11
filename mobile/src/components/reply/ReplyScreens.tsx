@@ -5,13 +5,12 @@ import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon } from "@/components/icons/Icon";
-import { goToday } from "@/components/today/goToday";
-import { StarRow } from "@/components/today/StarRow";
-import { back } from "@/components/ui/nav";
+import { StarRow } from "@/components/task/StarRow";
+import { back, goHome } from "@/components/ui/nav";
 import { Bone, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { DraftBubble, FailNote, Note, ReviewBox, SubPage } from "@/components/ui/sub";
 import { publishReply, rewriteReply } from "@/lib/actions";
-import { markDone } from "@/lib/cardState";
+import { markDone, markPlanDone } from "@/lib/cardState";
 import { PLATFORM_KO } from "@/lib/labels";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { clockKo, relativeDay } from "@/lib/time";
@@ -101,15 +100,14 @@ export function ReplyScreen() {
       return;
     }
     const sent = { note: nudge ? "인사를 보냈어요" : "답글을 올렸어요", reply: text };
-    markDone(`APPROVAL_REQUEST:${planId}`, sent);
-    markDone(`EXECUTE_REMINDER:${planId}`, sent);
+    markPlanDone(planId, sent);
     flashToast(nudge ? "인사를 보냈어요" : "답글을 올렸어요", `${PLATFORM_KO[review.platform]}에서 볼 수 있어요`);
-    goToday();
+    goHome();
   };
   const approve = () => {
     markDone(`APPROVAL_REQUEST:${planId}`, { note: nudge ? "인사를 맡겼어요" : "답글을 맡겼어요", reply: text });
     flashToast(nudge ? "인사를 맡겼어요" : "답글을 맡겼어요", `${relativeDay(exec, now)} ${clockKo(exec)}에 ${nudge ? "보낼게요" : "올릴게요"}`);
-    goToday();
+    goHome();
   };
 
   return (
@@ -238,7 +236,7 @@ export function BatchReplyScreen() {
     markDone(`BASIC:APPROVAL_REQUEST:${exec}`, { note: `답글 ${n}개를 맡겼어요` });
     prefs.write({ firstDayPending: false });
     flashToast(`답글 ${n}개를 맡겼어요`, `${when}에 함께 올릴게요`);
-    goToday();
+    goHome();
   };
 
   if (one !== undefined && one !== "") {

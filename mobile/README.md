@@ -21,6 +21,7 @@ npx expo start
 
 ```bash
 npx tsc --noEmit                    # 타입 검사
+npm run lint                        # ESLint (eslint-config-expo, React 훅 규칙 포함)
 npx expo-doctor                     # 의존성 · 설정 점검
 npx expo export --platform web      # 웹 번들이 만들어지는지
 npx expo run:ios                    # 네이티브 빌드로 시뮬레이터에 설치
@@ -43,7 +44,8 @@ mobile/
    │  ├─ (tabs)/         하단 탭: index(홈, 07) · week(이번 주) · sales(매출) · settings(설정)
    │  ├─ task.tsx        지금 할 일 (07-3): 홈에서 카드 하나를 열어 처리한다
    │  └─ done/[id].tsx   끝낸 일 다시 보기 (07-4)
-   ├─ components/        화면 조각
+   ├─ components/        화면 조각 (home: 홈과 끝낸 일, task: 지금 할 일과 카드, ui/nav.ts: 화면 이동 도우미)
+   ├─ lib/               화면 밖 로직 (useHome.ts의 useTodayCards: 오늘 카드 목록, cardState.ts: 카드 처리 상태)
    ├─ theme/tokens.json  디자인 토큰 원본
    └─ global.css         Tailwind 진입점
 ```

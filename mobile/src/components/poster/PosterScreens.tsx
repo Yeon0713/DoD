@@ -7,14 +7,15 @@ import { useRef, useState, type ComponentRef } from "react";
 import { Image, Platform, Pressable, ScrollView, TextInput, useWindowDimensions, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon, type IconName } from "@/components/icons/Icon";
-import { goHome, param, storeName } from "@/components/start/flow";
+import { param, storeName } from "@/components/start/flow";
+import { goHome } from "@/components/ui/nav";
 import { DONNA_IMG } from "@/components/ui/donna";
 import { Bone, DonnaImage, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Sheet, useSheetClose } from "@/components/ui/Sheet";
 import { CenterMessage, FailNote, Note, SubPage } from "@/components/ui/sub";
 import { makePoster } from "@/lib/actions";
 import { happening } from "@/lib/cards";
-import { markDone } from "@/lib/cardState";
+import { markDone, markPlanDone } from "@/lib/cardState";
 import { drafts, flashToast } from "@/lib/localStore";
 import { defaultHeadline, readKept, THEME_STYLE, THEMES, type KeptPoster, type Theme } from "@/lib/poster";
 import { clockKo, relativeDay } from "@/lib/time";
@@ -242,8 +243,7 @@ export function PosterScreen() {
         footer={
           <PrimaryButton
             onPress={() => {
-              markDone(`APPROVAL_REQUEST:${planId}`, { note: "포스터를 올렸어요" });
-              markDone(`EXECUTE_REMINDER:${planId}`, { note: "포스터를 올렸어요" });
+              markPlanDone(planId, { note: "포스터를 올렸어요" });
               goHome();
             }}
           >

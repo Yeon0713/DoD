@@ -1,7 +1,7 @@
 // 시안에는 있지만 서버에 아직 없는 값들의 프론트 목업 (docs/frontend_plan_v4.md 7-2).
 // 서버가 같은 값을 주기 시작하면 이 파일에서 하나씩 지운다. 문구는 Figma 04 시안을 따른다.
 import { storage } from "@/lib/storage";
-import type { ComplaintType, NoticeItem, PlanItem, Review, StoreSettings, TodayBatch } from "@/types/contract";
+import type { NoticeItem, PlanItem, Review, StoreSettings, TodayBatch } from "@/types/contract";
 
 /** 답글 초안. 서버에 draft_text가 생기기 전까지 쓴다. */
 const DRAFTS: Record<string, string> = {
@@ -44,15 +44,6 @@ export function mockRewrite(text: string, style: "short" | "polite"): string {
 }
 
 /** 04-24 점검 목록 */
-export const CHECKLIST: Record<ComplaintType, string[]> = {
-  DELIVERY_DELAY: ["바쁜 시간 조리 순서 정하기", "포장할 자리 미리 비워 두기", "배달앱 조리 시간 늘려 두기"],
-  TASTE: ["오늘 간 한 번 더 보기", "육수 끓이는 시간 맞추기", "레시피 양념 양 다시 적기"],
-  PORTION: ["담는 그릇과 양 맞추기", "사진과 같은 양인지 보기", "포장 전에 한 번 더 보기"],
-  HYGIENE: ["주방 바닥과 조리대 닦기", "포장 용기 뚜껑 확인하기", "위생 장갑 바꿔 끼기"],
-  PHOTO_MISMATCH: ["메뉴 사진 새로 찍기", "사진과 담는 모양 맞추기", "배달앱 사진 바꾸기"],
-  SERVICE: ["전화 받는 말 정하기", "요청사항 한 번 더 읽기", "주문 확인 문자 보내기"],
-};
-
 /** 메뉴 순서 예시. 서버에 메뉴 API가 없어서 업종별 예시를 쓴다 (04-53). */
 const MENUS: Record<string, { name: string; tags: ("SEASON" | "GAME" | "EVENT")[] }[]> = {
   국수: [

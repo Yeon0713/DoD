@@ -1,5 +1,5 @@
 // 홈(07-1)과 지금 할 일(07-3)이 같이 쓰는 부품: 불러오는 중(06-8 계열), 인터넷 끊김(06-9), 알림 꺼짐 띠(06-4n).
-import { useEffect, useRef, useState, type ReactElement, type ReactNode } from "react";
+import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import { Animated, Easing, Platform, Pressable, ScrollView, View, type RefreshControlProps } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon, type IconName } from "@/components/icons/Icon";
@@ -29,7 +29,7 @@ export function useWaitStage(waiting: boolean) {
 
 /** "새 할 일 확인 중" 옆에서 천천히 도는 아이콘 */
 function Spinner() {
-  const v = useRef(new Animated.Value(0)).current;
+  const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
     const loop = Animated.loop(Animated.timing(v, { toValue: 1, duration: 2000, easing: Easing.linear, useNativeDriver: Platform.OS !== "web" }));
     loop.start();

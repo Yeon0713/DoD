@@ -39,11 +39,6 @@ export function flashToast(title: string, sub?: string) {
   toastListeners.forEach((l) => l());
 }
 
-export function peekToast(): Toast | null {
-  const raw = session.get("dona.toast");
-  return raw ? (JSON.parse(raw) as Toast) : null;
-}
-
 export function clearToast() {
   session.delete("dona.toast");
   toastListeners.forEach((l) => l());

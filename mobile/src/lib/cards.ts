@@ -2,7 +2,7 @@
 // 카드 모양과 문구는 Figma 06 시안(06-4, 06-10, 06-12, 06-13, 06-14, 06-15, 06-16, 06-17, 06-31, 06-39, 06-41)을 따른다.
 import type { IconName } from "@/components/icons/Icon";
 import type { CalendarCell, ComplaintType, PlanItem, Review, StoreSettings } from "@/types/contract";
-import { LAST_WEEK_LINE, mockDraft } from "@/mocks/extras";
+import { LAST_WEEK_LINE, mockDraft, storeMenus } from "@/mocks/extras";
 import { USE_MOCK } from "./api";
 import { COMPLAINT_FOUND, COMPLAINT_ICON, COMPLAINT_REPEAT, COMPLAINT_SHORT, COMPLAINT_TITLE, PLATFORM_KO } from "./labels";
 import type { QueueEntry } from "./queue";
@@ -10,7 +10,6 @@ import type { PosterProps } from "@/components/poster/PosterCard";
 import { dayChange, type DayKind } from "./calendarDay";
 import { menuOrderFor } from "./menuOrder";
 import { defaultHeadline, readKept } from "./poster";
-import { storeMenus } from "@/mocks/extras";
 import { addDays, clockKo, isWeekend, monthDay, relativeDay, weekdayName } from "./time";
 
 export type Tone = "urgent" | "brand" | "calm" | "done";
@@ -256,15 +255,6 @@ function basicReplies(q: QueueEntry, ctx: CardContext): CardView {
     secondary: LATER,
   };
 }
-
-const FIX_HOW: Record<ComplaintType, string> = {
-  DELIVERY_DELAY: "조리, 배달 순서를 점검해요",
-  TASTE: "간과 조리 순서를 점검해요",
-  PORTION: "담는 양을 점검해요",
-  HYGIENE: "주방 위생을 점검해요",
-  PHOTO_MISMATCH: "메뉴 사진을 점검해요",
-  SERVICE: "응대 방법을 점검해요",
-};
 
 function reviewFix(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
   const from = addDays(p.target_date, -7);

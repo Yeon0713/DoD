@@ -5,24 +5,16 @@ import { View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon } from "@/components/icons/Icon";
 import { DraftBubble, SubPage } from "@/components/ui/sub";
-import { TaskCard } from "@/components/today/TaskCard";
-import { useCardState } from "@/lib/cardState";
-import { devFlags } from "@/lib/dev";
-import { drafts } from "@/lib/localStore";
+import { TaskCard } from "@/components/task/TaskCard";
 import { hhmm, weekdayName, ymd } from "@/lib/time";
-import { buildTodayCards } from "@/lib/todayCards";
-import { useHome } from "@/lib/useHome";
+import { useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 
 const C = tokens.colors;
 
 export function DoneScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, now, prefs: p, allWeek } = useHome();
-  const store = useCardState();
-  const savedDrafts = drafts.useValue();
-  const focus = devFlags.useValue().card;
-  const view = data ? buildTodayCards(data, now, p, store, focus, savedDrafts, allWeek) : null;
+  const { data, view, store, now } = useTodayCards();
   const card = view?.cards.find((c) => c.id === id);
   const s = id ? store[id] : undefined;
 

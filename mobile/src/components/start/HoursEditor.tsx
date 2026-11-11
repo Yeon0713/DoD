@@ -71,15 +71,6 @@ function usualDay(w: WeeklyHours) {
   return { open: s.open_time, close: s.close_time };
 }
 
-/** 브레이크 타임이 있는 요일 (06-2e "(화 ~ 일)") */
-export function openDaysLabel(w: WeeklyHours): string {
-  const flat = Object.fromEntries(WEEKDAYS.map(({ code }) => [code, w[code] ? { open: "00:00", close: "01:00" } : null])) as WeeklyHours;
-  return weeklyRows(flat)
-    .filter((r) => !r.closed)
-    .map((r) => r.days)
-    .join(", ");
-}
-
 /** 06-2i, 06-2e, 06-19h 요일별 장사 시간 + 브레이크 타임 */
 export function WeeklyEditor({ value, onChange }: { value: WeekState; onChange: (v: WeekState) => void }) {
   const [open, setOpen] = useState<Weekday | "BREAK" | null>(null);

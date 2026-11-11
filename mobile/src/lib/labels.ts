@@ -1,5 +1,5 @@
 // 서버 코드값을 화면 문구로 바꾸는 사전. 화면 문구는 Figma 04 시안을 따른다.
-import type { ComplaintGroup, ComplaintType, Platform, Slot } from "@/types/contract";
+import type { ComplaintGroup, ComplaintType, Platform } from "@/types/contract";
 import type { IconName } from "@/components/icons/Icon";
 
 export const PLATFORM_KO: Record<Platform, string> = {
@@ -7,12 +7,6 @@ export const PLATFORM_KO: Record<Platform, string> = {
   BAEMIN: "배달의민족",
   YOGIYO: "요기요",
   COUPANG: "쿠팡이츠",
-};
-
-export const SLOT_KO: Record<Slot, string> = {
-  OPENING: "출근 후",
-  AFTERNOON: "점심 장사 끝나고",
-  CLOSING: "마감 전",
 };
 
 /** 불만 리뷰 카드 제목. 06부터 한 줄로 쓴다 (Figma 06-4, 06-39). */

@@ -1,6 +1,6 @@
 // 여러 화면이 같이 쓰는 작은 부품. 크기와 색은 Figma 05, 06 시안(docs/frontend_plan_v4.md 3장)을 따른다.
 // 글자에는 늘 text-display / text-title / text-body / text-label / text-button / text-small 중 하나를 준다(폰트가 거기 들어 있다).
-import { useEffect, useRef, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Text } from "./Text";
 import { Animated, Image, Pressable, View } from "react-native";
 import { Icon, type IconName } from "@/components/icons/Icon";
@@ -153,7 +153,7 @@ export function TextLink({ children, href, onPress, className = "" }: { children
 
 /** 불러오는 중 뼈대 (05-8). 0.3초부터 보이고 밝기가 천천히 오르내린다. */
 export function Bone({ className = "", style }: { className?: string; style?: object }) {
-  const v = useRef(new Animated.Value(0.55)).current;
+  const [v] = useState(() => new Animated.Value(0.55));
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([

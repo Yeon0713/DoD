@@ -10,18 +10,16 @@ import { TabPage } from "@/components/ui/TabPage";
 import { DonnaImage, PrimaryButton, ProgressSteps, StatusPill } from "@/components/ui/parts";
 import { go } from "@/components/ui/nav";
 import { ApiFailure } from "@/lib/api";
-import { isOpen, useCardState, type CardStatus } from "@/lib/cardState";
+import { isOpen, type CardStatus } from "@/lib/cardState";
 import type { CardView } from "@/lib/cards";
 import { devFlags } from "@/lib/dev";
 import { slotLabel } from "@/lib/hours";
-import { drafts } from "@/lib/localStore";
 import { nextSlot } from "@/lib/queue";
 import { addDays, dateOnly, hhmm, monthDay, relativeDay, weekdayName, ymd } from "@/lib/time";
-import { buildTodayCards } from "@/lib/todayCards";
-import { useHome } from "@/lib/useHome";
+import { useHome, useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Slot, StoreSettings } from "@/types/contract";
-import { Checking, Loading, NEXT_ICON, NotifyOffBanner, Offline, useWaitStage } from "@/components/today/states";
+import { Checking, Loading, NEXT_ICON, NotifyOffBanner, Offline, useWaitStage } from "@/components/task/states";
 
 const C = tokens.colors;
 
@@ -140,19 +138,15 @@ function List({ rows, testID }: { rows: Row[]; testID: string }) {
 }
 
 function HomeBody() {
-  const { data, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useHome();
-  const store = useCardState();
-  const savedDrafts = drafts.useValue();
-  const focus = devFlags.useValue().card;
+  const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek } = useTodayCards();
   const stage = useWaitStage(isPending);
 
-  if (!data) {
+  if (!data || !view) {
     const header = <Header now={now} title={"오늘 할 일을\n모으고 있어요"} total={1} done={0} />;
     if (error instanceof ApiFailure && error.offline) return <Offline header={header} onRetry={() => refetch()} />;
     return <Loading header={header} stage={error ? 3 : stage} onRetry={() => refetch()} />;
   }
 
-  const view = buildTodayCards(data, now, p, store, focus, savedDrafts, allWeek);
   const settings = data.settings.settings;
   const statusOf = (c: CardView): CardStatus | undefined => store[c.id];
 

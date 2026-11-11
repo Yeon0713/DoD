@@ -9,6 +9,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { back, go, goHome } from "@/components/ui/nav";
 import { PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Toggle } from "@/components/ui/sub";
+import { account } from "@/lib/account";
 import { USE_MOCK } from "@/lib/api";
 import { resetCardState, useCardState } from "@/lib/cardState";
 import { devFlags, virtualNow, type DevFlags } from "@/lib/dev";
@@ -44,6 +45,11 @@ const DECLINED: Partial<Prefs> = { naverConnected: false, naverAuto: false, nave
 const CONNECTED: Partial<Prefs> = { naverConnected: true, naverAuto: false, naverDeclined: false };
 const AUTO: Partial<Prefs> = { naverConnected: true, naverAuto: true, naverDeclined: false };
 const DEFAULT_PREFS: Partial<Prefs> = { onboarded: true, notifyOff: false, firstDayPending: false, ...NAVER_OFF };
+
+/** 바로 가기와 매장 시나리오는 로그인한 사장님으로 연다 (로그인 안 했으면 네이버로 가입한 것으로 본다). */
+function signInForReview() {
+  if (!account.read().method) account.write({ method: "naver" });
+}
 
 /** 바로 가기 한 줄. card는 오늘 화면에서 맨 앞으로 꺼낼 카드 id, flags는 그때만 켤 개발 스위치 */
 type Go = { id: string; label: string; href: string; now?: string; card?: string; flags?: Partial<DevFlags>; prefs?: Partial<Prefs>; toast?: [string, string]; note?: string };
@@ -310,6 +316,7 @@ export function DevScreen() {
     }
     devFlags.write(patch);
     prefs.write({ ...DEFAULT_PREFS, ...g.prefs });
+    signInForReview();
     resetCardState();
     // 끊김, 늦추기를 켜거나 끌 때는 홈과 매출을 처음부터 다시 받는다.
     if (g.flags || before.offline || before.fresh || before.delay !== null) reload();
@@ -321,6 +328,7 @@ export function DevScreen() {
   const pickStore = (per: Persona, sc: Scene) => {
     devFlags.write({ persona: per.id, personaScene: sc.id, allWeek: false, ...virtualNow(sc.now), card: null, cardNow: null, offline: false, fresh: false, delay: null });
     prefs.write({ ...DEFAULT_PREFS, ...sc.prefs });
+    signInForReview();
     resetCardState();
     setMockStore(per.store.name, per.store.category);
     reload();
@@ -335,6 +343,7 @@ export function DevScreen() {
     prefs.reset();
     drafts.reset();
     devFlags.reset();
+    account.reset();
     setRule(readRule());
     qc.removeQueries();
     flashToast("처음 상태로 돌렸어요", "처음 쓰는 날부터 다시 볼 수 있어요");

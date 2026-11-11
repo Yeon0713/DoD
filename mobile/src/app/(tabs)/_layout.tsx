@@ -4,6 +4,7 @@ import { Tabs } from 'expo-router/js-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Icon, type IconName } from '@/components/icons/Icon';
+import { account } from '@/lib/account';
 import { prefs } from '@/lib/localStore';
 import tokens from '@/theme/tokens.json';
 
@@ -16,6 +17,9 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   // 처음 쓰는 사람은 처음 설정(가게 찾기 → 장사 시간 → 알림)부터 한다.
   const onboarded = prefs.useValue().onboarded;
+  const signedIn = account.useValue().method !== null;
+  // 08-1: 로그인 안 했으면 첫 화면(처음) 또는 로그인(다시 왔을 때)으로
+  if (!signedIn) return <Redirect href={onboarded ? "/login" : "/start"} />;
   if (!onboarded) return <Redirect href="/start" />;
   return (
     <Tabs

@@ -15,6 +15,7 @@ import { Sheet } from "@/components/ui/Sheet";
 import { FailNote, ListRow, Note, SubPage, Toggle } from "@/components/ui/sub";
 import { ApiFailure, api } from "@/lib/api";
 import { hoursLabel, slotChoices, slotInfo, slotLabel } from "@/lib/hours";
+import { account } from "@/lib/account";
 import { flashToast, prefs } from "@/lib/localStore";
 import { useHome } from "@/lib/useHome";
 import { STORE_ADDRESS } from "@/mocks/extras";
@@ -36,6 +37,7 @@ const SLOTS: Slot[] = ["OPENING", "AFTERNOON", "CLOSING"];
 /** 06-19 설정 모아 보기 */
 export function SettingsScreen() {
   const { data, prefs: p } = useHome();
+  const acc = account.useValue();
   const head = (
     <Text className="pt-2 text-display text-ink" accessibilityRole="header">
       설정
@@ -57,6 +59,8 @@ export function SettingsScreen() {
       {head}
       <View className="mt-4">
         <ListRow icon="store" title={storeName(s.name)} sub={STORE_ADDRESS[s.store_id]} />
+        {/* 08-1-0 규칙 6: 가게 줄 아래에 계정 */}
+        <ListRow testID="settings-account" icon="user" title="계정" right={right(acc.method === "naver" ? "네이버" : acc.phone ? "휴대폰" : "")} href="/settings/account" />
         <ListRow testID="settings-hours" icon="clock" title="장사 시간" right={right(hoursLabel(s))} href="/settings/hours" />
         <ListRow testID="settings-notify" icon="bell" title="알림 받는 시간" right={right("하루 3번")} href="/settings/notify-time" />
         <ListRow testID="settings-busy" icon="clock" title="바쁜 장사 시간" right={right(busy.join(", ") || "없음")} href="/settings/busy" />

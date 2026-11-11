@@ -37,6 +37,28 @@ export async function connectNaver() {
   failIfOffline();
 }
 
+/** 08-1n 네이버로 시작하기, 로그인, 계정 연결. 제안: 네이버 로그인(OAuth) 뒤 POST /api/auth/naver { code } */
+export async function naverLogin() {
+  await wait(1500);
+  failIfOffline();
+}
+
+/** 08-1p 숫자 받기. 제안: POST /api/auth/phone/code { phone } */
+export async function sendPhoneCode() {
+  await wait(700);
+  failIfOffline();
+}
+
+/** 목업에서 틀린 숫자로 보는 값 (검토용) */
+export const WRONG_CODE = "000000";
+
+/** 08-1o 숫자 확인. 제안: POST /api/auth/phone/verify { phone, code }. 목업은 000000만 틀린 것으로 본다. */
+export async function verifyPhoneCode(code: string) {
+  await wait(700);
+  failIfOffline();
+  if (code === WRONG_CODE) throw new Error("WRONG_CODE");
+}
+
 /** 제안: POST /api/posters */
 export async function makePoster() {
   await wait(1600);

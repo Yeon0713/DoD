@@ -21,6 +21,7 @@ import { useHome } from "@/lib/useHome";
 import { STORE_ADDRESS } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { Slot } from "@/types/contract";
+import { AskLink, NaverButton } from "./AccountScreens";
 import { closingNotes, saveWeek, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
 import { errorText, enterApp, NAVER_PLACE_KEY, param, PLATFORM_ORDER, PLATFORM_SHORT, STEPS, storeName } from "./flow";
 import { turnOnNotifications } from "./notify";
@@ -28,7 +29,7 @@ import { turnOnNotifications } from "./notify";
 const C = tokens.colors;
 const SLOT_ICON: Record<Slot, IconName> = { OPENING: "sunrise", AFTERNOON: "sun", CLOSING: "moon" };
 
-/** 06-1 왜 도나인가 */
+/** 06-1, 08-1 왜 도나인가. 08-1: 시작하기 대신 네이버로 시작하기, 휴대폰 번호로 시작하기, 로그인 */
 export function IntroScreen() {
   const reasons: { icon: IconName; text: string }[] = [
     { icon: "message", text: "배달앱 리뷰에 답글을 써 둬요" },
@@ -37,16 +38,16 @@ export function IntroScreen() {
   ];
   return (
     <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: C.paper }}>
-      <View className="flex-1 px-6 pb-5 pt-16">
+      <View className="flex-1 px-6 pb-5 pt-10">
         <View className="items-center">
-          <DonnaImage img="b4-0" size={220} />
+          <DonnaImage img="b4-0" size={180} />
           <Text className="mt-2 text-center text-display text-ink" accessibilityRole="header">
             {"손님이 다시 오게,\n도나가 먼저 챙겨요"}
           </Text>
           <Text className="mt-2 text-center text-body text-ink-2">사장님은 보고 누르기만 하세요</Text>
         </View>
         <View className="flex-1" />
-        <View className="mb-6">
+        <View className="mb-5">
           {reasons.map((r) => (
             <View key={r.text} className="h-12 flex-row items-center gap-3">
               <Icon name={r.icon} size={28} color={C.brand} />
@@ -54,7 +55,15 @@ export function IntroScreen() {
             </View>
           ))}
         </View>
-        <PrimaryButton href="/start/store">시작하기</PrimaryButton>
+        <View className="gap-2.5">
+          <NaverButton testID="start-naver" onPress={() => go("/start/naver-login")}>
+            네이버로 시작하기
+          </NaverButton>
+          <SecondaryButton testID="start-phone" outline onPress={() => go("/start/phone")}>
+            휴대폰 번호로 시작하기
+          </SecondaryButton>
+          <AskLink ask="이미 쓰고 계세요?" label="로그인" testID="start-login" onPress={() => go("/login")} />
+        </View>
       </View>
     </SafeAreaView>
   );

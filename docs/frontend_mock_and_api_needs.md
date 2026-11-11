@@ -232,12 +232,23 @@
 - 다 끝낸 홈의 "오늘 함께 한 일"(Figma 08)은 오늘 끝낸 카드의 계획 종류로 센다 (`lib/todayCards.ts` `countDone`). 답글(REVISIT_REPLY, REORDER_NUDGE), 점검(REVIEW_FIX), 메뉴판(MENU_ORDER), 포스터(POSTER). 같은 계획은 한 번, 좋은 리뷰 묶음은 답글 수만큼. 서버 연결 후에는 위 오늘 처리한 일 목록의 `action`과 계획 종류로 같은 값을 만들 수 있다.
 - "나중에"로 미룬 일은 홈 "다음 할 일"에 다시 알릴 시각과 함께 보인다. 서버가 미룬 시각(`snoozed_until`)을 돌려줘야 한다 (3장 D).
 
+### Z3. 08 가입과 로그인, 네이버 계정 연결 (08-1, 08-1L, 08-1n, 08-1c, 08-1p, 08-1o, 08-19a, 08-19b)
+- 비밀번호는 만들지 않는다. 네이버로 시작하거나 휴대폰 번호로 문자 숫자 6개를 받아 시작한다. 목업은 이 기기(`dona.account.v1`)에 가입 방법과 번호만 둔다.
+- 필요한 API 제안
+  - 네이버 로그인(OAuth) 뒤 `POST /api/auth/naver { code }` → `{ token, owner_name, places: [{ place_id, name, address }] }`. 08-1c는 `places`의 가게를 보여 준다.
+  - `POST /api/auth/phone/code { phone }`, `POST /api/auth/phone/verify { phone, code }` → `{ token }`. 숫자는 3분 동안 쓰고, 다시 받기는 30초 뒤부터.
+  - `GET /api/account` → `{ methods: ["phone", "naver"], phone_masked, naver: { linked, place_name } }` (08-19)
+  - `POST /api/account/naver` (연결), `DELETE /api/account/naver` (끊기, 리뷰와 할 일은 남기고 메뉴 순서 바꾸기만 멈춤), `DELETE /api/account` (탈퇴)
+- 목업 규칙: 네이버 로그인은 1.5초 뒤 돌아온 것으로 본다. 숫자는 `000000`만 틀린 것으로 본다.
+- 네이버 계정 연결은 지금 `prefs.naverConnected`(네이버 플레이스 연결)와 같은 값을 쓴다. 서버에서도 하나로 볼지 정해야 한다.
+
 ## 4. 이 기기에만 저장하는 값
 
 | 키 | 저장소 | 내용 | 서버 연결 후 |
 |---|---|---|---|
 | `dona.home.v3` | localStorage | 마지막으로 받은 5개 응답 (다시 열 때 먼저 그림) | 그대로 둠 |
 | `dona.cardState.v1` | localStorage | 카드 처리 상태. 끝낸 카드는 끝낸 시각, 한 일, 올린 답글도 (07 홈 "오늘 끝낸 일") | 3장 D, Z2로 옮김 |
+| `dona.account.v1` | 앱 저장소 | 가입 방법(`naver`, `phone`)과 휴대폰 번호. 없으면 로그인 안 함 | 3장 Z3 계정 API로 옮김 |
 | `dona.prefs.v1` | localStorage | 처음 쓰는 날, 알림 꺼 둠, 첫날 카드, 네이버 연결, 알아서 바꾸기, "직접 할게요" | 3장 H, N으로 옮김 |
 | `dona.drafts.v1` | localStorage | 고쳐 쓴 답글 (plan_id → 글), 만들어 둔 포스터 (`poster:{plan_id}` → 메뉴, 글자, 색) | 3장 C, E, I로 보냄 |
 | `dona.toast` | sessionStorage | 화면을 옮긴 뒤 위에 띄울 띠 | 그대로 둠 |

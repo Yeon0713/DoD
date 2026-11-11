@@ -42,6 +42,7 @@ mobile/
    ├─ app/               화면 (파일 = 주소)
    │  ├─ _layout.tsx     폰트 로딩, QueryClient, 전체 Stack
    │  ├─ (tabs)/         하단 탭: index(홈, 07) · week(이번 주) · sales(매출) · settings(설정)
+   │  ├─ login.tsx       로그인 (08-1L). 가입은 start/naver-login, naver-store, phone, code (08-1n, 08-1c, 08-1p, 08-1o)
    │  ├─ task.tsx        지금 할 일 (07-3): 홈에서 카드 하나를 열어 처리한다
    │  └─ done/[id].tsx   끝낸 일 다시 보기 (07-4)
    ├─ components/        화면 조각 (home: 홈과 끝낸 일, task: 지금 할 일과 카드, ui/nav.ts: 화면 이동 도우미)

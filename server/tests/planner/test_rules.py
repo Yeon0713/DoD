@@ -64,6 +64,21 @@ def test_review_after_saturday_approval_moves_to_next_saturday():
     assert plan_review_replies([sunday], CYCLES, STORE)[0].approval_request_at == kst("2026-11-21 10:00")
 
 
+def test_review_between_ten_and_eleven_on_saturday_is_answered_this_week_at_next_slot():
+    late = review("rv_121").model_copy(update={"written_at": kst("2026-11-21 10:30")})
+    item = plan_review_replies([late], CYCLES, STORE)[0]
+    assert item.approval_request_at == item.execute_at == kst("2026-11-21 14:00")  # 10:00 승인을 놓쳐 다음 알림 시각에 바로
+
+
+def test_reply_week_starts_at_saturday_eleven():
+    from app.planner.rule_review_reply import current_reply_week_start
+
+    assert current_reply_week_start(kst("2026-11-19 15:00")) == kst("2026-11-14 11:00")  # 목요일
+    assert current_reply_week_start(kst("2026-11-21 10:59")) == kst("2026-11-14 11:00")  # 토요일 11시 전
+    assert current_reply_week_start(kst("2026-11-21 11:00")) == kst("2026-11-21 11:00")  # 토요일 11시
+    assert current_reply_week_start(kst("2026-11-22 09:00")) == kst("2026-11-21 11:00")  # 일요일
+
+
 def test_unlabeled_review_is_skipped():
     unlabeled = review("rv_121").model_copy(update={"label": None})
     assert plan_review_replies([unlabeled], CYCLES, STORE) == []

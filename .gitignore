@@ -17,3 +17,5 @@ venv/
 server/check_apis.py
 
 jh/
+# SQLite 임시 파일
+*.db-journal

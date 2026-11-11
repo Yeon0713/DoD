@@ -4,8 +4,10 @@ server/ 폴더에서 실행:
     python -m db.mock.generate            # 기본 시드
     python -m db.mock.generate --seed 7   # 다른 시드
 
-같은 시드면 항상 같은 데이터가 나온다. 실행하면 DB 의 C1 테이블을 비우고 다시 채운 뒤,
-같은 내용을 db/mock/out/<테이블>.csv 로도 저장한다.
+같은 시드면 항상 같은 데이터가 나온다. 실행하면 개발 DB 파일(db/data/*.db)을 새로 만들고,
+같은 내용을 CSV 로도 저장한다.
+- 매장 전용 테이블 → db/data/<매장>.db (s001.orders ...), db/mock/out/<매장>/<테이블>.csv
+- 공통 테이블(events, games, weather_daily) → db/data/common.db, db/mock/out/common/<테이블>.csv
 
 - 매장: s001 한림국수, s002 두리맥주(17시~다음 날 3시), s003 석사돈가스. 메뉴·영업시간·주문 패턴·알바·리뷰 문구가 매장마다 다르다.
 - 매출·근무·날씨: 2026-01-01 ~ 12-31. 계절, 방학, 행사, 국가대표 경기, 비 효과를 넣었다.
@@ -21,10 +23,10 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import insert, text
+from sqlalchemy import insert
 
 from db import models
-from db.session import engine
+from db.session import DATA_DIR, engine, store_engine
 
 SEED = 20260817
 KST = ZoneInfo("Asia/Seoul")
@@ -207,7 +209,7 @@ STORES = [
             "생맥주가 시원하고 거품도 적당해요.",
             "친구들이랑 2차로 왔는데 분위기 좋아요.",
             "{menu} 양 많고 맛있어요. 또 올게요!",
-            "늦게까지 해서 시험 끝나고 오기 딱이에요.",
+            "새벽 3시까지 해서 시험 끝나고 오기 딱이에요.",
             "사장님 친절하시고 안주가 빨리 나와요.",
             "{menu} 처음 먹어봤는데 추천합니다.",
             "가격 대비 안주 구성이 좋아요.",
@@ -220,7 +222,7 @@ STORES = [
             "{menu} 너무 짜요. 맥주만 계속 마셨네요.",
             "치킨 속이 덜 익은 것 같았어요.",
             "{menu} 기름이 너무 많고 맛이 별로예요.",
-            "생맥주 맛이 이상했어요. 김이 다 빠졌어요.",
+            "생맥주 맛이 이상해요. 김이 다 빠졌어요.",
             "{menu} 양념이 너무 달아서 별로였어요.",
             "먹태가 딱딱하고 비린 맛이 났어요.",
         ],
@@ -310,8 +312,8 @@ STORES = [
             "가격이 만 원 넘지만 그 값 해요.",
         ],
         "taste": [
-            "{menu} 고기가 질기고 퍽퍽했어요.",
-            "튀김옷이 너무 두껍고 기름져요.",
+            "{menu} 고기가 질기고 맛이 별로예요.",
+            "튀김옷이 너무 두껍고 맛없어요.",
             "{menu} 소스가 너무 짜요.",
             "속이 덜 익은 것 같았어요.",
             "{menu} 기름 냄새가 심하고 맛이 별로예요.",
@@ -324,7 +326,6 @@ STORES = [
         ],
     },
 ]
-STORE_BY_ID = {s["store"]["store_id"]: s for s in STORES}
 
 # 매장 공통 불만 리뷰 문구
 DELAY = [
@@ -340,10 +341,10 @@ PORTION = [
     "{menu} 양이 너무 적어요. 예전보다 확 줄었네요.",
     "가격 대비 양이 아쉬워요.",
     "양이 좀 적어서 배가 안 찼어요.",
-    "사진 보고 시켰는데 양이 너무 작아요.",
+    "기대했던 것보다 양이 너무 적어요.",
 ]
 SERVICE = [
-    "{side} 빠졌어요. 전화했는데 안 받으시네요.",
+    "{side} 누락됐어요. 가게에 전화해도 안 받으시네요.",
     "주문한 {side} 안 왔어요. 누락 확인 부탁드려요.",
     "홀에서 먹었는데 직원 응대가 별로였어요.",
     "수저가 안 왔어요. 다음엔 꼭 챙겨주세요.",
@@ -504,42 +505,46 @@ def gen_store_orders(rng: random.Random, cfg: dict, weather: dict[date, dict]) -
                     at = kst(d, 0) + timedelta(minutes=minute, seconds=rng.randint(0, 59))
                     cust = rng.choices(customers, cust_w)[0] if channel == "delivery" else None
                     picked = pick_items(rng, cfg, d, channel)
-                    orders.append({"store_id": store["store_id"], "ordered_at": at, "channel": channel,
+                    orders.append({"ordered_at": at, "channel": channel,
                                    "customer_key": cust, "_items": picked,
                                    "_amount": sum(prices[n] * q for n, q in picked)})
     return orders
 
 
-def gen_orders(rng: random.Random, weather: dict[date, dict], menu_ids: dict[tuple[str, str], int]):
-    orders = [o for cfg in STORES for o in gen_store_orders(rng, cfg, weather)]
-    orders.sort(key=lambda o: (o["ordered_at"], o["store_id"]))
+def gen_orders(rng: random.Random, cfg: dict, weather: dict[date, dict]):
+    """한 매장의 주문과 주문 품목. id 는 매장마다 1부터."""
+    menu_ids = {name: i for i, (name, _, _) in enumerate(cfg["menu"], start=1)}
+    prices = {name: price for name, _, price in cfg["menu"]}
+    orders = sorted(gen_store_orders(rng, cfg, weather), key=lambda o: o["ordered_at"])
     rows, items = [], []
     for oid, o in enumerate(orders, start=1):
         o["order_id"] = oid
-        rows.append({"order_id": oid, "store_id": o["store_id"], "ordered_at": o["ordered_at"],
-                     "channel": o["channel"], "customer_key": o["customer_key"], "total_amount": o["_amount"]})
-        prices = {n: p for n, _, p in STORE_BY_ID[o["store_id"]]["menu"]}
+        rows.append({"order_id": oid, "ordered_at": o["ordered_at"], "channel": o["channel"],
+                     "customer_key": o["customer_key"], "total_amount": o["_amount"]})
         for name, qty in o["_items"]:
-            items.append({"order_id": oid, "menu_id": menu_ids[(o["store_id"], name)],
-                          "quantity": qty, "unit_price": prices[name]})
+            items.append({"order_id": oid, "menu_id": menu_ids[name], "quantity": qty, "unit_price": prices[name]})
     return rows, items, orders
 
 
+def review_pools(cfg: dict) -> dict[str, list[str]]:
+    """리뷰 종류별 문장 목록. {menu}, {side} 자리에 그 매장 메뉴가 들어간다."""
+    return {"positive": cfg["positive"], "mixed": cfg["mixed"], "taste": cfg["taste"],
+            "delay": cfg.get("delay", DELAY), "portion": PORTION, "service": SERVICE, "hygiene": HYGIENE}
+
+
 def review_text(rng: random.Random, cfg: dict, kind: str) -> str:
-    pool = {"positive": cfg["positive"], "mixed": cfg["mixed"], "taste": cfg["taste"],
-            "delay": cfg.get("delay", DELAY), "portion": PORTION, "service": SERVICE, "hygiene": HYGIENE}[kind]
     mains = [n for n, c, _ in cfg["menu"] if c == "main"]
     sides = [n for n, c, _ in cfg["menu"] if c == "side"]
-    return rng.choice(pool).format(menu=rng.choice(mains), side=rng.choice(sides))
+    return rng.choice(review_pools(cfg)[kind]).format(menu=rng.choice(mains), side=rng.choice(sides))
 
 
-def gen_store_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]:
-    store_id = cfg["store"]["store_id"]
+def gen_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]:
+    """한 매장의 리뷰. id 는 매장마다 1부터."""
     n = cfg["reviews"]
     review_cut = kst(REVIEW_END, 12)  # 리뷰 작성이 11/10 안에 끝나도록 주문은 그 전까지만
     by_cust: dict[str, list[dict]] = {}
     for o in orders:
-        if o["store_id"] == store_id and o["customer_key"] and o["ordered_at"] < review_cut:
+        if o["customer_key"] and o["ordered_at"] < review_cut:
             by_cust.setdefault(o["customer_key"], []).append(o)
     candidates = sorted(c for c, os in by_cust.items() if len(os) >= 2)
     linked = rng.sample(candidates, n["linked"])
@@ -568,74 +573,72 @@ def gen_store_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list
         else:
             kind = "positive"
         ratings, rw = RATING[kind]
-        rows.append({"store_id": store_id, "order_id": r["order"]["order_id"] if r["order"] else None,
+        rows.append({"order_id": r["order"]["order_id"] if r["order"] else None,
                      "customer_key": r["customer_key"], "written_at": r["written_at"],
                      "rating": rng.choices(ratings, rw)[0], "content": review_text(rng, cfg, kind),
                      "complaint_type": None})
-    return rows
-
-
-def gen_reviews(rng: random.Random, orders: list[dict]) -> list[dict]:
-    rows = [r for cfg in STORES for r in gen_store_reviews(rng, cfg, orders)]
-    rows.sort(key=lambda r: (r["written_at"], r["store_id"]))
+    rows.sort(key=lambda r: r["written_at"])
     for rid, r in enumerate(rows, start=1):
         r["review_id"] = rid
     return rows
 
 
-def gen_shifts(rng: random.Random, staff_ids: dict[tuple[str, int], int]) -> list[dict]:
-    """실제 출퇴근 기록. 30분 단위로, 출근은 예정 시각 그대로, 퇴근은 가끔 30분 연장된다."""
+def gen_shifts(rng: random.Random, cfg: dict) -> list[dict]:
+    """한 매장의 실제 출퇴근 기록. 30분 단위로, 출근은 예정 시각 그대로, 퇴근은 가끔 30분 연장된다.
+    staff_id 는 매장 안 알바 번호(1~5) 그대로."""
     rows = []
-    for cfg in STORES:
-        store_id = cfg["store"]["store_id"]
-        for d in days(START, END):
-            for slot, local_no in cfg["shift_template"].get(d.weekday(), {}).items():
-                (h1, m1), (h2, m2) = cfg["shift_slots"][slot]
-                start = kst(d, h1, m1)
-                overnight = (h2, m2) < (h1, m1)  # 자정 넘어 다음 날 퇴근
-                end = kst(d, h2, m2) + timedelta(days=overnight, minutes=30 if rng.random() < OVERTIME_PROB else 0)
-                rows.append((staff_ids[(store_id, local_no)], start, end))
+    for d in days(START, END):
+        for slot, staff_id in cfg["shift_template"].get(d.weekday(), {}).items():
+            (h1, m1), (h2, m2) = cfg["shift_slots"][slot]
+            start = kst(d, h1, m1)
+            overnight = (h2, m2) < (h1, m1)  # 자정 넘어 다음 날 퇴근
+            end = kst(d, h2, m2) + timedelta(days=overnight, minutes=30 if rng.random() < OVERTIME_PROB else 0)
+            rows.append((staff_id, start, end))
     rows.sort(key=lambda r: (r[1], r[0]))
     return [{"shift_id": i, "staff_id": s, "starts_at": a, "ends_at": b} for i, (s, a, b) in enumerate(rows, start=1)]
 
 
-def build(seed: int) -> dict[str, list[dict]]:
+def build(seed: int) -> dict[str, dict[str, list[dict]]]:
+    """{"common": {테이블: 행}, "s001": {테이블: 행}, ...}. 매장 키는 DB 스키마 이름과 같다."""
     rng = random.Random(seed)
-    menu = [{"store_id": cfg["store"]["store_id"], "name": n, "category": c, "price": p}
-            for cfg in STORES for n, c, p in cfg["menu"]]
-    for i, m in enumerate(menu, start=1):
-        m["menu_id"] = i
-    staff = [{"store_id": cfg["store"]["store_id"], "name": n, "hourly_wage": w, "_no": no}
-             for cfg in STORES for no, (n, w) in enumerate(cfg["staff"], start=1)]
-    for i, s in enumerate(staff, start=1):
-        s["staff_id"] = i
-
     weather = gen_weather(rng)
-    orders, items, raw = gen_orders(rng, {w["date"]: w for w in weather},
-                                    {(m["store_id"], m["name"]): m["menu_id"] for m in menu})
-    reviews = gen_reviews(rng, raw)
-    return {
-        "store": [cfg["store"] for cfg in STORES],
-        "menu": menu,
-        "staff": staff,
-        "shifts": gen_shifts(rng, {(s["store_id"], s["_no"]): s["staff_id"] for s in staff}),
-        "events": [{"event_id": i, "name": n, "kind": k, "starts_at": s.replace(tzinfo=KST),
-                    "ends_at": e.replace(tzinfo=KST), "lat": la, "lng": ln, "distance_km": km}
-                   for i, (n, k, s, e, la, ln, km) in enumerate(EVENTS, start=1)],
-        "games": [{"game_id": i, "sport": s, "level": lv, "title": t, "starts_at": at.replace(tzinfo=KST)}
-                  for i, (s, lv, t, at) in enumerate(GAMES, start=1)],
-        "weather_daily": weather,
-        "orders": orders,
-        "order_items": items,
-        "reviews": reviews,
+    by_date = {w["date"]: w for w in weather}
+    data: dict[str, dict[str, list[dict]]] = {
+        "common": {
+            "events": [{"event_id": i, "name": n, "kind": k, "starts_at": s.replace(tzinfo=KST),
+                        "ends_at": e.replace(tzinfo=KST), "lat": la, "lng": ln, "distance_km": km}
+                       for i, (n, k, s, e, la, ln, km) in enumerate(EVENTS, start=1)],
+            "games": [{"game_id": i, "sport": s, "level": lv, "title": t, "starts_at": at.replace(tzinfo=KST)}
+                      for i, (s, lv, t, at) in enumerate(GAMES, start=1)],
+            "weather_daily": weather,
+        },
     }
+    raw_orders = {}
+    for cfg in STORES:
+        sid = cfg["store"]["store_id"]
+        orders, items, raw_orders[sid] = gen_orders(rng, cfg, by_date)
+        data[sid] = {
+            "store": [cfg["store"]],
+            "menu": [{"menu_id": i, "name": n, "category": c, "price": p}
+                     for i, (n, c, p) in enumerate(cfg["menu"], start=1)],
+            "staff": [{"staff_id": i, "name": n, "hourly_wage": w} for i, (n, w) in enumerate(cfg["staff"], start=1)],
+            "orders": orders,
+            "order_items": items,
+        }
+    for cfg in STORES:
+        sid = cfg["store"]["store_id"]
+        data[sid]["reviews"] = gen_reviews(rng, cfg, raw_orders[sid])
+    for cfg in STORES:
+        sid = cfg["store"]["store_id"]
+        data[sid]["shifts"] = gen_shifts(rng, cfg)
+    return data
 
 
 # ── 저장 ─────────────────────────────────────────────
 TABLES = {
     "store": models.Store, "menu": models.Menu, "staff": models.Staff, "shifts": models.Shift,
-    "events": models.Event, "games": models.Game, "weather_daily": models.WeatherDaily,
     "orders": models.Order, "order_items": models.OrderItem, "reviews": models.Review,
+    "events": models.Event, "games": models.Game, "weather_daily": models.WeatherDaily,
 }
 
 
@@ -650,27 +653,46 @@ def to_csv_value(v):
 
 
 def table_rows(name: str, rows: list[dict]) -> list[dict]:
-    """모델에 있는 열만 남긴다 (_no 같은 내부 값 제거)."""
+    """모델에 있는 열만 남긴다."""
     cols = [c.name for c in TABLES[name].__table__.columns]
     return [{c: r[c] for c in cols} for r in rows]
 
 
-def write_csv(data: dict[str, list[dict]]) -> None:
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for name, rows in data.items():
-        cols = [c.name for c in TABLES[name].__table__.columns]
-        with open(OUT_DIR / f"{name}.csv", "w", newline="", encoding="utf-8") as f:
-            w = csv.writer(f)
-            w.writerow(cols)
-            for r in rows:
-                w.writerow([to_csv_value(r[c]) for c in cols])
+def write_csv(data: dict[str, dict[str, list[dict]]]) -> None:
+    """out/common/<테이블>.csv, out/<매장>/<테이블>.csv"""
+    for group, tables in data.items():
+        (OUT_DIR / group).mkdir(parents=True, exist_ok=True)
+        for name, rows in tables.items():
+            cols = [c.name for c in TABLES[name].__table__.columns]
+            with open(OUT_DIR / group / f"{name}.csv", "w", newline="", encoding="utf-8") as f:
+                w = csv.writer(f)
+                w.writerow(cols)
+                for r in rows:
+                    w.writerow([to_csv_value(r[c]) for c in cols])
 
 
-def load_db(data: dict[str, list[dict]]) -> None:
+def load_db(data: dict[str, dict[str, list[dict]]]) -> None:
+    """db/data/*.db 를 지우고 새로 만든다. 공통 테이블은 common.db, 매장 테이블은 매장 파일(s001.db ...)."""
+    engine.dispose()  # 열려 있는 연결이 옛 파일을 붙잡고 있지 않게
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for path in DATA_DIR.glob("*.db"):
+        path.unlink()
+    store_ids = [cfg["store"]["store_id"] for cfg in STORES]
+    for sid in store_ids:
+        (DATA_DIR / f"{sid}.db").touch()  # 빈 파일도 SQLite DB 다. 접속할 때 붙는다.
+
+    common = [TABLES[name].__table__ for name in models.COMMON_TABLES]
+    per_store = [TABLES[name].__table__ for name in models.STORE_TABLES]
     with engine.begin() as conn:
-        conn.execute(text("TRUNCATE " + ", ".join(TABLES) + " RESTART IDENTITY CASCADE"))
-        for name, rows in data.items():  # 부모 테이블부터 넣도록 TABLES 순서와 같다
-            conn.execute(insert(TABLES[name]), table_rows(name, rows))
+        models.Base.metadata.create_all(conn, tables=common)
+        for name in models.COMMON_TABLES:
+            conn.execute(insert(TABLES[name]), table_rows(name, data["common"][name]))
+    for sid in store_ids:
+        with store_engine(sid).begin() as conn:
+            models.Base.metadata.create_all(conn, tables=per_store)
+            for name in models.STORE_TABLES:  # 부모 테이블부터
+                conn.execute(insert(TABLES[name]), table_rows(name, data[sid][name]))
+    engine.dispose()
 
 
 def main() -> None:
@@ -683,19 +705,17 @@ def main() -> None:
     write_csv(data)
 
     print(f"seed={args.seed}")
-    for name, rows in data.items():
-        print(f"  {name:14s} {len(rows):6d}행")
+    print("  공통: " + ", ".join(f"{name} {len(rows)}행" for name, rows in data["common"].items()))
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
-        mine = [o for o in data["orders"] if o["store_id"] == sid]
+        mine = data[sid]["orders"]
         per_day: dict[date, int] = {}
         for o in mine:
             per_day[o["ordered_at"].date()] = per_day.get(o["ordered_at"].date(), 0) + 1
         deliv = sum(o["channel"] == "delivery" for o in mine)
         sales = sum(o["total_amount"] for o in mine)
-        n_rev = sum(r["store_id"] == sid for r in data["reviews"])
-        print(f"  {sid} {cfg['store']['name']}: 주문 {len(mine)}건 (하루 {min(per_day.values())}~{max(per_day.values())}), "
-              f"배달 {deliv / len(mine):.0%}, 매출 {sales:,}원, 리뷰 {n_rev}개")
+        print(f"  {sid} {cfg['store']['name']}: " + ", ".join(f"{name} {len(rows)}행" for name, rows in data[sid].items()))
+        print(f"       하루 주문 {min(per_day.values())}~{max(per_day.values())}건, 배달 {deliv / len(mine):.0%}, 매출 {sales:,}원")
     print(f"  CSV → {OUT_DIR}")
 
 

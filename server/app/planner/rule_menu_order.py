@@ -114,6 +114,32 @@ def _open_days(start: dt.date, end: dt.date, store: StoreSettings) -> int:
     return days
 
 
+def tag_periods(calendar: list[CalendarCell], periods: list[TagPeriod]) -> dict[str, tuple[dt.date, dt.date]]:
+    """달력에 보인 근거 id(날씨 제외)마다 (첫날, 끝날). 양 끝 포함.
+
+    원본 일정(periods)을 쓰고 끝만 달력 마지막 날로 자른다. 달력보다 앞서 시작한 날은 자르지 않는다.
+    한계: 달력 끝에 걸린 기간은 그 뒤 날을 모르므로 실제보다 짧게 나올 수 있다.
+    periods 에 없는 근거 id는 달력에 보인 첫날~마지막 날을 기간으로 쓴다.
+    """
+    seen_on: dict[str, list[dt.date]] = defaultdict(list)
+    for cell in calendar:
+        for reason in cell.reasons:
+            if reason.tag != "WEATHER":
+                seen_on[reason.ref_id].append(cell.date)
+    if not seen_on:
+        return {}
+    last_day = max(cell.date for cell in calendar)
+    period_by_id = {period.ref_id: period for period in periods}
+    bounds = {}
+    for ref_id, days in seen_on.items():
+        period = period_by_id.get(ref_id)
+        if period is None:
+            bounds[ref_id] = (min(days), max(days))
+        else:
+            bounds[ref_id] = (period.start, min(period.end or last_day, last_day))
+    return bounds
+
+
 def menu_board_bases(
     calendar: list[CalendarCell],
     periods: list[TagPeriod],
@@ -124,9 +150,7 @@ def menu_board_bases(
     """영업일별 메뉴판 기준 태그(근거 id). None 이면 원래 순서다.
 
     1. 근거 id마다 교체 이득(switch_benefit)이 교체 부담(cost_per_menu × k)보다 커야 바꿀 만하다. k 는 맨 위로 올릴 메뉴 수.
-       기간은 원본 일정(periods)을 쓰고 끝만 달력 마지막 날로 자른다. 달력보다 앞서 시작한 날도 센다.
-       한계: 달력 끝에 걸린 기간은 그 뒤 날을 모르므로 이득이 실제보다 작게 나올 수 있다.
-       periods 에 없는 근거 id는 달력에 보인 첫날~마지막 날을 기간으로 쓴다.
+       기간은 tag_periods 를 따른다.
     2. 그날 붙은 태그 가운데 바꿀 만한 것 중에서 하루 효과(대표 |effect|)가 가장 큰 것이 기준 태그다.
        같으면 근거 id 순으로 앞선 것. 이득 합계로 고르지 않는 까닭: 기간이 긴 계절이 늘 이긴다.
     날씨는 기준 태그가 되지 않는다. 쉬는 날은 결과에 없다.
@@ -134,24 +158,16 @@ def menu_board_bases(
     if not calendar:
         return {}
     effects: dict[str, list[float]] = defaultdict(list)
-    seen_on: dict[str, list[dt.date]] = defaultdict(list)
     for cell in calendar:
         for reason in cell.reasons:
             if reason.tag != "WEATHER":
                 effects[reason.ref_id].append(reason.effect)
-                seen_on[reason.ref_id].append(cell.date)
-    last_day = max(cell.date for cell in calendar)
-    period_by_id = {period.ref_id: period for period in periods}
+    bounds = tag_periods(calendar, periods)
     burden = cost_per_menu * k
 
     worthwhile: dict[str, float] = {}  # 바꿀 만한 근거 id → 하루 효과
     for ref_id, values in effects.items():
-        period = period_by_id.get(ref_id)
-        if period is None:
-            start, end = min(seen_on[ref_id]), max(seen_on[ref_id])
-        else:
-            start, end = period.start, min(period.end or last_day, last_day)
-        if switch_benefit(values, _open_days(start, end, store)) > burden + _EPSILON:
+        if switch_benefit(values, _open_days(*bounds[ref_id], store)) > burden + _EPSILON:
             worthwhile[ref_id] = _strength(values)
 
     bases = {}

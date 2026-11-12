@@ -44,19 +44,19 @@ export function TitleWithDonna({ title, img = "b1-1", sub }: { title: string; im
 
 const shift = (t: string, d: number) => fromMin(toMin(t) + d);
 
-/** 시각 하나를 30분씩 바꾸는 줄 */
-function TimeStepper({ label, value, onChange, id }: { label: string; value: string; onChange: (v: string) => void; id: string }) {
+/** 시각 하나를 30분씩(step) 바꾸는 줄 */
+export function TimeStepper({ label, value, onChange, id, step = 30 }: { label: string; value: string; onChange: (v: string) => void; id: string; step?: number }) {
   const btn = "h-11 w-11 items-center justify-center rounded-full border border-brand bg-surface active:bg-brand-soft";
   return (
     <View className="flex-row items-center gap-2">
       <Text className="flex-1 text-label text-ink-2">{label}</Text>
-      <Pressable testID={`${id}-minus`} accessibilityRole="button" accessibilityLabel={`${label} 30분 앞당기기`} onPress={() => onChange(shift(value, -30))} className={btn}>
+      <Pressable testID={`${id}-minus`} accessibilityRole="button" accessibilityLabel={`${label} ${step}분 앞당기기`} onPress={() => onChange(shift(value, -step))} className={btn}>
         <Text className="text-title text-brand">−</Text>
       </Pressable>
       <Text className="w-[104px] text-center text-title text-ink" accessibilityLabel={`${label} ${clockLabel(value)}`}>
         {clockLabel(value)}
       </Text>
-      <Pressable testID={`${id}-plus`} accessibilityRole="button" accessibilityLabel={`${label} 30분 늦추기`} onPress={() => onChange(shift(value, 30))} className={btn}>
+      <Pressable testID={`${id}-plus`} accessibilityRole="button" accessibilityLabel={`${label} ${step}분 늦추기`} onPress={() => onChange(shift(value, step))} className={btn}>
         <Text className="text-title text-brand">+</Text>
       </Pressable>
     </View>

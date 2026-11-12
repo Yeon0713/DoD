@@ -1,0 +1,122 @@
+// 시작 화면과 로그인 화면 위의 메뉴(☰). 시험·시연용 기능을 모아 둔다.
+// - 데모 테스트 모드: 켜면 "네이버로 시작하기/로그인"이 서버의 네이버 로그인(앱 키가 없으면 임시 네이버 로그인)으로 가서 계정을 고를 수 있다.
+// - 초기화: 등록한 가게, 불러온 리뷰, 이 기기 기록을 지워 가게 찾기(지도)부터 다시 할 수 있게 한다.
+import { useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
+import { Icon } from "@/components/icons/Icon";
+import { replace } from "@/components/ui/nav";
+import { PrimaryButton, SecondaryButton } from "@/components/ui/parts";
+import { Sheet } from "@/components/ui/Sheet";
+import { Toggle } from "@/components/ui/sub";
+import { Text } from "@/components/ui/Text";
+import { account } from "@/lib/account";
+import { USE_MOCK } from "@/lib/api";
+import { resetCardState } from "@/lib/cardState";
+import { drafts, flashToast, prefs } from "@/lib/localStore";
+import { demoMode, naverProfile } from "@/lib/naverDemo";
+import { storage } from "@/lib/storage";
+import tokens from "@/theme/tokens.json";
+import { pickedPlace } from "./StoreRegister";
+
+const C = tokens.colors;
+const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+/** 오른쪽 위 줄: 데모 모드 표시 + 메뉴 버튼. left 에는 뒤로 버튼 같은 것을 넣는다 */
+export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
+  const qc = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [serverNote, setServerNote] = useState<string | null>(null);
+  const demo = demoMode.useValue();
+
+  const reset = async () => {
+    setResetting(true);
+    setServerNote(null);
+    // 서버: 등록한 가게와 불러온 리뷰, 등록 기록, 고친 설정을 지운다 (서버를 개발 모드로 켰을 때만 열린다)
+    if (!USE_MOCK) {
+      try {
+        const res = await fetch(`${BASE_URL}/dev/reset`, { method: "POST" });
+        if (!res.ok) setServerNote("서버 기록은 지우지 못했어요. 서버를 DEV_CLOCK_ENABLED=true 로 켜 주세요");
+      } catch {
+        setServerNote("서버에 닿지 않아 이 기기 기록만 지웠어요");
+      }
+    }
+    // 이 기기: 로그인, 가입, 끝낸 일, 고쳐 쓴 답글 등을 지운다 (데모 테스트 모드 같은 시험용 스위치는 남긴다)
+    storage.clearAll();
+    resetCardState();
+    prefs.reset();
+    drafts.reset();
+    account.reset();
+    naverProfile.reset();
+    pickedPlace.reset();
+    qc.clear();
+    setResetting(false);
+    setConfirming(false);
+    setOpen(false);
+    flashToast("처음 상태로 돌렸어요", "로그인하고 가게를 지도에서 다시 골라 주세요");
+    replace("/start");
+  };
+
+  return (
+    <>
+      <View className="mt-3 h-11 flex-row items-center gap-2 px-4">
+        <View className="flex-1 flex-row">{left}</View>
+        {demo.on ? (
+          <View testID="start-demo-badge" className="rounded-full bg-brand-soft px-3 py-1">
+            <Text className="text-small font-medium text-brand">데모 테스트 모드</Text>
+          </View>
+        ) : null}
+        <Pressable
+          testID="start-menu"
+          accessibilityRole="button"
+          accessibilityLabel="메뉴"
+          onPress={() => setOpen(true)}
+          hitSlop={8}
+          className="h-11 w-11 items-center justify-center rounded-full active:bg-brand-soft"
+        >
+          <Icon name="menu" size={26} color={C.ink} />
+        </Pressable>
+      </View>
+      <Sheet open={open && !confirming} onClose={() => setOpen(false)} title="메뉴">
+        <View className="gap-2.5">
+          <View testID="start-menu-demo" className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3">
+            <Icon name="user" size={24} color={C.brand} />
+            <View className="flex-1">
+              <Text className="text-body font-medium text-ink">데모 테스트 모드</Text>
+              <Text className="text-small text-ink-2">켜면 네이버 로그인에서 테스트 계정을 골라 들어가요</Text>
+            </View>
+            <Toggle testID="start-menu-demo-toggle" label="데모 테스트 모드" checked={demo.on} onChange={(on) => demoMode.write({ on })} />
+          </View>
+          <Pressable
+            testID="start-menu-reset"
+            accessibilityRole="button"
+            onPress={() => setConfirming(true)}
+            className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3 active:bg-brand-soft"
+          >
+            <Icon name="refresh" size={24} color={C.urgent} />
+            <View className="flex-1">
+              <Text className="text-body font-medium text-ink">초기화</Text>
+              <Text className="text-small text-ink-2">등록한 가게를 지우고 지도에서 다시 골라요</Text>
+            </View>
+            <Icon name="chevR" size={20} color={C["ink-3"]} />
+          </Pressable>
+          {serverNote ? <Text className="text-small text-urgent">{serverNote}</Text> : null}
+        </View>
+      </Sheet>
+      <Sheet open={confirming} onClose={() => setConfirming(false)} title="처음부터 다시 할까요?">
+        <Text className="text-body text-ink-2">{"등록한 가게, 불러온 리뷰, 끝낸 일과 설정을 모두 지워요.\n로그인하면 가게 찾기(지도)부터 다시 해요."}</Text>
+        <Text className="mt-2 text-small text-ink-3">팀 목업 가게와 데모 테스트 모드는 그대로 둬요</Text>
+        <View className="mt-5 gap-2.5">
+          <PrimaryButton testID="start-menu-reset-yes" disabled={resetting} onPress={reset}>
+            {resetting ? "지우는 중" : "초기화할게요"}
+          </PrimaryButton>
+          <SecondaryButton testID="start-menu-reset-no" onPress={() => setConfirming(false)}>
+            그만둘게요
+          </SecondaryButton>
+        </View>
+      </Sheet>
+    </>
+  );
+}

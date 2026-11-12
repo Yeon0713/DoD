@@ -45,6 +45,29 @@ def default_notice_dayparts(open_time: str, close_time: str) -> dict:
     return dayparts
 
 
+WEEKDAYS = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+
+
+def summarize_weekly_hours(weekly_hours: dict) -> dict:
+    """요일별 장사 시간에서 대표 장사 시간(가장 많은 요일이 쓰는 시간)과 쉬는 날을 뽑는다. 앱의 summarizeWeekly 와 같다.
+
+    계획 엔진은 요일마다 다른 시간을 아직 모르고 대표 시간 하나와 쉬는 날만 쓴다.
+    """
+    counts: dict[tuple[str, str], int] = {}
+    for code in WEEKDAYS:
+        day = weekly_hours.get(code)
+        if day:
+            counts[(day["open"], day["close"])] = counts.get((day["open"], day["close"]), 0) + 1
+    if not counts:
+        raise ApiError(400, "NO_OPEN_DAY", "일주일 내내 쉬는 날로 저장할 수는 없어요. 여는 요일을 하나 이상 남겨 주세요.")
+    open_time, close_time = max(counts, key=counts.get)
+    return {
+        "open_time": open_time,
+        "close_time": close_time,
+        "closed_weekdays": [code for code in WEEKDAYS if not weekly_hours.get(code)],
+    }
+
+
 def build_store_settings(store: dict, changes: dict | None = None) -> StoreSettings:
     """DB 가게 정보로 계획 엔진 매장 설정을 만들고, 사장님이 고친 값(changes)을 덮어쓴다."""
     open_time, close_time = hhmm(store["open_time"]), hhmm(store["close_time"])
@@ -69,13 +92,28 @@ def build_store_settings(store: dict, changes: dict | None = None) -> StoreSetti
         "slots": {"OPENING": opening, "AFTERNOON": afternoon, "CLOSING": closing},
         "closed_weekdays": store["closed_weekdays"] or [],
     }
-    return StoreSettings.model_validate({**base, **(changes or {})})
+    merged = {**base, **(changes or {})}
+    if merged.get("weekly_hours"):
+        # 사장님이 고친 요일별 시간이 있으면 대표 장사 시간과 쉬는 날을 거기서 다시 뽑는다
+        merged.update(summarize_weekly_hours(merged["weekly_hours"]))
+        if any(day and day["close"] <= day["open"] for day in merged["weekly_hours"].values()):
+            raise ApiError(
+                400,
+                "OVERNIGHT_STORE_NOT_SUPPORTED",
+                "자정을 넘겨 여는 시간은 아직 저장할 수 없어요. 닫는 시각을 여는 시각보다 늦게 적어 주세요.",
+            )
+    return StoreSettings.model_validate(merged)
 
 
 def to_calendar_cell(row: CalendarDayRow) -> CalendarCell:
     data = row.model_dump()
     if row.baseline_sales is None:
         data.update(baseline_sales=0, expected_sales=0, ratio=1.0)
+    # 그 요일·시간대에 판 적이 없으면(예: 주말엔 점심만 여는 가게의 주말 저녁) 기준은 0 이고 예상·비율은 비어 온다
+    if data["expected_sales"] is None:
+        data["expected_sales"] = data["baseline_sales"]
+    if data["ratio"] is None:
+        data["ratio"] = 1.0
     return CalendarCell.model_validate(data)
 
 

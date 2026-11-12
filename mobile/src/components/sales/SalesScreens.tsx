@@ -25,6 +25,8 @@ const C = tokens.colors;
 const won = (n: number) => `${Math.round(n).toLocaleString("ko-KR")}원`;
 /** 1,249만 원 */
 const man = (n: number) => `${Math.round(n / 1e4).toLocaleString("ko-KR")}만 원`;
+/** 1.7만 원 (좁은 칸에 넣는 짧은 금액) */
+const manShort = (n: number) => `${(Math.round(n / 1e3) / 10).toLocaleString("ko-KR")}만 원`;
 const pct = (a: number, b: number) => (b ? Math.round(((a - b) / b) * 100) : 0);
 const DP_ORDER = ["LUNCH", "DINNER", "NIGHT"] as const;
 const DP_KO = { LUNCH: "점심", DINNER: "저녁", NIGHT: "밤" } as const;
@@ -50,7 +52,13 @@ function Change({ diff, text, size = "body" }: { diff: number; text: string; siz
 }
 
 function cmp(diff: number, unit: string, future?: boolean) {
-  if (Math.abs(diff) < 1) return `${unit} 비슷${future ? "할 것 같아요" : "해요"}`;
+  if (Math.abs(diff) < 1) {
+    // "어제 이 시간보다 비슷해요"는 틀린 말이다. "어제 이 시간과 비슷해요"로 쓴다 (받침에 따라 과/와)
+    const base = unit.replace(/보다$/, "");
+    const code = base.charCodeAt(base.length - 1) - 0xac00;
+    const withJosa = unit === base ? unit : `${base}${code >= 0 && code % 28 !== 0 ? "과" : "와"}`;
+    return `${withJosa} 비슷${future ? "할 것 같아요" : "해요"}`;
+  }
   const up = diff > 0;
   return `${unit} ${Math.abs(diff)}% ${up ? (future ? "많을 것 같아요" : "많아요") : future ? "적을 것 같아요" : "적어요"}`;
 }
@@ -259,7 +267,7 @@ function TodayCard() {
             </Text>
           ))}
         </View>
-        <Small>{`점선은 평소 ${wd}이에요${best && best[1] ? `\n지금까지 ${withSubject(DP_KO[best[0] as keyof typeof DP_KO])} 제일 많았어요` : ""}`}</Small>
+        <Small>{`점선은 평소 ${wd}이에요${best && best[1] && data.orders >= 5 ? `\n지금까지 ${withSubject(DP_KO[best[0] as keyof typeof DP_KO])} 제일 많았어요` : ""}`}</Small>
       </View>
     </Card>
   );
@@ -711,7 +719,7 @@ export function SalesMonthScreen() {
           <View className="flex-row gap-2">
             <Stat plain label="하루 평균" value={man(data.avgDaily)} />
             <Stat plain label="주문" value={`${cur.orders.toLocaleString("ko-KR")}건`} />
-            <Stat plain label="주문 1번 평균" value={won(data.avgOrder)} />
+            <Stat plain label="주문 1번 평균" value={manShort(data.avgOrder)} />
           </View>
           <Card label="지난 석 달">
             <Text className="text-title text-ink">지난 석 달</Text>

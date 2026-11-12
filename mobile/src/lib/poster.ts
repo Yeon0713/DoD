@@ -21,7 +21,8 @@ export function defaultHeadline(h: { kind: "GAME" | "EVENT" | null; label: strin
     return second.replace(/\s/g, "").length <= 8 ? `${h.label.split(" ")[0]} 저녁,\n${second}` : `${h.label.split(" ")[0]} 저녁,\n${sport} 보며\n${food}`;
   }
   if (h.kind === "EVENT") return `축제 구경하고\n${food}`;
-  return `추운 날엔\n따뜻한 ${food}`;
+  // 행사나 경기 없이 매주 만드는 주말 포스터. 날씨를 모르는 채로 "추운 날엔"이라고 쓰지 않는다
+  return `이번 주말엔\n${food}`;
 }
 
 /** 승인 날 만들어 둔 포스터(메뉴, 글자, 색). 서버 PATCH /api/posters가 생기기 전까지 이 기기(drafts)에 둔다. */

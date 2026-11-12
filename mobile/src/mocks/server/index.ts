@@ -44,9 +44,9 @@ function reviewsBody() {
 }
 
 // ---------- 설정 ----------
-type Editable = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category">>;
+type Editable = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category" | "work_hours" | "extra_slots">>;
 const SETTINGS_KEY = "dona.mock.settings.v1";
-const EDITABLE = ["slots", "dayparts", "busy_dayparts", "open_time", "close_time", "closed_weekdays", "break_time", "weekly_hours", "name", "category"] as const;
+const EDITABLE = ["slots", "dayparts", "busy_dayparts", "open_time", "close_time", "closed_weekdays", "break_time", "weekly_hours", "name", "category", "work_hours", "extra_slots"] as const;
 
 function readOverride(): Editable {
   try {
@@ -142,6 +142,8 @@ function naverPlace(): MockResult {
     place: {
       place_id: "naver_place_001",
       name: currentSettings().name,
+      address: "강원특별자치도 춘천시 효자동",
+      category: currentSettings().category,
       weekly_hours: weekly,
       break_time,
       ...guessDayparts(sum.open_time, sum.close_time, break_time),
@@ -163,6 +165,13 @@ export function handleMock(method: "GET" | "PATCH", path: string, query: Record<
   if (head === "settings") return ok({ is_example: true, settings: currentSettings() });
   if (head === "reviews") return ok(reviewsBody());
   if (head === "naver" && part === "place") return naverPlace();
+  // 목업 우리 가게 찾기: 목업 가게 이름과 겹치면 그 가게 하나만 찾은 것으로 본다
+  if (head === "naver" && part === "search") {
+    const name = currentSettings().name;
+    const q = (query.query ?? "").replace(/\s/g, "");
+    const hit = q.length >= 2 && (name.replace(/\s/g, "").includes(q) || q.includes(name.replace(/\s/g, "")));
+    return ok({ items: hit ? [{ name, category: currentSettings().category, address: "강원특별자치도 춘천시 효자동", jibun_address: "강원특별자치도 춘천시 효자동", lat: 37.87, lng: 127.74 }] : [] });
+  }
   if (head === "sales" && part) {
     const now = query.now ? new Date(query.now).getTime() : Date.now();
     if (Number.isNaN(now)) return fail(422, "INVALID_INPUT", "now는 2026-11-17T14:05:00+09:00처럼 보내 주세요.");

@@ -103,14 +103,44 @@ const MENUS: Record<string, { name: string; tags: ("SEASON" | "GAME" | "EVENT")[
 };
 
 /** 포스터 큰 글자에 쓰는 음식 한마디 ("축구 보며 국수 한 그릇") */
-const FOOD: Record<string, string> = { 국수: "국수 한 그릇", 곱창: "곱창 한 판", 치킨: "치킨 한 마리", 닭갈비: "닭갈비 한 판", 백반: "따뜻한 밥 한 상", 국밥: "국밥 한 그릇" };
+const FOOD: Record<string, string> = {
+  국수: "국수 한 그릇",
+  곱창: "곱창 한 판",
+  치킨: "치킨 한 마리",
+  닭갈비: "닭갈비 한 판",
+  백반: "따뜻한 밥 한 상",
+  국밥: "국밥 한 그릇",
+  돈가스: "돈가스 한 접시",
+  맥주: "맥주 한 잔",
+};
 
 export function foodPhrase(category: string): string {
   const key = Object.keys(FOOD).find((k) => category.includes(k));
-  return key ? FOOD[key] : `${category} 한 그릇`;
+  // 표에 없는 업종은 "한 그릇"이 안 맞을 수 있어서 어디에나 맞는 말을 쓴다
+  return key ? FOOD[key] : `${category} 한 끼`;
 }
 
-export function storeMenus(category: string) {
+type StoreMenu = { name: string; tags: ("SEASON" | "GAME" | "EVENT")[] };
+
+// 실제 서버에 붙었을 때 서버가 준 우리 가게 메뉴 (GET /api/naver/place). 없으면 아래 업종별 예시를 쓴다.
+// 서버에 "어느 메뉴를 위로 올릴지"를 주는 API가 아직 없어서, 메뉴 이름으로 어울리는 때를 어림한다.
+let realMenus: StoreMenu[] | null = null;
+const WARM = /칼국수|수제비|국밥|전골|찌개|우동|라멘|뚝배기|어묵탕|떡국|해장국|탕$/; // 추운 날
+const WITH_GAME = /치킨|튀김|소시지|안주|세트|만두|순대|족발|피자|떡볶이|치즈|나쵸|먹태/; // 경기 보며
+const WITH_FESTIVAL = /세트|모둠|도시락|김밥|주먹밥|비빔/; // 축제 손님
+
+/** 서버에서 받은 우리 가게 메뉴 이름을 넣는다. null이나 빈 목록이면 업종별 예시로 돌아간다. */
+export function setRealMenus(names: string[] | null) {
+  realMenus = names?.length
+    ? names.map((name) => ({
+        name,
+        tags: [WARM.test(name) ? "SEASON" : null, WITH_GAME.test(name) ? "GAME" : null, WITH_FESTIVAL.test(name) ? "EVENT" : null].filter((t): t is StoreMenu["tags"][number] => t !== null),
+      }))
+    : null;
+}
+
+export function storeMenus(category: string): StoreMenu[] {
+  if (realMenus) return realMenus;
   const key = Object.keys(MENUS).find((k) => category.includes(k)) ?? "국수";
   return MENUS[key];
 }

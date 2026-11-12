@@ -70,6 +70,21 @@ def postpone_if_passed(approval_at: dt.datetime, known_at: dt.datetime, store: S
     return next_slot(known_at, store, include_same_time=True)
 
 
+def is_closed_day(day: dt.date, store: StoreSettings) -> bool:
+    return WEEKDAY_CODES[day.weekday()] in store.closed_weekdays
+
+
+def off_closed_day(t: dt.datetime | None, store: StoreSettings) -> dt.datetime | None:
+    """t 가 쉬는 날이면 그 뒤 처음 여는 날의 첫 알림 시각으로 옮긴다. 여는 날이면 그대로 둔다.
+
+    쉬는 날에는 알림 묶음을 만들지 않아서, 그날로 잡힌 승인 요청과 실행 알림은 한 번도 뜨지 않는다.
+    예) 월요일 휴무 가게의 월요일 14:00 → 화요일 출근 후
+    """
+    if t is None or not is_closed_day(to_seoul(t).date(), store):
+        return t
+    return next_slot(t, store)
+
+
 def saturday_of_week(day: dt.date) -> dt.date:
     """day 가 속한 주(월~일)의 토요일. 일요일이면 하루 전 토요일이다."""
     return day + dt.timedelta(days=5 - day.weekday())

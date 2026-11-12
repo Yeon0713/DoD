@@ -67,13 +67,21 @@ PLACEHOLDER_RE = re.compile(r"\[[^\]]*\]|OOO|○○|XXX|\{[^}]*\}")  # 빈칸을
 QUOTES = "\"'“”‘’「」『』`"
 # 사장님이 정하지 않은 보상 약속. 이런 말이 들어간 답은 쓰지 않는다
 PROMISE_RE = re.compile(
-    r"환불|무료|공짜|쿠폰|할인|증정|적립|서비스로|서비스를\s?(드|제공)|보내\s?드리|다시\s?보내|제공해\s?드리"
-    r"|내\s?드[리릴]|그냥\s?(드|내)|(꼭|함께|같이|더)\s?챙겨\s?드[리릴]"
+    # "서비스를 제공"만으로는 거르지 않는다: "더 정확한 서비스를 제공하겠습니다"는 약속이 아니라 다짐이다
+    r"환불|무료|공짜|쿠폰|할인|증정|적립|서비스로|서비스를\s?드[리릴]|(추가|덤|공짜)\s?서비스|보내\s?드리|다시\s?보내|제공해\s?드리"
+    r"|내\s?드[리릴]|그냥\s?(드|내)|챙겨\s?드[리릴]|두\s?배|덤으로|하나\s?더"
+    # 사장님이 하겠다고 한 적 없는 연락 약속 ("따로 연락드리겠습니다", "바로바로 연락드리도록")
+    r"|연락\s?(을\s?)?드[리릴]"
 )
 # 가게가 알려 준 적 없는 가게 사정(재료 산지, 조리 방법). 이런 말이 들어간 답도 쓰지 않는다
 # 사장님이 손님을 개인적으로 기억하는 척하는 말. 실제로는 알 수 없어서 쓰지 않는다
 MEMORY_RE = re.compile(r"기억|지난\s?방문|지난번에?\s?(드신|시키신|주문하신|오셨|방문)|저번에?\s?(드신|시키신|주문하신|오셨|방문)")
-MADE_UP_FACT_RE = re.compile(r"국내산|국산|수입산|유기농|직접\s?(갈|빚|뽑|우려)|갈아\s?만든|비결|매일\s?아침|\d+\s?시간\s?(우려|끓)")
+MADE_UP_FACT_RE = re.compile(
+    r"국내산|국산|수입산|유기농|직접\s?(갈|빚|뽑|우려)|갈아\s?만든|비결|매일\s?아침|\d+\s?시간\s?(우려|끓)"
+    # 가게가 말한 적 없는 요즘 사정 ("요즘 주문이 겹치는 일이 잦아져서")
+    r"|(요즘|최근|요새).{0,25}(잦아|많아져|늘어서|늘어나|몰리)"
+)
+NUMBER_RE = re.compile(r"\d+")
 TEMPERATURES = (0.5, 0.3)  # 첫 번째, 다시 쓸 때
 
 _drafts: dict[tuple[str, str, str], str | None] = {}  # (가게 id, 할 일 id, 리뷰 글) → 초안. 실패하면 None
@@ -212,19 +220,32 @@ def _review_of(item: PlanItem, reviews: dict[str, Review]) -> Review | None:
 # ── 다시 쓰기 ──
 
 
+def keeps_numbers(original: str, rewritten: str) -> bool:
+    """사장님이 쓴 숫자(날짜, 시각, 전화번호, 가격)가 다시 쓴 글에 그대로 남았는지.
+
+    '12월부터 … 2월 말에 … 033-123-4567' 을 다듬다가 '봄부터'로 바꾸거나 전화번호를 빼면 사장님이 한 말이 달라진다.
+    """
+    kept = NUMBER_RE.findall(rewritten)
+    return all(number in kept for number in NUMBER_RE.findall(original))
+
+
 def rewrite(text: str, style: RewriteStyle, store: dict, review: Review | None = None, *, post: Post = httpx.post) -> str | None:
-    """사장님이 보고 있는 답글을 더 짧게 / 더 정중하게 다시 쓴다. 실패하면 None."""
+    """사장님이 보고 있는 답글을 더 짧게 / 더 정중하게 다시 쓴다. 실패하면 None.
+
+    보상 약속이 새로 생기거나 사장님이 쓴 숫자가 바뀌거나 빠진 답은 쓰지 않고 한 번 더 쓴다.
+    """
     user = f"고칠 방향: {STYLE_NAMES[style]}\n\n지금 답글: {text}"
     if review is not None:
         user += f"\n\n참고할 리뷰\n{review_facts(review, None)}"
-    for temperature in TEMPERATURES:
+    # 사장님이 버튼을 누르고 기다리는 중이라 초안보다 한 번 더 시도한다 (약속, 숫자 규칙에 걸리는 답이 가끔 두 번 이어진다)
+    for temperature in (*TEMPERATURES, 0.4):
         answer = clean_answer(
             clova.ask(
                 load_prompt("rewrite_reply_prompt.txt", store), user,
                 max_tokens=300, temperature=temperature, timeout=TIMEOUT_SECONDS, post=post,
             )
         )
-        if is_usable(answer):
+        if is_usable(answer) and keeps_numbers(text, answer):
             return answer
     return None
 

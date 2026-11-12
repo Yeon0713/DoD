@@ -149,7 +149,7 @@ def to_review(row: dict) -> Review:
     """분류 결과(label)는 비워 둔다. 태성의 리뷰 분류가 채운다."""
     return Review(
         review_id=review_id_of(row["review_id"]),
-        platform=review_platform(row.get("order_channel")),
+        platform=row.get("platform") or review_platform(row.get("order_channel")),
         written_at=row["written_at"],
         rating=row["rating"],
         text=row["content"],

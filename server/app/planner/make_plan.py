@@ -8,6 +8,7 @@ import datetime as dt
 
 from app.planner.data_shapes import PlanInputs, PlanResult
 from app.planner.info_alerts import make_sales_anomaly_alerts, make_weekly_previews
+from app.planner.notification_time_helpers import off_closed_day
 from app.planner.priority_and_grouping import group_into_batches
 from app.planner.rule_complaint_fix import plan_complaint_fixes
 from app.planner.rule_menu_order import plan_menu_orders
@@ -33,6 +34,16 @@ def make_plan(inputs: PlanInputs, now: dt.datetime) -> PlanResult:
         *plan_posters(calendar, inputs.events, inputs.games, store),
         *plan_complaint_fixes(risks, store),
     ]
+    # 쉬는 날로 잡힌 승인 요청과 실행 시각은 그 뒤 처음 여는 날로 옮긴다 (쉬는 날에는 알림이 가지 않는다)
+    plan_items = [
+        item.model_copy(
+            update={
+                "approval_request_at": off_closed_day(item.approval_request_at, store),
+                "execute_at": off_closed_day(item.execute_at, store),
+            }
+        )
+        for item in plan_items
+    ]
     # 같은 plan_id 는 하나만 남긴다
     plan_items = sorted(
         {item.plan_id: item for item in plan_items}.values(),
@@ -41,8 +52,11 @@ def make_plan(inputs: PlanInputs, now: dt.datetime) -> PlanResult:
 
     notice_items = sorted(
         [
-            *make_weekly_previews(calendar, inputs.events, inputs.games, plan_items, store),
-            *make_sales_anomaly_alerts(anomalies, store),
+            notice.model_copy(update={"slot_at": off_closed_day(notice.slot_at, store)})
+            for notice in (
+                *make_weekly_previews(calendar, inputs.events, inputs.games, plan_items, store),
+                *make_sales_anomaly_alerts(anomalies, store),
+            )
         ],
         key=lambda notice: (notice.slot_at, notice.notice_id),
     )

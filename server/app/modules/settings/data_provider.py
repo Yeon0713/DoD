@@ -22,6 +22,10 @@ def get_settings(store_id: str) -> SettingsResponse:
 
 def update_settings(store_id: str, update: SettingsUpdate) -> SettingsResponse:
     changes = update.model_dump(exclude_none=True)
+    if "break_time" in update.model_fields_set:
+        changes["break_time"] = update.break_time.model_dump() if update.break_time else None
+    if "work_hours" in update.model_fields_set:
+        changes["work_hours"] = update.work_hours.model_dump() if update.work_hours else None
     merged = {**get_settings_changes(store_id), **changes}
     new_settings = build_store_settings(read_store_db.read_store(store_id), merged)
     _check_slots(new_settings)
@@ -35,13 +39,21 @@ def _minutes(hhmm: str) -> int:
 
 
 def _check_slots(settings: StoreSettings) -> None:
-    """알림 시각은 문 열기 1시간 전 ~ 마감 사이에 있고, 바쁜 시간대에 걸리면 안 된다.
+    """알림 시각은 문 열기 1시간 전(출근 예정이 더 이르면 출근 시간) ~ 마감(퇴근 예정이 더 늦으면 퇴근 시간) 사이에 있고,
+    바쁜 시간대에 걸리면 안 된다. 더 넣은 알림(extra_slots)은 그 사이에만 있으면 된다 (바쁜 시간에도 받을 수 있다).
 
     오류 메시지 맨 앞의 OPENING/AFTERNOON/CLOSING 으로 앱이 어느 칸 아래에 띄울지 정하므로 이 형식을 지킨다.
     """
     earliest = _minutes(settings.open_time) - EARLIEST_BEFORE_OPEN_MINUTES
+    latest = _minutes(settings.close_time)
+    if settings.work_hours:
+        earliest = min(earliest, _minutes(settings.work_hours.start))
+        latest = max(latest, _minutes(settings.work_hours.end))
+    for extra in settings.extra_slots:
+        if not (earliest <= _minutes(extra) <= latest):
+            raise ApiError(400, "SLOT_OUTSIDE_OPEN_HOURS", f"EXTRA 알림 시각 {extra} 이 출근·퇴근 시간 밖입니다.")
     for slot_name, slot_time in settings.slots.model_dump().items():
-        if not (earliest <= _minutes(slot_time) <= _minutes(settings.close_time)):
+        if not (earliest <= _minutes(slot_time) <= latest):
             raise ApiError(
                 400,
                 "SLOT_OUTSIDE_OPEN_HOURS",

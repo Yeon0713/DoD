@@ -3,13 +3,15 @@
 날짜 D의 달력 이유 태그(행사, 경기, 날씨, 계절) 묶음이 전날과 다르면 메뉴판을 바꾼다.
 행사가 끝나 원래대로 돌아가는 날도 포함한다.
 D-1 14:00 승인 요청, D 출근 후 실행, 기한은 D 마감.
+쉬는 날은 건너뛴다: 쉬는 날에는 바꾸지 않고, 쉬는 날 다음 날은 그 앞의 여는 날과 태그를 견준다.
+(승인 요청이 쉬는 날에 걸리면 make_plan 이 다음 여는 날로 옮긴다.)
 """
 
 import datetime as dt
 from collections import defaultdict
 
 from app.planner.data_shapes import Basis, CalendarCell, PlanItem, StoreSettings
-from app.planner.notification_time_helpers import close_time_on, postpone_if_passed, slot_at
+from app.planner.notification_time_helpers import close_time_on, is_closed_day, postpone_if_passed, slot_at
 
 TAG_NAMES = {"EVENT": "근처 행사", "GAME": "경기", "WEATHER": "날씨 변화", "SEASON": "계절 변화"}
 
@@ -38,11 +40,16 @@ def plan_menu_orders(calendar: list[CalendarCell], store: StoreSettings) -> list
 
     items = []
     for day in sorted(tags):
-        previous = day - dt.timedelta(days=1)
+        if is_closed_day(day, store):
+            continue
+        yesterday = day - dt.timedelta(days=1)
+        previous = yesterday
+        while is_closed_day(previous, store) and (day - previous).days < 7:
+            previous -= dt.timedelta(days=1)
         if previous not in tags or tags[day] == tags[previous]:
             continue
         known_at = max(computed_at[day] + computed_at[previous])
-        approval_at = postpone_if_passed(slot_at(previous, "AFTERNOON", store), known_at, store)
+        approval_at = postpone_if_passed(slot_at(yesterday, "AFTERNOON", store), known_at, store)
         items.append(
             PlanItem(
                 plan_id=f"MENU_ORDER:{day}:{day}",

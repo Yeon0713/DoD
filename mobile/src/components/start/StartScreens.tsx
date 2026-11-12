@@ -2,28 +2,28 @@
 // 06-2i 직접 적기, 06-3 알림 시간, 06-3t 알림 시간 바꾸기, 06-3e 저녁 장사 예시, 06-3b 알림 켜기).
 // 06: 장사 모양 고르기(05-2h)를 없애고, 네이버 플레이스에서 요일별 장사 시간, 메뉴, 사진을 불러와 사장님은 고치기만 한다.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useLocalSearchParams } from "expo-router";
-import { useRef, useState, type ComponentRef } from "react";
-import { Image, Pressable, TextInput, View } from "react-native";
+import { Redirect } from "expo-router";
+import { useState } from "react";
+import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "@/components/icons/Icon";
-import { DONNA_IMG } from "@/components/ui/donna";
 import { back, go } from "@/components/ui/nav";
 import { Bone, DonnaImage, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Sheet } from "@/components/ui/Sheet";
 import { FailNote, Note, SubPage } from "@/components/ui/sub";
-import { connectNaver } from "@/lib/actions";
 import { api } from "@/lib/api";
 import { hoursLabel, PATTERNS, patternOf, slotChoices, slotInfo } from "@/lib/hours";
 import { flashToast, prefs } from "@/lib/localStore";
+import { openSmartPlace } from "@/lib/smartplace";
 import { useHome } from "@/lib/useHome";
-import { STORE_ADDRESS } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { Slot } from "@/types/contract";
-import { AskLink, NaverButton } from "./AccountScreens";
-import { closingNotes, saveWeek, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
-import { errorText, enterApp, NAVER_PLACE_KEY, param, PLATFORM_ORDER, PLATFORM_SHORT, STEPS, storeName } from "./flow";
+import { AskLink, NaverButton, startProblem, StoreNotReady } from "./AccountScreens";
+import { DemoMenuBar } from "./DemoMenu";
+import { closingNotes, saveWeek, TimeStepper, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
+import { extraSuggestion } from "./StoreRegister";
+import { errorText, enterApp, NAVER_PLACE_KEY, PLATFORM_ORDER, PLATFORM_SHORT, STEPS } from "./flow";
 import { turnOnNotifications } from "./notify";
 
 const C = tokens.colors;
@@ -38,7 +38,8 @@ export function IntroScreen() {
   ];
   return (
     <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: C.paper }}>
-      <View className="flex-1 px-6 pb-5 pt-10">
+      <DemoMenuBar />
+      <View className="flex-1 px-6 pb-5 pt-2">
         <View className="items-center">
           <DonnaImage img="b4-0" size={180} />
           <Text className="mt-2 text-center text-display text-ink" accessibilityRole="header">
@@ -69,151 +70,10 @@ export function IntroScreen() {
   );
 }
 
-/** 06-2 우리 가게 찾기, 06-2b 못 찾았을 때. 설정 "우리 가게 다시 찾기"(?again=1)에서도 쓴다. */
-export function StoreSearchScreen() {
-  const params = useLocalSearchParams<{ again?: string; q?: string }>();
-  const again = param(params.again) === "1";
-  const { data } = useHome();
-  // 검토용 ?q=가게이름 (06-2b 못 찾았을 때)
-  const [query, setQuery] = useState<string | null>(param(params.q));
-  const input = useRef<ComponentRef<typeof TextInput>>(null);
-
-  if (!data) {
-    return (
-      <SubPage progress={again ? undefined : { total: STEPS, done: 1 }}>
-        <Bone className="h-16 w-full rounded-2xl" />
-      </SubPage>
-    );
-  }
-  const s = data.settings.settings;
-  const name = storeName(s.name);
-  const q = query ?? name;
-  // 쓰는 대로 바로 찾는다. 다 쓰고 나서 버튼을 눌러야만 바뀌면, 바뀌기 전 결과의 "우리 가게 맞아요"를 누를 수 있다.
-  const searched = q.trim();
-  const norm = (x: string) => x.replace(/\s/g, "");
-  const found = searched.length >= 2 && (norm(name).includes(norm(searched)) || norm(searched).includes(norm(name)));
-  const platforms = PLATFORM_ORDER.filter((p) => data.reviews.reviews.some((r) => r.platform === p));
-
-  return (
-    <SubPage
-      progress={again ? undefined : { total: STEPS, done: 1 }}
-      onBack={() => back(again ? "/settings" : "/start")}
-      footer={
-        found ? (
-          <PrimaryButton onPress={() => (again ? back("/settings") : go("/start/naver"))}>우리 가게 맞아요</PrimaryButton>
-        ) : (
-          <PrimaryButton
-            onPress={() => {
-              setQuery("");
-              input.current?.focus();
-            }}
-          >
-            다시 찾기
-          </PrimaryButton>
-        )
-      }
-    >
-      <TitleWithDonna title={"우리 가게를\n찾아 주세요"} img="b3-1" />
-      <View className="mt-4 h-[60px] flex-row items-center gap-2.5 rounded-button border border-ink-3 bg-surface px-4">
-        <Icon name="search" size={24} color={C["ink-2"]} />
-        <TextInput
-          ref={input}
-          testID="store-search"
-          accessibilityLabel="가게 이름"
-          value={q}
-          onChangeText={setQuery}
-          returnKeyType="search"
-          onSubmitEditing={() => input.current?.blur()}
-          className="flex-1 text-body text-ink"
-          placeholderTextColor={C["ink-3"]}
-        />
-      </View>
-
-      {found ? (
-        <>
-          <View className="mt-4 flex-row items-center gap-3 rounded-2xl border-2 border-brand bg-brand-soft p-4" accessibilityLabel="찾은 가게, 골라 둠">
-            <Icon name="store" size={32} color={C.brand} />
-            <View className="flex-1">
-              <Text className="text-body font-bold text-ink">{name}</Text>
-              <Text className="text-label text-ink-2">{STORE_ADDRESS[s.store_id] ?? ""}</Text>
-            </View>
-            <View className="h-7 w-7 items-center justify-center rounded-full bg-brand">
-              <Icon name="check" size={18} color={C["brand-ink"]} />
-            </View>
-          </View>
-          <View className="mt-4 flex-row items-start gap-3">
-            <Icon name="messages" size={28} color={C.brand} />
-            <Text className="flex-1 text-body font-medium text-ink">
-              {`${platforms.map((p) => PLATFORM_SHORT[p]).join(", ")}\n리뷰 ${data.reviews.reviews.length}개를 함께 찾았어요`}
-            </Text>
-          </View>
-        </>
-      ) : (
-        <View className="mt-10 items-center" accessibilityRole="summary">
-          <Image source={DONNA_IMG.question} style={{ width: 100, height: 147 }} resizeMode="contain" />
-          <Text className="mt-3 text-title text-ink">가게를 못 찾았어요</Text>
-          <Text className="mt-1 text-center text-body text-ink-2">{`가게 이름을 짧게 써 보세요\n예: ${name.split(" ")[0]}`}</Text>
-        </View>
-      )}
-    </SubPage>
-  );
-}
-
-/** 06-2n 네이버 플레이스 연결 (불러오기) */
+/** 06-2n 네이버 플레이스 연결. 따로 묻지 않고 가게 정보 확인(06-2c)으로 바로 보낸다.
+ * 네이버 로그인을 하고 가게까지 고른 사장님에게 네이버를 한 번 더 연결하라고 하지 않는다. 예전 주소로 들어와도 같은 곳으로 간다. */
 export function NaverStartScreen() {
-  const qc = useQueryClient();
-  const [state, setState] = useState<"idle" | "connecting" | "failed">("idle");
-  const items: { icon: IconName; text: string }[] = [
-    { icon: "clock", text: "요일별 장사 시간" },
-    { icon: "image", text: "메뉴와 메뉴 사진" },
-    { icon: "messages", text: "리뷰 수와 별점" },
-  ];
-  const connect = async () => {
-    setState("connecting");
-    try {
-      await connectNaver();
-      await qc.fetchQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: 0 });
-      prefs.write({ naverConnected: true });
-      setState("idle");
-      go("/start/naver-confirm");
-    } catch {
-      setState("failed");
-    }
-  };
-  return (
-    <SubPage
-      progress={{ total: STEPS, done: 2 }}
-      onBack={() => back("/start/store")}
-      footer={
-        <>
-          <PrimaryButton testID="start-naver-connect" onPress={connect} disabled={state === "connecting"}>
-            {state === "connecting" ? "연결하는 중" : state === "failed" ? "다시 연결하기" : "네이버로 연결하기"}
-          </PrimaryButton>
-          <SecondaryButton testID="start-manual" onPress={() => go("/start/hours")} disabled={state === "connecting"}>
-            직접 적을게요
-          </SecondaryButton>
-        </>
-      }
-    >
-      <TitleWithDonna title={"네이버 플레이스를\n연결해 주세요"} sub="장사 시간, 메뉴, 사진을 불러올게요" />
-      <View className="mt-5 gap-1">
-        {items.map((it) => (
-          <View key={it.text} className="h-11 flex-row items-center gap-3">
-            <Icon name={it.icon} size={24} color={C.brand} />
-            <Text className="text-body text-ink">{it.text}</Text>
-          </View>
-        ))}
-      </View>
-      <View className="mt-3">
-        <Note icon="shield">사장님이 누르기 전엔 아무것도 바꾸지 않아요</Note>
-      </View>
-      {state === "failed" ? (
-        <Text accessibilityRole="alert" className="mt-4 text-label text-urgent">
-          연결하지 못했어요. 인터넷을 확인하고 다시 눌러 주세요.
-        </Text>
-      ) : null}
-    </SubPage>
-  );
+  return <Redirect href="/start/naver-confirm" />;
 }
 
 /** 06-2c 불러온 것 한 칸 */
@@ -237,17 +97,22 @@ function ImportedCard({ icon, title, onEdit, editId, children }: { icon: IconNam
 /** 06-2c 네이버에서 불러왔어요 + 06-2e 장사 시간 고치기 (아래 시트) */
 export function ImportedScreen() {
   const qc = useQueryClient();
-  const { data } = useHome();
-  const placeQ = useQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: Infinity });
+  const { data, error, refetch } = useHome();
+  // 네이버 플레이스에서 메뉴를 고치고 돌아오면 다시 불러온다
+  const placeQ = useQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: Infinity, refetchOnWindowFocus: "always" });
   const [edit, setEdit] = useState<WeekState | null>(null);
   const [sheet, setSheet] = useState<WeekState | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const place = placeQ.data?.place;
+  if (!data) {
+    const problem = startProblem(error, () => refetch(), () => back("/start/naver-store"), place?.name);
+    if (problem) return problem;
+  }
   if (!place || !data) {
     return (
-      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver")}>
+      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver-store")}>
         {placeQ.isError ? (
           <FailNote title="불러오지 못했어요" sub={"인터넷이 끊겼어요.\n뒤로 가서 다시 연결해 주세요"} />
         ) : (
@@ -256,12 +121,19 @@ export function ImportedScreen() {
       </SubPage>
     );
   }
+  // 자정을 넘겨 여는 가게는 아직 알림 계획을 만들지 못해서 저장하기 전에 알린다 (저장하면 서버가 받지 않는다)
+  if (Object.values(place.weekly_hours).some((d) => d && d.close <= d.open)) {
+    return <StoreNotReady name={place.name} onBack={() => back("/start/naver-store")} />;
+  }
   const week: WeekState = edit ?? { weekly: place.weekly_hours, brk: place.break_time };
   const platforms = PLATFORM_ORDER.filter((p) => data.reviews.reviews.some((r) => r.platform === p));
   const menuNames = place.menus.map((m) => m.name);
   const menuLine = `${menuNames.slice(0, 3).join(", ")}${menuNames.length > 3 ? ` 외 ${menuNames.length - 3}개` : ""}`;
-  // 메뉴와 사진은 네이버 플레이스에서 고친다. 도나는 바꾸지 않는다.
-  const naverOnly = () => flashToast("네이버 플레이스에서 고쳐 주세요", "고친 뒤 설정에서 다시 불러오면 돼요");
+  // 메뉴와 사진은 네이버 플레이스(스마트플레이스)에서 고친다. 도나는 바꾸지 않는다. 돌아오면 다시 불러온다.
+  const naverOnly = () => {
+    openSmartPlace();
+    flashToast("네이버 플레이스를 열었어요", "고치고 돌아오면 다시 불러올게요");
+  };
 
   const save = async () => {
     setSaving(true);
@@ -270,7 +142,7 @@ export function ImportedScreen() {
       // 고치지 않았으면 네이버가 알려 준 바쁜 시간대를 그대로 쓴다.
       await saveWeek(week, { parts: edit ? undefined : { dayparts: place.dayparts, busy_dayparts: place.busy_dayparts } });
       await qc.invalidateQueries({ queryKey: ["home"] });
-      go("/start/notify-time");
+      go("/start/reviews");
     } catch (e) {
       setErr(errorText(e));
     } finally {
@@ -282,14 +154,14 @@ export function ImportedScreen() {
     <>
       <SubPage
         progress={{ total: STEPS, done: 3 }}
-        onBack={() => back("/start/naver")}
+        onBack={() => back("/start/naver-store")}
         footer={
           <PrimaryButton onPress={save} disabled={saving}>
             {saving ? "저장하는 중" : "이대로 좋아요"}
           </PrimaryButton>
         }
       >
-        <TitleWithDonna title={"네이버에서\n불러왔어요"} sub="다르면 눌러서 고쳐 주세요" />
+        <TitleWithDonna title={"가게 정보를\n확인해 주세요"} sub="다르면 눌러서 고쳐 주세요" />
         <View className="mt-5 gap-2.5">
           <ImportedCard icon="clock" title="장사 시간" editId="hours-edit" onEdit={() => setSheet(week)}>
             {weekLines(week).map((l) => (
@@ -332,14 +204,16 @@ export function ImportedScreen() {
 /** 06-2i 장사 시간 직접 적기 (네이버 연결을 건너뛰었을 때) */
 export function ManualHoursScreen() {
   const qc = useQueryClient();
-  const { data } = useHome();
+  const { data, error, refetch } = useHome();
   const [edit, setEdit] = useState<WeekState | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   if (!data) {
+    const problem = startProblem(error, () => refetch(), () => back("/start/naver-confirm"));
+    if (problem) return problem;
     return (
-      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver")}>
+      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver-confirm")}>
         <Bone className="h-80 w-full rounded-2xl" />
       </SubPage>
     );
@@ -351,7 +225,7 @@ export function ManualHoursScreen() {
     try {
       await saveWeek(week);
       await qc.invalidateQueries({ queryKey: ["home"] });
-      go("/start/notify-time");
+      go("/start/reviews");
     } catch (e) {
       setErr(errorText(e));
     } finally {
@@ -361,7 +235,7 @@ export function ManualHoursScreen() {
   return (
     <SubPage
       progress={{ total: STEPS, done: 3 }}
-      onBack={() => back("/start/naver")}
+      onBack={() => back("/start/naver-confirm")}
       footer={
         <PrimaryButton onPress={save} disabled={saving}>
           {saving ? "저장하는 중" : "이대로 좋아요"}
@@ -387,15 +261,19 @@ export function ManualHoursScreen() {
 /** 06-3 장사 시간에 맞춰 골랐어요 + 06-3t 알림 시간 바꾸기 (아래 시트). 06-3e는 저녁, 밤 장사일 때의 모양. */
 export function NotifyTimeScreen() {
   const qc = useQueryClient();
-  const { data } = useHome();
+  const { data, error, refetch } = useHome();
   const [sheetFor, setSheetFor] = useState<Slot | null>(null);
   const [picked, setPicked] = useState(0);
   const [err, setErr] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 알림 추가: 시트에서 시각을 고른다
+  const [adding, setAdding] = useState<string | null>(null);
 
   if (!data) {
+    const problem = startProblem(error, () => refetch(), () => back("/start"));
+    if (problem) return problem;
     return (
-      <SubPage progress={{ total: STEPS, done: 4 }}>
+      <SubPage progress={{ total: STEPS, done: 6 }}>
         <Bone className="h-60 w-full rounded-2xl" />
       </SubPage>
     );
@@ -411,6 +289,21 @@ export function NotifyTimeScreen() {
     setPicked(i < 0 ? 0 : i);
     setErr(null);
     setSheetFor(slot);
+  };
+  const extras = s.extra_slots ?? [];
+  const work = s.work_hours ?? null;
+  const saveExtras = async (next: string[]) => {
+    setSaving(true);
+    setErr(null);
+    try {
+      await api.updateSettings({ extra_slots: next });
+      await qc.invalidateQueries({ queryKey: ["home"] });
+      setAdding(null);
+    } catch (e) {
+      setErr(errorText(e));
+    } finally {
+      setSaving(false);
+    }
   };
   const apply = async () => {
     if (!sheetFor) return;
@@ -429,8 +322,15 @@ export function NotifyTimeScreen() {
 
   return (
     <>
-      <SubPage progress={{ total: STEPS, done: 4 }} footer={<PrimaryButton onPress={() => go("/start/notify-on")}>이대로 좋아요</PrimaryButton>}>
+      <SubPage progress={{ total: STEPS, done: 6 }} footer={<PrimaryButton onPress={() => go("/start/notify-on")}>이대로 좋아요</PrimaryButton>}>
         <TitleWithDonna title={"장사 시간에 맞춰\n골랐어요"} sub="누르면 원하는 시간으로 바꿀 수 있어요" />
+        {work ? (
+          <Pressable testID="work-hours-change" accessibilityRole="button" onPress={() => back("/start/work-hours")} className="mt-2 flex-row items-center gap-1.5 self-start rounded-full bg-brand-soft px-3 py-1.5 active:opacity-80">
+            <Icon name="clock" size={16} color={C.brand} />
+            <Text className="text-label text-ink">{`출근 ${work.start} · 퇴근 ${work.end} 기준`}</Text>
+            <Text className="text-label font-bold text-brand underline">바꾸기</Text>
+          </Pressable>
+        ) : null}
         {pattern === "EVENING_NIGHT" ? (
           <View className="mt-1 self-start rounded-2xl bg-brand-soft px-3 py-1">
             <Text className="text-label text-ink">{`${PATTERNS.EVENING_NIGHT.label}  ${hoursLabel(s)}`}</Text>
@@ -458,6 +358,35 @@ export function NotifyTimeScreen() {
             </Pressable>
           ))}
         </View>
+        {extras.length > 0 ? (
+          <View testID="extra-slots" className="mt-3 gap-3">
+            {extras.map((t) => (
+              <View key={t} className="min-h-16 flex-row items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-2">
+                <Icon name="bell" size={24} color={C["ink-2"]} />
+                <View className="flex-1">
+                  <Text className="text-body text-ink">추가 알림</Text>
+                  <Text className="text-small text-ink-2">남은 할 일을 다시 알려 드려요</Text>
+                </View>
+                <Text className="text-title text-ink">{t}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={`${t} 알림 빼기`} hitSlop={8} disabled={saving} onPress={() => saveExtras(extras.filter((x) => x !== t))} className="h-9 justify-center rounded-xl border border-line px-3 active:bg-brand-soft">
+                  <Text className="text-label text-ink-2">빼기</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        ) : null}
+        <Pressable
+          testID="extra-slot-add"
+          accessibilityRole="button"
+          onPress={() => {
+            setErr(null);
+            setAdding(extraSuggestion(s.slots));
+          }}
+          className="mt-3 h-14 flex-row items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed border-ink-3 active:bg-brand-soft"
+        >
+          <Text className="text-title text-brand">+</Text>
+          <Text className="text-body font-medium text-brand">알림 추가하기</Text>
+        </Pressable>
         {notes.length > 0 ? (
           <View className="mt-4 gap-2">
             {notes.map((n) => (
@@ -468,6 +397,25 @@ export function NotifyTimeScreen() {
           </View>
         ) : null}
       </SubPage>
+      <Sheet open={adding !== null} onClose={() => setAdding(null)} title={"언제 더\n알려 드릴까요?"}>
+        <Text className="mb-4 text-body text-ink-2">이 시간에 남은 할 일이 있으면 다시 알려 드려요</Text>
+        {adding ? <TimeStepper id="extra-slot" label="알림 시간" value={adding} onChange={setAdding} step={10} /> : null}
+        {adding && (extras.includes(adding) || Object.values(s.slots).includes(adding)) ? <Text className="mt-3 text-label text-urgent">이미 이 시간에 알림이 있어요</Text> : null}
+        {err ? (
+          <Text accessibilityRole="alert" className="mt-3 text-label text-urgent">
+            {err}
+          </Text>
+        ) : null}
+        <View className="mt-5">
+          <PrimaryButton
+            testID="extra-slot-apply"
+            disabled={saving || !adding || extras.includes(adding) || Object.values(s.slots).includes(adding)}
+            onPress={() => adding && saveExtras([...extras, adding])}
+          >
+            {saving ? "넣는 중" : "이때도 받을게요"}
+          </PrimaryButton>
+        </View>
+      </Sheet>
       <Sheet open={sheetFor !== null} onClose={() => setSheetFor(null)} title={sheetFor ? `${info[sheetFor].label} 알림,\n언제 받을까요?` : ""}>
         <SlotChoiceList choices={choices} picked={picked} onPick={setPicked} />
         {err ? (
@@ -518,13 +466,13 @@ export function NotifyOnScreen() {
   };
   const turnOn = async () => {
     setBusy(true);
-    const granted = s ? await turnOnNotifications(s.slots) : false;
+    const granted = s ? await turnOnNotifications(s.slots, s.extra_slots ?? []) : false;
     setBusy(false);
     finish(!granted);
   };
   return (
     <SubPage
-      progress={{ total: STEPS, done: 5 }}
+      progress={{ total: STEPS, done: 7 }}
       footer={
         <>
           <PrimaryButton onPress={turnOn} disabled={busy || !s}>

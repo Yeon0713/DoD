@@ -9,9 +9,11 @@ export interface Account {
   method: LoginMethod | null;
   /** 휴대폰으로 가입했으면 번호 ("01012345678") */
   phone: string | null;
+  /** 이 계정의 가게 (임시 네이버 로그인의 테스트 계정마다 정해진 가게, 예: "s002"). 없으면 서버 기본 가게 */
+  storeId: string | null;
 }
 
-export const account = createStore<Account>("dona.account.v1", { method: null, phone: null });
+export const account = createStore<Account>("dona.account.v1", { method: null, phone: null, storeId: null });
 
 /** "01012345678" → "010-1234-5678" (쓰는 중에도 하이픈을 넣는다) */
 export function formatPhone(digits: string): string {

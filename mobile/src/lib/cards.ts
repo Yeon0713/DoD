@@ -13,7 +13,14 @@ import { defaultHeadline, readKept } from "./poster";
 import { addDays, clockKo, isWeekend, monthDay, relativeDay, weekdayName } from "./time";
 
 export type Tone = "urgent" | "brand" | "calm" | "done";
-export type Donna = "b1-0" | "b1-1" | "b1-2" | "b2-0" | "b2-1" | "b3-0" | "b3-1" | "b3-2" | "b4-0" | "b4-1" | "b4-2" | "question";
+export type Donna = "b1-0" | "b1-1" | "b1-2" | "b2-0" | "b2-1" | "b3-0" | "b3-1" | "b3-2" | "b4-0" | "b4-1" | "b4-2"
+  | "question"
+  | "q-think"
+  | "q-arms"
+  | "q-scratch"
+  | "q-clipboard"
+  | "q-laptop"
+  | "q-shrug";
 
 export type CardBlock =
   | { type: "stars"; rating: number }
@@ -434,13 +441,19 @@ function posterOf(p: PlanItem, h: ReturnType<typeof happening>, ctx: CardContext
 function posterWhen(p: PlanItem, h: ReturnType<typeof happening>, ctx: CardContext): string {
   const days = h.kind ? eventDays(ctx.calendar, p.basis.ref_id) : [p.target_date];
   const name = h.kind ? eventName(ctx.calendar, p.basis.ref_id, h.kind) : "";
+  // 행사나 경기 없이 서버가 매주 만드는 주말 포스터: 요일만 쓰면 무슨 포스터인지 알 수 없다
+  if (!h.kind) return "이번 주말 손님맞이";
   if (days.length > 1 && days.every(isWeekend)) return `이번 주말 ${name}`;
   return `${weekdayName(days[0])} ${busyDaypart(ctx.calendar, days[0], p.basis.ref_id)} ${name}`.replace(/\s+/g, " ").trim();
 }
 
 function poster(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
   const h = happening(ctx.calendar, p);
-  const made = q.notifyKind === "EXECUTE_REMINDER" || !!readKept(ctx.drafts, `poster:${p.plan_id}`);
+  const kept = !!readKept(ctx.drafts, `poster:${p.plan_id}`);
+  // 실제 서버에서는 이 기기에서 포스터를 만든 적이 있을 때만 "미리 만들어 뒀어요"라고 한다.
+  // 승인 요청 날을 놓쳤거나 오늘 가입한 사장님은 만든 적이 없으니 만들기부터 보여 준다.
+  // 고정 샘플은 전날 만들어 둔 것으로 보고, 실행 알림이면 바로 올리기를 보여 준다 (발표 시나리오).
+  const made = kept || (USE_MOCK && q.notifyKind === "EXECUTE_REMINDER");
   if (made) {
     // 06-31, 06-31n, 06-34: 띠 없이 포스터를 크게. 올리고 싶어지게 포스터가 주인공이다.
     return {
@@ -460,7 +473,7 @@ function poster(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
     id: q.cardId,
     tone: "brand",
     pill: { icon: "image", text: "인스타 포스터" },
-    title: `${h.label}\n포스터를 만들어 드릴게요`,
+    title: `${h.kind ? h.label : "이번 주말"}\n포스터를 만들어 드릴게요`,
     blocks: [
       { type: "iconLine", icons: [h.icon], text: h.dateLine },
       { type: "text", text: "인스타에 올리고 가게 앞에도 붙여요" },

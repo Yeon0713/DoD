@@ -10,6 +10,7 @@ import { back, goHome } from "@/components/ui/nav";
 import { Bone, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { DraftBubble, FailNote, Note, ReviewBox, SubPage } from "@/components/ui/sub";
 import { publishReply, rewriteReply } from "@/lib/actions";
+import { ApiFailure } from "@/lib/api";
 import { markDone, markPlanDone } from "@/lib/cardState";
 import { PLATFORM_KO } from "@/lib/labels";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
@@ -144,8 +145,11 @@ export function EditReplyScreen() {
   const { data } = useHome();
   const saved = drafts.useValue();
   const [text, setText] = useState<string | null>(null);
+  // 도나가 다시 쓰기 바로 전의 글. "되돌리기"로 돌아간다 (다시 쓴 글이 마음에 안 들 때 사장님 글이 사라지지 않게)
+  const [before, setBefore] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  // "offline": 인터넷이 끊김, "server": 서버가 다시 쓰지 못한다고 답함 (CLOVA 키 없음, 응답 없음 등)
+  const [failed, setFailed] = useState<false | "offline" | "server">(false);
 
   if (!data) return <LoadingSub title="답글 고쳐 쓰기" />;
   const p = data.plan.plan_items.find((x) => x.plan_id === planId);
@@ -158,9 +162,11 @@ export function EditReplyScreen() {
     setBusy(true);
     setFailed(false);
     try {
-      setText(await rewriteReply(value, style, planId));
-    } catch {
-      setFailed(true);
+      const next = await rewriteReply(value, style, planId);
+      setBefore(value);
+      setText(next);
+    } catch (e) {
+      setFailed(e instanceof ApiFailure && !e.offline ? "server" : "offline");
     } finally {
       setBusy(false);
     }
@@ -185,7 +191,10 @@ export function EditReplyScreen() {
         testID="reply-text"
         accessibilityLabel="답글"
         value={value}
-        onChangeText={setText}
+        onChangeText={(t) => {
+          setText(t);
+          setBefore(null);
+        }}
         multiline
         editable={!busy}
         textAlignVertical="top"
@@ -197,9 +206,10 @@ export function EditReplyScreen() {
             key={s}
             testID={`rewrite-${s}`}
             accessibilityRole="button"
-            disabled={busy}
+            disabled={busy || empty}
+            accessibilityState={{ disabled: busy || empty }}
             onPress={() => rewrite(s)}
-            className={`h-12 flex-1 items-center justify-center rounded-full border border-brand bg-surface active:bg-brand-soft ${busy ? "opacity-50" : ""}`}
+            className={`h-12 flex-1 items-center justify-center rounded-full border border-brand bg-surface active:bg-brand-soft ${busy || empty ? "opacity-50" : ""}`}
           >
             <Text className="text-body font-medium text-ink">{s === "short" ? "더 짧게" : "더 정중하게"}</Text>
           </Pressable>
@@ -208,12 +218,28 @@ export function EditReplyScreen() {
       <Text className="mt-2 text-center text-small text-ink-2" accessibilityLiveRegion="polite">
         {busy ? "도나가 다시 쓰고 있어요" : "누르면 도나가 다시 써요"}
       </Text>
+      {before !== null && !busy ? (
+        <Pressable
+          testID="rewrite-undo"
+          accessibilityRole="button"
+          hitSlop={8}
+          onPress={() => {
+            setText(before);
+            setBefore(null);
+          }}
+          className="mt-2 h-11 flex-row items-center justify-center gap-1.5 self-center px-3"
+        >
+          <Icon name="undo" size={20} color={C.brand} />
+          <Text className="text-label font-medium text-brand">바로 앞 글로 되돌리기</Text>
+        </Pressable>
+      ) : null}
       {empty ? (
         <Text className="mt-3 text-center text-label text-urgent" accessibilityLiveRegion="polite">
           답글을 한 글자 이상 적어 주세요
         </Text>
       ) : null}
-      {failed ? <FailNote title="다시 쓰지 못했어요" sub={"인터넷이 끊겼어요.\n쓴 답글은 그대로 있어요"} /> : null}
+      {failed === "offline" ? <FailNote title="다시 쓰지 못했어요" sub={"인터넷이 끊겼어요.\n쓴 답글은 그대로 있어요"} /> : null}
+      {failed === "server" ? <FailNote icon="refresh" title="다시 쓰지 못했어요" sub={"도나가 지금은 다시 쓸 수 없어요.\n쓴 답글은 그대로 있고, 직접 고칠 수 있어요"} /> : null}
     </SubPage>
   );
 }

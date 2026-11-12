@@ -9,7 +9,7 @@ import { Icon, type IconName } from "@/components/icons/Icon";
 import { Bone, DonnaImage, PrimaryButton } from "@/components/ui/parts";
 import { ListRow, SubPage } from "@/components/ui/sub";
 import { TabPage } from "@/components/ui/TabPage";
-import { USE_MOCK } from "@/lib/api";
+import { ApiFailure, USE_MOCK } from "@/lib/api";
 import { weekdayOf, weeklyOf } from "@/lib/hours";
 import { addDays, monthDay, weekdayName, ymd } from "@/lib/time";
 import { useHome } from "@/lib/useHome";
@@ -55,7 +55,7 @@ function eventLabel(cells: CalendarCell[]): { tag: "GAME" | "EVENT"; refId: stri
 }
 
 /** 하루 요약: 제목, 이유 상자 (06-7 계열 글) */
-function daySummary(all: CalendarCell[], date: string) {
+function daySummary(all: CalendarCell[], date: string, today?: string) {
   const cells = all.filter((c) => c.date === date);
   const high = cells.filter((c) => c.signal === "HIGH").map((c) => DP_KO[c.daypart]);
   const low = cells.filter((c) => c.signal === "LOW").map((c) => DP_KO[c.daypart]);
@@ -71,7 +71,7 @@ function daySummary(all: CalendarCell[], date: string) {
     if (low.length) sub = `${withTopic(low.join(", "))} 한가할 것 같아요`;
     else if (high.length) sub = ev.tag === "GAME" ? `${high[0]} 배달이 평소보다 늘 것 같아요` : `${high.join(", ")} 주문이 늘 것 같아요`;
   } else if (season) {
-    reason = seasonBefore ? "추운 날이 이어져요" : "오늘부터 추워져요";
+    reason = seasonBefore ? "추운 날이 이어져요" : date === today ? "오늘부터 추워져요" : "이날부터 추워져요";
     sub = "국물 메뉴가 더 나가요";
   } else if (low.length) {
     sub = `${low.join(", ")}에는 조금 한가해요`;
@@ -84,6 +84,17 @@ function weekOf(today: string): string[] {
   const wd = (new Date(`${today}T12:00:00+09:00`).getUTCDay() + 6) % 7;
   const mon = addDays(today, -wd);
   return Array.from({ length: 7 }, (_, i) => addDays(mon, i));
+}
+
+/**
+ * 요일 줄에 보일 7일. 달력에 이번 주의 지난 날이 있으면 월요일부터 일요일까지(고정 샘플은 한 주를 준다),
+ * 없으면 오늘부터 7일이다 (서버 달력은 오늘부터 35일을 주고, 쉬는 날 칸은 빠져 있다).
+ * 쉬는 날도 줄에 넣으려고 달력에 있는 날짜가 아니라 이어진 7일을 만든다.
+ */
+function stripDays(cellDates: string[], today: string): string[] {
+  const week = weekOf(today);
+  if (today === week[0] || cellDates.some((d) => d >= week[0] && d < today)) return week;
+  return Array.from({ length: 7 }, (_, i) => addDays(today, i));
 }
 
 type Mark = "busy" | "closed" | null;
@@ -130,7 +141,7 @@ function WeekHeader({ range }: { range?: [string, string] }) {
       </Text>
       {range && (
         <Text className="text-label text-ink-2">
-          {monthDay(range[0])}부터 {Number(range[1].slice(8))}일까지
+          {monthDay(range[0])}부터 {range[0].slice(0, 7) === range[1].slice(0, 7) ? `${Number(range[1].slice(8))}일` : monthDay(range[1])}까지
         </Text>
       )}
     </View>
@@ -184,21 +195,22 @@ export function WeekScreen() {
 
   if (!data) {
     if (error) {
-      // 06-7E 인터넷이 끊겼을 때
+      // 06-7E 인터넷이 끊겼을 때. 서버가 아직 다루지 못하는 가게(자정을 넘겨 여는 가게)면 그렇게 알린다
+      const notReady = error instanceof ApiFailure && error.code === "OVERNIGHT_STORE_NOT_SUPPORTED";
       return (
         <TabPage>
           <WeekHeader />
           <View className="flex-1 items-center justify-center">
-            <DonnaImage img="question" size={160} />
-            <Text className="mt-3 text-center text-display text-ink">{"인터넷이\n잠시 끊겼어요"}</Text>
-            <Text className="mt-2 text-center text-body text-ink-2">연결되면 이번 주를 다시 보여 드릴게요</Text>
+            <DonnaImage img={notReady ? "q-clipboard" : "q-laptop"} size={160} />
+            <Text className="mt-3 text-center text-display text-ink">{notReady ? "아직 준비 중이에요" : "인터넷이\n잠시 끊겼어요"}</Text>
+            <Text className="mt-2 text-center text-body text-ink-2">{notReady ? "자정을 넘겨 여는 가게는\n곧 쓸 수 있게 준비하고 있어요" : "연결되면 이번 주를 다시 보여 드릴게요"}</Text>
           </View>
           <PrimaryButton onPress={() => refetch()}>다시 불러오기</PrimaryButton>
         </TabPage>
       );
     }
     // 06-7L 불러오는 중: 요일 칸과 시간대 이름은 그대로, 내용만 뼈대로
-    const days = weekOf(today);
+    const days = USE_MOCK ? weekOf(today) : stripDays([], today);
     return (
       <TabPage>
         <WeekHeader range={[days[0], days[6]]} />
@@ -223,7 +235,7 @@ export function WeekScreen() {
   }
 
   const cells = data.calendar.cells;
-  const days = [...new Set(cells.map((c) => c.date))].sort();
+  const days = stripDays([...new Set(cells.map((c) => c.date))], today);
   const weekly = weeklyOf(data.settings.settings);
   const isClosed = (d: string) => weekly[weekdayOf(d)] === null;
   const marks: Record<string, Mark> = {};
@@ -231,7 +243,7 @@ export function WeekScreen() {
   const want = picked ?? (typeof params.day === "string" ? params.day : null);
   const selected = want && days.includes(want) ? want : days.includes(today) ? today : days[0];
   const closed = isClosed(selected);
-  const s = daySummary(cells, selected);
+  const s = daySummary(cells, selected, today);
   const w = USE_MOCK ? WEATHER[selected] : undefined;
   const linkTo = !closed && s.ev ? `/week/${encodeURIComponent(s.ev.refId)}` : null;
   const busy = !closed && s.busy;

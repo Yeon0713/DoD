@@ -12,6 +12,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { DemoCursor } from '@/components/dev/DemoCursor';
 import { ToastHost } from '@/components/ui/Toast';
 import { hydrateStorage } from '@/lib/storage';
 import tokens from '@/theme/tokens.json';
@@ -52,6 +53,8 @@ export default function RootLayout() {
             }}
           />
           <ToastHost />
+          {/* 시연용 마우스 표시. 웹 개발 빌드에서 주소에 ?cursor=1 을 붙였을 때만 보인다 */}
+          <DemoCursor />
         </View>
       </QueryClientProvider>
     </SafeAreaProvider>

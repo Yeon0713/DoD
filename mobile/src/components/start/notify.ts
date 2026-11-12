@@ -2,10 +2,10 @@
 import type { Slot } from "@/types/contract";
 
 /** 알림 허락을 받는다. 허락했는지 돌려준다. */
-export async function turnOnNotifications(_slots: Record<Slot, string>): Promise<boolean> {
+export async function turnOnNotifications(_slots: Record<Slot, string>, _extra: string[] = []): Promise<boolean> {
   if (typeof Notification === "undefined") return false;
   return (await Notification.requestPermission()) === "granted";
 }
 
 /** 웹은 예약 알림이 없다. */
-export async function rescheduleIfAllowed(_slots: Record<Slot, string>) {}
+export async function rescheduleIfAllowed(_slots: Record<Slot, string>, _extra: string[] = []) {}

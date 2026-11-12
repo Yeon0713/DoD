@@ -73,6 +73,13 @@ class Slots(BaseModel):
         return self
 
 
+class DayHours(BaseModel):
+    """하루 장사 시간."""
+
+    open: HHMM
+    close: HHMM
+
+
 class StoreSettings(BaseModel):
     store_id: str
     name: str
@@ -85,6 +92,14 @@ class StoreSettings(BaseModel):
     busy_dayparts: list[Daypart]  # 알림을 보내지 않는 바쁜 시간대
     slots: Slots
     closed_weekdays: list[Weekday]
+    # 사장님이 설정에서 요일별로 고친 장사 시간(쉬는 날은 null)과 브레이크 타임. 고친 적이 없으면 없다.
+    # 계획 엔진은 위의 open_time, close_time, closed_weekdays 만 쓴다 (요일별 시간에서 뽑아 채운다).
+    weekly_hours: dict[Weekday, DayHours | None] | None = None
+    break_time: TimeRange | None = None
+    # 사장님 출근·퇴근 예정 시간 (기본은 여는·닫는 시간). 알림 시각을 고를 때 쓰고, 계획 엔진은 쓰지 않는다
+    work_hours: TimeRange | None = None
+    # 사장님이 더 넣은 알림 시각 ("16:30"). 이때 남은 할 일을 다시 알려 준다 (앱이 보낸다. 계획 엔진의 알림 묶음은 세 시각 그대로)
+    extra_slots: list[HHMM] = []
 
 
 # ── 입력: 리뷰와 손님 ──

@@ -12,6 +12,7 @@
 """
 
 import datetime as dt
+from bisect import bisect_left
 from collections import defaultdict
 from dataclasses import dataclass
 
@@ -68,6 +69,7 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
             else:
                 food_cost[key] += cost * item.quantity
 
+    shifts = _ShiftIndex(inputs.shifts) if inputs.shifts else None
     order_days = [business_date(order.ordered_at, store) for order in orders]
     last_day = max(order_days)
     rows = []
@@ -76,7 +78,7 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
         if not is_closed_day(day, store):
             for r in ranges:
                 key = (day, r.daypart)
-                labor = _labor_cost(inputs, day, r) if inputs.shifts else None
+                labor = _labor_cost(shifts, inputs, day, r) if shifts else None
                 food = food_cost[key] if has_cost_data and key not in cost_missing else None
                 deductions = [value for value in (food, labor) if value is not None]
                 rows.append(
@@ -94,11 +96,24 @@ def build_sales_daily(inputs: AnalysisInputs, now: dt.datetime) -> SalesDailyRes
     return SalesDailyResult(rows=rows, outside_order_count=outside)
 
 
-def _labor_cost(inputs: AnalysisInputs, day: dt.date, r: DaypartRange) -> int:
+class _ShiftIndex:
+    """근무표를 시작 시각 순으로 정렬해 둔다. 날마다 근무표 전체를 훑지 않고 그 시간대와 겹칠 수 있는 근무만 본다."""
+
+    def __init__(self, shifts):
+        self.shifts = sorted(shifts, key=lambda shift: shift.starts_at)
+        self.starts = [shift.starts_at for shift in self.shifts]
+        self.longest = max(shift.ends_at - shift.starts_at for shift in self.shifts)
+
+    def around(self, start: dt.datetime, end: dt.datetime):
+        """start~end 와 겹칠 수 있는 근무. 가장 긴 근무보다 더 일찍 시작한 근무는 start 전에 끝난다."""
+        return self.shifts[bisect_left(self.starts, start - self.longest) : bisect_left(self.starts, end)]
+
+
+def _labor_cost(shifts: _ShiftIndex, inputs: AnalysisInputs, day: dt.date, r: DaypartRange) -> int:
     """그 날 그 시간대와 겹친 근무 시간 × 시급의 합(원 단위 반올림)."""
     start, end = window(day, r, inputs.store)
     total = 0.0
-    for shift in inputs.shifts:
+    for shift in shifts.around(start, end):
         minutes = overlap_minutes(shift.starts_at, shift.ends_at, start, end)
         total += minutes / 60 * shift.hourly_wage
     return round(total)

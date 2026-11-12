@@ -11,6 +11,9 @@
 - 실패(키 없음, 연결 오류, 시간 초과, JSON 아님, 남는 id 없음)하면 예외 없이 빈 후보를 돌려준다.
 - 성공한 결과만 서버 메모리에 기억한다. 키는 (매장, 세부 종류, 현재 메뉴 id 묶음)이다. 메뉴가 바뀌면 다시 묻는다.
 
+뒤에서 부르기(candidates_in_background): 스냅샷 계산이 CLOVA 를 기다리지 않게, 기억한 결과가 없으면 뒤에서 묻도록 맡기고
+바로 빈 후보를 돌려준다. 같은 키는 '진행 중'이면 다시 맡기지 않는다. 결과는 다음 계산 때 쓰인다. 키가 없으면 맡기지 않는다.
+
 프롬프트 파일: prompts/menu_candidates_prompt.txt. {가게이름}, {업종}, {개수} 를 채운다. 부를 때마다 읽는다.
 """
 
@@ -18,6 +21,7 @@ import json
 import logging
 import re
 import threading
+from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -27,6 +31,7 @@ from app.analysis.input_shapes import Menu
 from app.analysis.store_calendar.season import Season
 from app.core import clova
 from app.core.clova import Post
+from app.core.config import settings
 from app.planner.data_shapes import EventKind, GameKind
 
 logger = logging.getLogger(__name__)
@@ -68,8 +73,13 @@ class MenuCandidates:
 
 EMPTY = MenuCandidates()
 
-_results: dict[tuple[str, str, frozenset[str]], MenuCandidates] = {}
+BACKGROUND_WORKERS = 2  # 동시에 CLOVA 를 부르는 수. 너무 많으면 요청 한도(429)에 걸린다
+
+_Key = tuple[str, str, frozenset[str]]  # (매장, 세부 종류, 메뉴 id 묶음)
+_results: dict[_Key, MenuCandidates] = {}
+_in_progress: dict[_Key, Future] = {}
 _guard = threading.Lock()
+_executor = ThreadPoolExecutor(max_workers=BACKGROUND_WORKERS, thread_name_prefix="menu-candidates")
 
 
 def menu_candidates(store: dict, menus: list[Menu], kind: MenuBoardKind, *, post: Post = httpx.post) -> MenuCandidates:
@@ -79,7 +89,7 @@ def menu_candidates(store: dict, menus: list[Menu], kind: MenuBoardKind, *, post
         return EMPTY
     if not menus:
         return EMPTY
-    key = (store["store_id"], kind, frozenset(menu.menu_id for menu in menus))
+    key = _key(store, menus, kind)
     with _guard:
         if key in _results:
             return _results[key]
@@ -92,6 +102,38 @@ def menu_candidates(store: dict, menus: list[Menu], kind: MenuBoardKind, *, post
         with _guard:
             _results[key] = result
     return result
+
+
+def candidates_in_background(store: dict, menus: list[Menu], kind: MenuBoardKind, *, post: Post = httpx.post) -> MenuCandidates:
+    """기억한 후보가 있으면 돌려주고, 없으면 뒤에서 묻도록 맡긴 뒤 빈 후보를 돌려준다. 기다리지 않는다."""
+    if kind not in KIND_NAMES or not menus:
+        return menu_candidates(store, menus, kind, post=post)  # 묻지 않고 빈 후보(모르는 종류는 경고)
+    key = _key(store, menus, kind)
+    with _guard:
+        if key in _results:
+            return _results[key]
+        if settings.clova_studio_api_key and key not in _in_progress:
+            _in_progress[key] = _executor.submit(_ask_in_background, store, menus, kind, key, post)
+    return EMPTY
+
+
+def _ask_in_background(store: dict, menus: list[Menu], kind: MenuBoardKind, key: "_Key", post: Post) -> None:
+    try:
+        menu_candidates(store, menus, kind, post=post)  # 성공하면 기억한다. 실패는 기억하지 않아 다음 계산 때 다시 맡긴다
+    finally:
+        with _guard:
+            _in_progress.pop(key, None)
+
+
+def wait_for_background(timeout: float = 10) -> None:
+    """뒤에서 묻는 중인 일이 끝날 때까지 기다린다 (테스트용)."""
+    with _guard:
+        futures = list(_in_progress.values())
+    wait(futures, timeout=timeout)
+
+
+def _key(store: dict, menus: list[Menu], kind: MenuBoardKind) -> "_Key":
+    return (store["store_id"], kind, frozenset(menu.menu_id for menu in menus))
 
 
 def load_prompt(store: dict, count: int) -> str:
@@ -154,6 +196,7 @@ def _usable_reason(reason) -> str:
 
 
 def forget_all() -> None:
-    """기억한 후보를 모두 지운다 (테스트용)."""
+    """기억한 후보와 진행 중 표시를 모두 지운다 (테스트용). 진행 중이던 일은 끝나도 지운 표시만 다시 지운다."""
     with _guard:
         _results.clear()
+        _in_progress.clear()

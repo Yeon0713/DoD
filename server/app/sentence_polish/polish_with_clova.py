@@ -27,7 +27,7 @@ from typing import Callable, Iterable, Literal
 
 import httpx
 
-from app.core import clova
+from app.core import clova, clova_usage_log
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -115,14 +115,25 @@ def clean_answer(answer: str) -> str:
     return text.strip(QUOTES).strip()
 
 
-def keeps_facts(kind: PolishKind, original: str, candidate: str, must_keep: Iterable[str] = ()) -> bool:
-    """다듬은 문장을 써도 되는지. 숫자와 이름(must_keep)이 그대로 남아 있고, 한 줄이고, 너무 길지 않아야 한다."""
-    if not candidate or "\n" in candidate or len(candidate) > MAX_LENGTH[kind]:
-        return False
+def rejection_reason(kind: PolishKind, original: str, candidate: str, must_keep: Iterable[str] = ()) -> str | None:
+    """다듬은 문장을 쓰면 안 되는 까닭. 써도 되면 None. (개발자 대시보드 'AI 품질'에 그대로 보인다)"""
+    if not candidate:
+        return "빈 답"
+    if "\n" in candidate:
+        return "여러 줄"
+    if len(candidate) > MAX_LENGTH[kind]:
+        return "너무 김"
     candidate_numbers = NUMBER_RE.findall(candidate)
     if not all(number in candidate_numbers for number in NUMBER_RE.findall(original)):
-        return False
-    return all(term in candidate for term in must_keep if term and term in original)
+        return "숫자가 바뀌거나 빠짐"
+    if not all(term in candidate for term in must_keep if term and term in original):
+        return "행사·경기 이름이나 요일이 바뀜"
+    return None
+
+
+def keeps_facts(kind: PolishKind, original: str, candidate: str, must_keep: Iterable[str] = ()) -> bool:
+    """다듬은 문장을 써도 되는지. 숫자와 이름(must_keep)이 그대로 남아 있고, 한 줄이고, 너무 길지 않아야 한다."""
+    return rejection_reason(kind, original, candidate, must_keep) is None
 
 
 def polish_now(
@@ -130,12 +141,15 @@ def polish_now(
 ) -> str | None:
     """문장 하나를 지금 바로 다듬는다. 실패하거나 검사를 통과하지 못하면 None. post 는 테스트에서 가짜를 넣는다."""
     answer = clova.ask(
-        load_prompt(kind, store), original, max_tokens=150, temperature=0.3, timeout=TIMEOUT_SECONDS, post=post
+        load_prompt(kind, store), original, max_tokens=150, temperature=0.3, timeout=TIMEOUT_SECONDS, post=post,
+        feature=f"polish:{kind}", store_id=store.get("store_id"),
     )
     if answer is None:
         return None
     candidate = clean_answer(answer)
-    return candidate if keeps_facts(kind, original, candidate, must_keep) else None
+    reason = rejection_reason(kind, original, candidate, must_keep)
+    clova_usage_log.set_verdict(reason is None, reason)
+    return candidate if reason is None else None
 
 
 def forget_all() -> None:

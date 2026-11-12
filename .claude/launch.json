@@ -12,6 +12,12 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd mobile && npx expo start --web --clear --port 8082"],
       "port": 8082
+    },
+    {
+      "name": "server",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd server && DEV_TOOLS_ENABLED=true .venv/bin/python run_dev.py"],
+      "port": 8000
     }
   ]
 }

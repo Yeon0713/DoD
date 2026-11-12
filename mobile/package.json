@@ -46,7 +46,8 @@
     "web": "expo start --web --port 8082",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "sync-mocks": "node scripts/sync-mocks.mjs"
+    "sync-mocks": "node scripts/sync-mocks.mjs",
+    "ui-text:apply": "node scripts/ui-text/apply.mjs"
   },
   "private": true
 }

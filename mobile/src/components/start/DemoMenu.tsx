@@ -59,8 +59,9 @@ function ServerLine({ health }: { health: ServerHealth | null | undefined }) {
   return <Text testID="start-menu-server" className="text-small text-ink-3">{`서버에 연결됐어요 · ${where}`}</Text>;
 }
 
-/** 오른쪽 위 줄: 데모 모드 표시 + 메뉴 버튼. left 에는 뒤로 버튼 같은 것을 넣는다 */
-export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
+/** 오른쪽 위 줄: 데모 모드 표시 + 메뉴 버튼. left 에는 뒤로 버튼 같은 것을 넣는다.
+ * center 를 주면(시작 화면의 로고) 가운데에 두고, 줄을 본문과 같은 24 안쪽에 맞춘다. 데모 표시는 로고를 가리지 않게 줄 아래로 내린다. */
+export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?: React.ReactNode }) {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -99,9 +100,14 @@ export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
 
   return (
     <>
-      <View className="mt-3 h-11 flex-row items-center gap-2 px-4">
+      <View className={`h-11 flex-row items-center gap-2 ${center ? "px-6" : "mt-3 px-4"}`}>
         <View className="flex-1 flex-row">{left}</View>
-        {demo.on ? (
+        {center ? (
+          <View pointerEvents="none" className="absolute inset-y-0 left-0 right-0 items-center justify-center">
+            {center}
+          </View>
+        ) : null}
+        {demo.on && !center ? (
           <View testID="start-demo-badge" className="rounded-full bg-brand-soft px-3 py-1">
             <Text className="text-small font-medium text-brand">데모 테스트 모드</Text>
           </View>
@@ -117,6 +123,11 @@ export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
           <Icon name="menu" size={26} color={C.ink} />
         </Pressable>
       </View>
+      {demo.on && center ? (
+        <View testID="start-demo-badge" className="mt-1 self-center rounded-full bg-brand-soft px-3 py-1">
+          <Text className="text-small font-medium text-brand">데모 테스트 모드</Text>
+        </View>
+      ) : null}
       <Sheet open={open && !confirming} onClose={() => setOpen(false)} title="메뉴">
         <View className="gap-2.5">
           <View testID="start-menu-demo" className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3">

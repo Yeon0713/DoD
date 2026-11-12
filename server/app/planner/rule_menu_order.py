@@ -7,10 +7,15 @@
 D-1 14:00 승인 요청, D 출근 후 실행, 기한은 D 마감.
 쉬는 날은 건너뛴다: 쉬는 날에는 바꾸지 않고, 쉬는 날 다음 날은 그 앞의 여는 날과 태그를 견준다.
 (승인 요청이 쉬는 날에 걸리면 make_plan 이 다음 여는 날로 옮긴다.)
+
+메뉴판 기준 태그(menu_board_bases)는 날짜별로 메뉴판을 어떤 태그에 맞춰 둘지 정한다. 교체 이득이 교체 부담보다
+큰 태그만 바꿀 만하다고 본다. 위 카드 가운데 기준 태그가 직전 영업일과 같은 카드는 바뀌는 것이 없다
+(unchanged_menu_orders).
 """
 
 import datetime as dt
 from collections import defaultdict
+from dataclasses import dataclass
 
 from app.planner.data_shapes import Basis, CalendarCell, PlanItem, StoreSettings
 from app.planner.notification_time_helpers import close_time_on, is_closed_day, postpone_if_passed, slot_at
@@ -69,3 +74,114 @@ def plan_menu_orders(calendar: list[CalendarCell], store: StoreSettings) -> list
             )
         )
     return items
+
+
+# ── 메뉴판 기준 태그 ──
+
+COST_PER_MENU = 0.1  # 메뉴 1개를 움직이는 교체 부담. 효과 단위(0.10 = 10%)이고 매출액이 아니다
+_EPSILON = 1e-9  # 효과 평균의 부동소수 오차. 이득이 부담과 같으면 바꾸지 않는다
+_DIGITS = 9  # 하루 효과를 견줄 때 남기는 소수 자리. 칸 수가 달라도 같은 효과는 같게 본다
+
+
+@dataclass(frozen=True)
+class TagPeriod:
+    """근거 id 하나의 원본 일정(양 끝 포함). 행사는 시작~끝, 경기는 당일, 계절은 시작~끝.
+
+    end 가 None 이면 아직 끝나지 않았다(계절). ref_id 는 달력 이유의 근거 id 와 같은 값이다.
+    """
+
+    ref_id: str
+    start: dt.date
+    end: dt.date | None = None
+
+
+def switch_benefit(effects: list[float], open_days: int) -> float:
+    """교체 이득 = 대표 |effect|(평균) × 기간 안의 영업일 수. 교체 여부를 정하는 점수이고 매출액이 아니다."""
+    return _strength(effects) * open_days
+
+
+def _strength(effects: list[float]) -> float:
+    """대표 |effect|: 그 근거 id가 붙은 달력 칸들의 |effect| 평균(하루 효과)."""
+    return round(sum(abs(effect) for effect in effects) / len(effects), _DIGITS)
+
+
+def _open_days(start: dt.date, end: dt.date, store: StoreSettings) -> int:
+    """start~end(양 끝 포함)의 영업일 수. 휴무일은 기간을 끊지 않고 세지만 않는다."""
+    days, day = 0, start
+    while day <= end:
+        days += not is_closed_day(day, store)
+        day += dt.timedelta(days=1)
+    return days
+
+
+def menu_board_bases(
+    calendar: list[CalendarCell],
+    periods: list[TagPeriod],
+    store: StoreSettings,
+    k: int,
+    cost_per_menu: float = COST_PER_MENU,
+) -> dict[dt.date, str | None]:
+    """영업일별 메뉴판 기준 태그(근거 id). None 이면 원래 순서다.
+
+    1. 근거 id마다 교체 이득(switch_benefit)이 교체 부담(cost_per_menu × k)보다 커야 바꿀 만하다. k 는 맨 위로 올릴 메뉴 수.
+       기간은 원본 일정(periods)을 쓰고 끝만 달력 마지막 날로 자른다. 달력보다 앞서 시작한 날도 센다.
+       한계: 달력 끝에 걸린 기간은 그 뒤 날을 모르므로 이득이 실제보다 작게 나올 수 있다.
+       periods 에 없는 근거 id는 달력에 보인 첫날~마지막 날을 기간으로 쓴다.
+    2. 그날 붙은 태그 가운데 바꿀 만한 것 중에서 하루 효과(대표 |effect|)가 가장 큰 것이 기준 태그다.
+       같으면 근거 id 순으로 앞선 것. 이득 합계로 고르지 않는 까닭: 기간이 긴 계절이 늘 이긴다.
+    날씨는 기준 태그가 되지 않는다. 쉬는 날은 결과에 없다.
+    """
+    if not calendar:
+        return {}
+    effects: dict[str, list[float]] = defaultdict(list)
+    seen_on: dict[str, list[dt.date]] = defaultdict(list)
+    for cell in calendar:
+        for reason in cell.reasons:
+            if reason.tag != "WEATHER":
+                effects[reason.ref_id].append(reason.effect)
+                seen_on[reason.ref_id].append(cell.date)
+    last_day = max(cell.date for cell in calendar)
+    period_by_id = {period.ref_id: period for period in periods}
+    burden = cost_per_menu * k
+
+    worthwhile: dict[str, float] = {}  # 바꿀 만한 근거 id → 하루 효과
+    for ref_id, values in effects.items():
+        period = period_by_id.get(ref_id)
+        if period is None:
+            start, end = min(seen_on[ref_id]), max(seen_on[ref_id])
+        else:
+            start, end = period.start, min(period.end or last_day, last_day)
+        if switch_benefit(values, _open_days(start, end, store)) > burden + _EPSILON:
+            worthwhile[ref_id] = _strength(values)
+
+    bases = {}
+    for day, day_tags in sorted(tags_by_date(calendar).items()):
+        if is_closed_day(day, store):
+            continue
+        candidates = [ref_id for _, ref_id in day_tags if ref_id in worthwhile]
+        bases[day] = min(candidates, key=lambda ref_id: (-worthwhile[ref_id], ref_id), default=None)
+    return bases
+
+
+def _previous_open_day(day: dt.date, store: StoreSettings) -> dt.date:
+    """plan_menu_orders 가 견주는 직전 영업일. 전날부터 거슬러 가되 일주일까지만 본다."""
+    previous = day - dt.timedelta(days=1)
+    while is_closed_day(previous, store) and (day - previous).days < 7:
+        previous -= dt.timedelta(days=1)
+    return previous
+
+
+def unchanged_menu_orders(plan_items: list[PlanItem], bases: dict[dt.date, str | None], store: StoreSettings) -> set[str]:
+    """plan_menu_orders 가 만든 메뉴판 카드 가운데 기준 태그가 직전 영업일과 같아 바뀌는 것이 없는 카드의 plan_id.
+
+    예) 교체 이득이 부담을 넘지 못한 행사가 시작하거나 끝난 날의 카드. 그날이나 직전 영업일의 기준 태그를 모르면 넣지 않는다.
+    """
+    unchanged = set()
+    for item in plan_items:
+        if item.task_type != "MENU_ORDER":
+            continue
+        day = dt.date.fromisoformat(item.basis.ref_id)  # 메뉴판 카드의 근거는 날짜다
+        previous = _previous_open_day(day, store)
+        if day in bases and previous in bases and bases[day] == bases[previous]:
+            unchanged.add(item.plan_id)
+    return unchanged

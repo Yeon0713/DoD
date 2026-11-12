@@ -168,3 +168,20 @@ def test_season_day_compares_only_the_dayparts_it_used():
     lift = menu_share_lift(inputs(sales, events=[festival(WINTER_START)], weather=winter_weather()), "SEASON", "WINTER", dt.date(2026, 3, 1))
     assert lift.n == 1
     assert lift.lift_pp["2"] == pytest.approx(50.0)  # 저녁끼리: 100% − 50%. 점심까지 섞으면 100% − 33.3%
+
+
+def test_restarted_season_leaves_earlier_days_of_the_same_season_out_of_usual():
+    # 겨울 1/5~1/7 → 따뜻한 1/8~1/10 → 다시 겨울 1/11~1/13. 두 번째 겨울의 평소(1/11 전 8주)에서 첫 겨울 날은 뺀다
+    first = days(WINTER_START, WINTER_START + dt.timedelta(days=2))
+    warm = days(WINTER_START + dt.timedelta(days=3), WINTER_START + dt.timedelta(days=5))
+    second = days(WINTER_START + dt.timedelta(days=6), WINTER_START + dt.timedelta(days=8))
+    cold = set(first) | set(second)
+    weather = [WeatherDay(date=day, temp_max=5 if day in cold else 15, temp_min=0, rain_mm=0) for day in days(dt.date(2025, 10, 1), dt.date(2026, 1, 31))]
+    sales = [
+        *usual_lunches(WINTER_START),
+        *[sold(day, LUNCH, {"1": 1, "2": 3}) for day in first + second],  # 겨울 점심: 전 75%
+        *[sold(day, LUNCH, {"1": 3, "2": 1}) for day in warm],
+    ]
+    lift = menu_share_lift(inputs(sales, weather=weather), "SEASON", "WINTER", dt.date(2026, 3, 1))
+    assert lift.n == 6
+    assert lift.lift_pp["2"] == pytest.approx(50.0)  # 첫 겨울 날이 평소에 섞이면 두 번째 겨울의 변화가 50 보다 작다

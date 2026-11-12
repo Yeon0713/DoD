@@ -6,6 +6,7 @@
 - SEASON: 그 계절(WINTER, SUMMER)에 속한 날마다, 행사·경기 특별한 칸을 뺀 시간대들을 합산한다.
   평소는 그 계절 기간이 시작되기 전 8주의 같은 시간대들을 합산한다(특별한 칸 제외).
   그날 직전 8주도 같은 계절이면 변화가 0에 가깝게 나오기 때문이다.
+  계절이 끊겼다 다시 시작하면 시작 전 8주에 앞선 같은 계절 날이 들어 있으므로 평소에서 뺀다.
   첫 주문 날보다 먼저 시작한 계절은 첫 주문 날을 시작일로 본다. 그 앞 8주에는 주문이 없어 그 계절 날은 쓰이지 않는다.
 - 현재 메뉴 목록에 없는 메뉴의 판매도 전체 수량(비중의 분모)에는 들어간다.
 - 평소 구간은 기준점(EVENT·GAME 은 그날, SEASON 은 계절 시작일)부터 7일씩 거슬러 1~8주로 나눈다.
@@ -43,11 +44,12 @@ class ShareLift:
 
 @dataclass(frozen=True)
 class _Sample:
-    """과거 날 하나: 그날 볼 칸, 평소 구간의 기준점(이 날 전 8주), 평소에 볼 시간대."""
+    """과거 날 하나: 그날 볼 칸, 평소 구간의 기준점(이 날 전 8주), 평소에 볼 시간대, 평소에서 뺄 날."""
 
     cells: list[Cell]
     anchor: dt.date
     dayparts: list[str]
+    skip_days: frozenset[dt.date] = frozenset()
 
 
 def menu_share_lift(inputs: AnalysisInputs, tag: MenuBoardTag, kind: str, as_of: dt.date) -> ShareLift:
@@ -109,23 +111,25 @@ def _season_samples(
 ) -> list[_Sample]:
     all_parts = [r.daypart for r in dayparts_of(inputs.store)]
     event_or_game = {(c.date, c.daypart) for c in specials if c.tag in ("EVENT", "GAME")}
+    seasons = seasons_between(inputs.weather, first_day, as_of - dt.timedelta(days=1))
+    same_season = frozenset(day for day, season in seasons.items() if season == kind)
     samples, season_start, previous = [], None, None
-    for day, season in sorted(seasons_between(inputs.weather, first_day, as_of - dt.timedelta(days=1)).items()):
+    for day, season in sorted(seasons.items()):
         if season != previous:
             season_start, previous = day, season
         if season != kind or is_closed_day(day, inputs.store):
             continue
         parts = [p for p in all_parts if (day, p) not in event_or_game]
-        samples.append(_Sample([(day, p) for p in parts], season_start, parts))
+        samples.append(_Sample([(day, p) for p in parts], season_start, parts, same_season))
     return samples
 
 
 def _usual_cells(sample: _Sample, special_keys: set[Cell], inputs: AnalysisInputs) -> list[Cell]:
-    """기준점 전 8주의 같은 시간대 칸. 쉬는 날과 특별한 칸은 뺀다."""
+    """기준점 전 8주의 같은 시간대 칸. 쉬는 날, 특별한 칸, 뺄 날(앞선 같은 계절 날)은 뺀다."""
     cells = []
     for back in range(1, USUAL_WEEKS * 7 + 1):
         day = sample.anchor - dt.timedelta(days=back)
-        if not is_closed_day(day, inputs.store):
+        if not is_closed_day(day, inputs.store) and day not in sample.skip_days:
             cells += [(day, p) for p in sample.dayparts if (day, p) not in special_keys]
     return cells
 

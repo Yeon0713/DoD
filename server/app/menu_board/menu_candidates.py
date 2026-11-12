@@ -1,0 +1,149 @@
+"""LLM 메뉴 후보: 상황(행사·경기·계절의 세부 종류)에 어울리는 메뉴를 HyperCLOVA X 로 고른다.
+
+- 보내는 것은 상황 이름과 매장 메뉴 목록(id, 이름, 종류)뿐이다. 손님 정보나 리뷰는 넣지 않는다.
+  메뉴 목록은 JSON 으로 보낸다. 메뉴 이름은 네이버 지도에서 읽어 온 바깥 글이라 줄바꿈이나 지시문이 섞여 있을 수 있는데,
+  JSON 이면 이름이 새 줄(가짜 메뉴 줄, 가짜 상황 줄)이 되지 못한다.
+- 답은 JSON {"menu_ids": [...], "reason": "..."} 로 받아 검사한다. 이 검사가 마지막 방어선이다.
+  - 목록에 없는 id, 겹친 id 는 버리고, 앞에서부터 최대 m = min(5, 메뉴 수)개만 쓴다.
+  - 이유 한 줄은 비었거나, 여러 줄이거나, 60자를 넘거나, 숫자·% 가 있으면 "" 로 둔다(후보는 쓴다).
+    사장님 승인 카드에 그대로 나가므로 근거 없는 숫자를 약속하면 안 된다.
+- 실패(키 없음, 연결 오류, 시간 초과, JSON 아님, 남는 id 없음)하면 예외 없이 빈 후보를 돌려준다.
+- 성공한 결과만 서버 메모리에 기억한다. 키는 (매장, 세부 종류, 현재 메뉴 id 묶음)이다. 메뉴가 바뀌면 다시 묻는다.
+
+프롬프트 파일: prompts/menu_candidates_prompt.txt. {가게이름}, {업종}, {개수} 를 채운다. 부를 때마다 읽는다.
+"""
+
+import json
+import logging
+import re
+import threading
+from dataclasses import dataclass
+from pathlib import Path
+
+import httpx
+
+from app.analysis.input_shapes import Menu
+from app.analysis.store_calendar.season import Season
+from app.core import clova
+from app.core.clova import Post
+from app.planner.data_shapes import EventKind, GameKind
+
+logger = logging.getLogger(__name__)
+
+PROMPT_FILE = Path(__file__).parent / "prompts" / "menu_candidates_prompt.txt"
+MAX_CANDIDATES = 5
+MAX_REASON_LENGTH = 60
+TEMPERATURE = 0.2  # 결과를 기억해 다시 쓰므로 답이 흔들리지 않게 낮게
+MAX_TOKENS = 200
+TIMEOUT_SECONDS = 15
+DIGIT_OR_PERCENT_RE = re.compile(r"[\d%％]")  # 전각 숫자도 \d 에 든다
+
+MenuBoardKind = EventKind | GameKind | Season  # 메뉴판 교체 계기 태그의 세부 종류
+
+KIND_NAMES: dict[str, str] = {
+    "UNIV_FESTIVAL": "대학 축제",
+    "LOCAL_FESTIVAL": "지역 축제",
+    "LOCAL_EVENT": "동네 행사",
+    "MARATHON": "마라톤 대회",
+    "BASEBALL": "프로야구 경기",
+    "FOOTBALL": "프로축구 경기",
+    "NATIONAL_TEAM": "국가대표 경기",
+    "ESPORTS": "e스포츠 경기",
+    "WINTER": "겨울(추운 날씨)",
+    "SUMMER": "여름(더운 날씨)",
+}
+
+
+@dataclass(frozen=True)
+class MenuCandidates:
+    """menu_ids: 어울리는 순서대로 메뉴 id(문자열). reason: 고른 이유 한 줄(쓸 수 없으면 "")."""
+
+    menu_ids: tuple[str, ...] = ()
+    reason: str = ""
+
+
+EMPTY = MenuCandidates()
+
+_results: dict[tuple[str, str, frozenset[str]], MenuCandidates] = {}
+_guard = threading.Lock()
+
+
+def menu_candidates(store: dict, menus: list[Menu], kind: MenuBoardKind, *, post: Post = httpx.post) -> MenuCandidates:
+    """store: {"store_id", "name", "category"}. post 는 테스트에서 가짜를 넣는다."""
+    if kind not in KIND_NAMES:
+        logger.warning("메뉴 후보: 모르는 세부 종류 %r 라 묻지 않는다", kind)
+        return EMPTY
+    if not menus:
+        return EMPTY
+    key = (store["store_id"], kind, frozenset(menu.menu_id for menu in menus))
+    with _guard:
+        if key in _results:
+            return _results[key]
+    try:
+        result = _ask(store, menus, kind, post)
+    except Exception:  # 후보가 없어도 메뉴판은 데이터 점수만으로 만들 수 있어야 한다
+        logger.exception("%s 가게 메뉴 후보 실패: %s", store["store_id"], kind)
+        result = EMPTY
+    if result.menu_ids:
+        with _guard:
+            _results[key] = result
+    return result
+
+
+def load_prompt(store: dict, count: int) -> str:
+    """프롬프트 파일을 읽어 {가게이름}, {업종}, {개수} 를 채운다. 매번 읽으므로 파일을 고치면 바로 반영된다."""
+    text = PROMPT_FILE.read_text(encoding="utf-8")
+    return text.replace("{개수}", str(count)).replace("{가게이름}", store["name"]).replace("{업종}", store["category"])
+
+
+def user_message(menus: list[Menu], kind: str) -> str:
+    """첫 줄 상황, 둘째 줄 안내, 셋째 줄 메뉴 목록 JSON(한 줄)."""
+    listed = [{"id": menu.menu_id, "name": menu.name, "category": menu.category} for menu in menus]
+    return f"상황: {KIND_NAMES[kind]}\n메뉴 목록(JSON):\n{json.dumps(listed, ensure_ascii=False)}"
+
+
+def _ask(store: dict, menus: list[Menu], kind: str, post: Post) -> MenuCandidates:
+    count = min(MAX_CANDIDATES, len(menus))
+    answer = clova.ask(
+        load_prompt(store, count),
+        user_message(menus, kind),
+        max_tokens=MAX_TOKENS,
+        temperature=TEMPERATURE,
+        timeout=TIMEOUT_SECONDS,
+        post=post,
+    )
+    return _parse(answer, [menu.menu_id for menu in menus], count) if answer else EMPTY
+
+
+def _parse(answer: str, menu_ids: list[str], count: int) -> MenuCandidates:
+    """답에서 첫 { 부터 시작하는 JSON 객체 하나를 읽어 검사한다(앞뒤 글과 뒤따르는 다른 객체는 무시)."""
+    start = answer.find("{")
+    try:
+        data, _ = json.JSONDecoder().raw_decode(answer[start:]) if start >= 0 else (None, 0)
+    except ValueError:
+        data = None
+    if not isinstance(data, dict) or not isinstance(data.get("menu_ids"), list):
+        return EMPTY
+    known, picked = set(menu_ids), []
+    for value in data["menu_ids"]:
+        menu_id = str(value) if isinstance(value, (str, int)) and not isinstance(value, bool) else None
+        if menu_id in known and menu_id not in picked:
+            picked.append(menu_id)
+    if not picked:
+        return EMPTY
+    return MenuCandidates(tuple(picked[:count]), _usable_reason(data.get("reason")))
+
+
+def _usable_reason(reason) -> str:
+    if not isinstance(reason, str):
+        return ""
+    reason = reason.strip()
+    if len(reason.splitlines()) != 1 or len(reason) > MAX_REASON_LENGTH or DIGIT_OR_PERCENT_RE.search(reason):
+        return ""
+    return reason
+
+
+def forget_all() -> None:
+    """기억한 후보를 모두 지운다 (테스트용)."""
+    with _guard:
+        _results.clear()

@@ -267,7 +267,10 @@ function TaskBody() {
           setLaterFor(null);
           await laterClose.closed();
           if (id) snooze(id, iso);
-          flashToast("다시 알려 드릴게요", `${iso.slice(0, 10) === ymd(now) ? "오늘" : "내일"} ${iso.slice(11, 16)}에 알려 드려요`);
+          const when = `${iso.slice(0, 10) === ymd(now) ? "오늘" : "내일"} ${iso.slice(11, 16)}`;
+          // 알림이 꺼져 있으면 알려 준다고 하지 않는다. 그 시각에 홈에 다시 나온다는 것만 말한다
+          if (p.notifyOff) flashToast("미뤄 뒀어요", `${when}에 홈에 다시 보여 드려요`);
+          else flashToast("다시 알려 드릴게요", `${when}에 알려 드려요`);
           back("/");
         }}
       />

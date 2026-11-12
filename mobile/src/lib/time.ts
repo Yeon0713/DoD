@@ -1,6 +1,7 @@
 // 시각은 모두 서울 기준이다. 서버 시각 문자열은 "2026-11-17T14:00:00+09:00" 모양이다.
 import { USE_MOCK } from "./api";
 import { devFlags } from "./dev";
+import { serverClockShiftMs } from "./storage";
 
 /** 고정 샘플은 데모 주간 화요일 오후 알림 직후를 기준으로 그린다. 개발 화면(/dev)에서 바꿀 수 있다. */
 export const DEMO_NOW = "2026-11-17T14:05:00+09:00";
@@ -11,7 +12,7 @@ function parseNow(q: string): Date {
 
 /** 개발 화면에서 고른 가상 시각(q)으로 지금을 정한다. 훅에서 q를 의존값으로 넘기려고 따로 둔다. */
 export function nowFrom(q: string | null): Date {
-  if (!USE_MOCK) return new Date();
+  if (!USE_MOCK) return new Date(Date.now() + serverClockShiftMs());
   return q ? parseNow(q) : new Date(DEMO_NOW);
 }
 

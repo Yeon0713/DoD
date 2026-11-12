@@ -6,7 +6,7 @@ import { replace } from '@/components/ui/nav';
 export default function NotFound() {
   return (
     <SubPage onBack={() => replace('/')} footer={<PrimaryButton onPress={() => replace('/')}>오늘 할 일로 가기</PrimaryButton>}>
-      <CenterMessage img="question" title={'화면을\n찾지 못했어요'} sub="주소가 바뀌었거나 이미 끝난 일이에요" />
+      <CenterMessage img="q-think" title={'화면을\n찾지 못했어요'} sub="주소가 바뀌었거나 이미 끝난 일이에요" />
     </SubPage>
   );
 }

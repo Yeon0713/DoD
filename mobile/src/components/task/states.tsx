@@ -7,6 +7,7 @@ import { Bone, DonnaImage, DonnaSays, PrimaryButton } from "@/components/ui/part
 import { flashToast, prefs } from "@/lib/localStore";
 import tokens from "@/theme/tokens.json";
 import type { Slot } from "@/types/contract";
+import { demoMode } from "@/lib/naverDemo";
 import { askNotify } from "./askNotify";
 
 const C = tokens.colors;
@@ -102,7 +103,7 @@ export function Offline({ onRetry, header }: { onRetry: () => void; header: Reac
     <>
       {header}
       <View className="flex-1 items-center justify-center">
-        <DonnaImage img="question" size={196} />
+        <DonnaImage img="q-laptop" size={196} />
         <Text className="mt-3 text-center text-display text-ink">{"인터넷이\n잠시 끊겼어요"}</Text>
         <Text className="mt-2 text-center text-body text-ink-2">할 일은 그대로 있어요</Text>
       </View>
@@ -113,12 +114,19 @@ export function Offline({ onRetry, header }: { onRetry: () => void; header: Reac
 
 /** 06-4n: 알림을 켜지 않고 들어왔을 때 위에 뜨는 띠 */
 export function NotifyOffBanner() {
+  // 데모 테스트 모드에서는 띄우지 않는다 (시험하는 브라우저는 알림을 켤 수 없다)
+  const demo = demoMode.useValue().on;
   const turnOn = async () => {
     // 띠는 누르자마자 닫는다. 권한 창이 답을 안 주면 기다리다 띠가 남기 때문이다.
     prefs.write({ notifyOff: false });
     if (await askNotify()) flashToast("알림을 켰어요", "고른 시간에만 알려 드려요");
-    else flashToast("휴대폰 설정에서 알림을 허용해 주세요", "허용하면 고른 시간에 알려 드려요");
+    else {
+      // 허용하지 않았으면 알림은 여전히 꺼져 있다. 띠를 다시 보여 준다 (경고만 사라지면 켜진 줄 안다)
+      prefs.write({ notifyOff: true });
+      flashToast("휴대폰 설정에서 알림을 허용해 주세요", "허용하면 고른 시간에 알려 드려요");
+    }
   };
+  if (demo) return null;
   return (
     <View className="mb-2 flex-row items-center gap-2 rounded-2xl bg-urgent-soft py-2 pl-3.5 pr-2">
       <Icon name="bellOff" size={22} color={C.urgent} />

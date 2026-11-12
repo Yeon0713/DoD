@@ -1,13 +1,14 @@
 """승인이 필요 없는 알림.
 
 - 월요일 주간 예고: 월요일 출근 후. 이번 주 달력, 이번 주 할 일, 7일 안의 행사·경기, 계절 전환을 알린다.
+  월요일이 휴무인 가게는 그 주에 처음 여는 날 출근 후에 알린다.
 - 매출 이상: 달력으로 설명되지 않는 매출 이상이 있으면 다음 날 출근 후에 알린다.
 """
 
 import datetime as dt
 
 from app.planner.data_shapes import CalendarCell, Event, Game, NoticeItem, PlanItem, SalesAnomaly, StoreSettings
-from app.planner.notification_time_helpers import KOREAN_WEEKDAYS, slot_at
+from app.planner.notification_time_helpers import KOREAN_WEEKDAYS, WEEKDAY_CODES, slot_at
 
 DAYPART_NAMES = {"LUNCH": "점심", "DINNER": "저녁", "NIGHT": "야간"}
 
@@ -25,8 +26,17 @@ def make_weekly_previews(
     calendar_days = {cell.date for cell in calendar}
 
     notices = []
-    for monday in sorted(day for day in calendar_days if day.weekday() == 0):
+    for monday in sorted({day - dt.timedelta(days=day.weekday()) for day in calendar_days}):
         sunday = monday + dt.timedelta(days=6)
+        # 알리는 날: 월요일. 월요일이 휴무면 그 주에 처음 여는 날. 그 날이 달력에 없으면(이미 지난 주) 만들지 않는다
+        open_days = [
+            monday + dt.timedelta(days=offset)
+            for offset in range(7)
+            if WEEKDAY_CODES[offset] not in store.closed_weekdays
+        ]
+        if not open_days or open_days[0] not in calendar_days:
+            continue
+        preview_day = open_days[0]
         week_cells = sorted(
             (cell for cell in calendar if monday <= cell.date <= sunday), key=lambda c: c.date
         )
@@ -63,7 +73,7 @@ def make_weekly_previews(
             NoticeItem(
                 notice_id=f"WEEKLY_PREVIEW:{monday}",
                 kind="WEEKLY_PREVIEW",
-                slot_at=slot_at(monday, "OPENING", store),
+                slot_at=slot_at(preview_day, "OPENING", store),
                 refs=[*sorted({str(cell.date) for cell in week_cells}), *high_refs, *week_plan_ids],
                 text=f"이번 주 미리보기: {summary}. 이번 주 할 일은 {len(week_plan_ids)}개예요.",
             )

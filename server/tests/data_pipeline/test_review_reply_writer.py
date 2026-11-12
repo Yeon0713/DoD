@@ -117,3 +117,26 @@ def test_write_drafts_remembers_each_review(monkeypatch):
     assert first == second == {ITEM.plan_id: "오래 기다리시게 해서 죄송합니다. 꼭 다시 점검하겠습니다."}
     assert calls == [ITEM.plan_id]  # 두 번째는 기억한 값을 쓴다
     writer.forget_all()
+
+
+def test_is_usable_rejects_contact_promises_double_portions_and_recent_excuses():
+    assert not writer.is_usable("죄송합니다. 다음에 주문하시면 주먹밥 두 배로 챙겨드릴게요.")
+    assert not writer.is_usable("죄송합니다. 누락된 부분은 따로 연락드리겠습니다.")
+    assert not writer.is_usable("예상 시간이 넘으면 바로바로 연락드리도록 하겠습니다. 죄송합니다.")
+    assert not writer.is_usable("요즘 배달이 몰리는 시간대에 주문이 겹치는 일이 잦아져서 늦었습니다. 죄송합니다.")
+    assert writer.is_usable("배달이 늦어 정말 죄송합니다. 조리와 포장 순서를 다시 살펴보겠습니다.")
+
+
+def test_rewrite_keeps_numbers_the_owner_wrote():
+    original = "12월부터는 콩국수를 안 팔고 2월 말에 다시 시작해요. 가게 전화는 033-123-4567 이에요."
+    assert writer.keeps_numbers(original, "12월부터 콩국수는 쉬고 2월 말에 다시 팝니다. 전화는 033-123-4567 입니다.")
+    assert not writer.keeps_numbers(original, "콩국수는 겨울에 쉬고 다가오는 봄부터 다시 판매합니다.")
+    assert not writer.keeps_numbers(original, "콩국수는 12월부터 쉬고 2월에 다시 팝니다.")  # 전화번호가 빠졌다
+    assert writer.keeps_numbers("감사합니다. 또 오세요.", "찾아 주셔서 감사합니다.")
+
+
+def test_is_usable_allows_promise_to_serve_better():
+    """'더 정확한 서비스를 제공하겠다'는 보상 약속이 아니다. 걸러지면 다시 쓰기가 계속 실패한다."""
+    assert writer.is_usable("불편을 드려 죄송합니다. 더 신속하고 정확한 서비스를 제공할 수 있도록 최선을 다하겠습니다.")
+    assert not writer.is_usable("불편을 드려 죄송합니다. 다음에 서비스를 드릴게요.")
+    assert not writer.is_usable("불편을 드려 죄송합니다. 다음 주문에 추가 서비스 챙겨 갈게요.")

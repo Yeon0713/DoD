@@ -13,6 +13,7 @@ import datetime as dt
 from sqlalchemy import select
 
 from db import models
+from app.data_pipeline.registered_stores import review_platforms
 from db.session import engine, store_db_files, store_engine
 
 
@@ -79,7 +80,13 @@ def read_reviews(store_id: str, until: dt.datetime) -> list[dict]:
         .where(review.written_at <= until)
         .order_by(review.written_at)
     )
-    return _store_rows(store_id, statement)
+    rows = _store_rows(store_id, statement)
+    # 사장님이 등록한 가게는 리뷰 불러오기 때 기록한 플랫폼(배민, 네이버, 쿠팡이츠)을 붙인다
+    platforms = review_platforms(store_id)
+    if platforms:
+        for row in rows:
+            row["platform"] = platforms.get(row["review_id"])
+    return rows
 
 
 def read_staff(store_id: str) -> list[dict]:

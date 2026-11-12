@@ -4,7 +4,7 @@ import { ApiFailure } from "@/lib/api";
 import type { Platform } from "@/types/contract";
 
 /** 진행 막대 5칸: 가게 찾기, 연결, 확인, 알림 시간, 알림 켜기 */
-export const STEPS = 5;
+export const STEPS = 7; // 가게 찾기, 가게 확인, 가게 정보, 리뷰 불러오기, 출근·퇴근, 알림 시간, 알림 켜기
 
 /** 네이버 플레이스 불러오기 응답을 화면끼리 나눠 쓰는 캐시 키 */
 export const NAVER_PLACE_KEY = ["naver-place"] as const;

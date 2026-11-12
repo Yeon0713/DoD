@@ -1,5 +1,5 @@
 // 설정 (Figma 06-19 모아 보기, 06-19h 장사 시간, 06-19b 알림 받는 시간, 06-20 바쁜 장사 시간, 06-58 네이버 플레이스).
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
@@ -17,8 +17,8 @@ import { ApiFailure, api } from "@/lib/api";
 import { hoursLabel, slotChoices, slotInfo, slotLabel } from "@/lib/hours";
 import { account } from "@/lib/account";
 import { flashToast, prefs } from "@/lib/localStore";
+import { openSmartPlace } from "@/lib/smartplace";
 import { useHome } from "@/lib/useHome";
-import { STORE_ADDRESS } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { Daypart, Slot } from "@/types/contract";
 
@@ -38,6 +38,8 @@ const SLOTS: Slot[] = ["OPENING", "AFTERNOON", "CLOSING"];
 export function SettingsScreen() {
   const { data, prefs: p } = useHome();
   const acc = account.useValue();
+  // 가게 주소 (네이버 플레이스, 또는 우리 가게 찾기에서 고른 가게)
+  const placeQ = useQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: 5 * 60 * 1000 });
   const head = (
     <Text className="pt-2 text-display text-ink" accessibilityRole="header">
       설정
@@ -58,7 +60,7 @@ export function SettingsScreen() {
     <>
       {head}
       <View className="mt-4">
-        <ListRow icon="store" title={storeName(s.name)} sub={STORE_ADDRESS[s.store_id]} />
+        <ListRow icon="store" title={storeName(s.name)} sub={placeQ.data?.place.address} />
         {/* 08-1-0 규칙 6: 가게 줄 아래에 계정 */}
         <ListRow testID="settings-account" icon="user" title="계정" right={right(acc.method === "naver" ? "네이버" : acc.phone ? "휴대폰" : "")} href="/settings/account" />
         <ListRow testID="settings-hours" icon="clock" title="장사 시간" right={right(hoursLabel(s))} href="/settings/hours" />
@@ -136,7 +138,7 @@ export function SettingsHoursScreen() {
       // 사장님이 06-20에서 고른 바쁜 시간대는 그대로 둔다.
       const res = await saveWeek(week, { keepBusy: s.busy_dayparts });
       await qc.invalidateQueries({ queryKey: ["home"] });
-      if (!prefs.read().notifyOff) rescheduleIfAllowed(res.settings.slots);
+      if (!prefs.read().notifyOff) rescheduleIfAllowed(res.settings.slots, res.settings.extra_slots ?? []);
       flashToast("저장했어요", "알림 시간도 장사 시간에 맞췄어요");
       back("/settings");
     } catch (e) {
@@ -426,6 +428,7 @@ export function NaverSettingsScreen() {
         </View>
         <Text className="text-small text-ink-2">켜 두면 바꾼 뒤에 알려 드려요</Text>
       </View>
+      <ListRow testID="naver-menus" icon="list" title="메뉴 고치기" sub="네이버 플레이스에서 고쳐요" onPress={openSmartPlace} />
       <ListRow testID="naver-reload" icon="refresh" title="장사 시간, 메뉴 다시 불러오기" href="/settings/hours?naver=1" />
     </SubPage>
   );

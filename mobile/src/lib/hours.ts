@@ -101,11 +101,11 @@ export interface SlotPlan {
 }
 
 /** 규칙 (05-3 규칙 보드)
- *  1. 출근 후: 문 여는 시간 30분 전
+ *  1. 출근 후: 출근 예정 시간 10분 뒤 (그때가 점심 바쁜 시간이면 출근할 때). 출근 시간을 모르면 문 여는 시간 30분 전
  *  2. 한가할 때: 브레이크 타임이 있으면 시작 30분 뒤, 없으면 바쁜 시간 사이 가장 긴 빈 시간의 가운데(30분 단위로 내림)
- *  3. 마감 전: 문 닫는 시간 30분 전
+ *  3. 마감 전: 퇴근 예정 시간 30분 전. 퇴근 시간을 모르면 문 닫는 시간 30분 전
  */
-export function suggestSlots(h: Hours): Record<Slot, SlotPlan> {
+export function suggestSlots(h: Hours & { work_hours?: { start: string; end: string } | null }): Record<Slot, SlotPlan> {
   const open = toMin(h.open_time);
   let afternoon: SlotPlan;
   if (h.break_time) {
@@ -117,15 +117,20 @@ export function suggestSlots(h: Hours): Record<Slot, SlotPlan> {
       afternoon = { time: fromMin(mid), label: g.after === "LUNCH" ? "점심 장사 끝나고" : "손님 빠질 때", reason: g.after === "LUNCH" ? "점심 장사 끝난 뒤" : "바쁜 시간 사이" };
     } else afternoon = { time: fromMin(open + 120), label: "장사 중 한가할 때", reason: "문 열고 2시간 뒤" };
   }
-  return {
-    OPENING: { time: fromMin(open - 30), label: "출근 후", reason: "문 열기 30분 전" },
-    AFTERNOON: afternoon,
-    CLOSING: { time: fromMin(toMin(h.close_time) - 30), label: "마감 전", reason: "문 닫기 30분 전" },
-  };
+  const work = h.work_hours;
+  let opening: SlotPlan = { time: fromMin(open - 30), label: "출근 후", reason: "문 열기 30분 전" };
+  let closing: SlotPlan = { time: fromMin(toMin(h.close_time) - 30), label: "마감 전", reason: "문 닫기 30분 전" };
+  if (work) {
+    const start = toMin(work.start);
+    const lunch = h.busy_dayparts.includes("LUNCH") ? toMin(h.dayparts.LUNCH.start) : Infinity;
+    opening = start + 10 >= lunch && start < lunch ? { time: work.start, label: "출근 후", reason: "출근할 때" } : { time: fromMin(start + 10), label: "출근 후", reason: "출근하고 10분 뒤" };
+    closing = { time: fromMin(toMin(work.end) - 30), label: "퇴근 전", reason: "퇴근 30분 전" };
+  }
+  return { OPENING: opening, AFTERNOON: afternoon, CLOSING: closing };
 }
 
 /** 지금 설정된 알림 시각의 이름과 이유. 사장님이 시각을 바꿔도 이름은 장사 모양을 따른다. */
-export function slotInfo(s: Hours & { slots: Record<Slot, string> }): Record<Slot, SlotPlan> {
+export function slotInfo(s: Hours & { slots: Record<Slot, string>; work_hours?: { start: string; end: string } | null }): Record<Slot, SlotPlan> {
   const sug = suggestSlots(s);
   const out = {} as Record<Slot, SlotPlan>;
   for (const k of ["OPENING", "AFTERNOON", "CLOSING"] as Slot[]) {
@@ -140,7 +145,7 @@ export function slotLabel(s: Hours & { slots: Record<Slot, string> }, slot: Slot
 }
 
 /** 지금 알림 시각 대신 고를 수 있는 시각 3개 (05-3t). 추천 시각을 맨 앞에 둔다. */
-export function slotChoices(h: Hours, slot: Slot): { time: string; recommended: boolean }[] {
+export function slotChoices(h: Hours & { work_hours?: { start: string; end: string } | null }, slot: Slot): { time: string; recommended: boolean }[] {
   const base = toMin(suggestSlots(h)[slot].time);
   // 마감 전 알림은 문 닫는 시간을 넘길 수 없어서 (서버 검사 SLOT_OUTSIDE_OPEN_HOURS) 30분 일찍도 고를 수 있게 한다.
   const steps = slot === "CLOSING" ? [0, -30, 30] : [0, 30, 60];

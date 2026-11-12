@@ -187,6 +187,17 @@ function HomeBody() {
   if (!data || !view) {
     const header = <Header now={now} title={"오늘 할 일을\n모으고 있어요"} total={1} done={0} />;
     if (error instanceof ApiFailure && error.offline) return <Offline header={header} onRetry={() => refetch()} />;
+    // 서버가 아직 다루지 못하는 가게(자정을 넘겨 여는 가게): 불러오는 척하지 않고 까닭을 알려 준다
+    if (error instanceof ApiFailure && error.code === "OVERNIGHT_STORE_NOT_SUPPORTED") {
+      return (
+        <View testID="home-store-not-ready" className="flex-1 items-center justify-center">
+          <DonnaImage img="q-clipboard" size={160} />
+          <Text className="mt-3 text-center text-display text-ink">아직 준비 중이에요</Text>
+          <Text className="mt-2 text-center text-body text-ink-2">{"자정을 넘겨 여는 가게는\n곧 쓸 수 있게 준비하고 있어요"}</Text>
+          <Text className="mt-2 text-center text-label text-ink-2">매출 탭은 지금도 볼 수 있어요</Text>
+        </View>
+      );
+    }
     return <Loading header={header} stage={error ? 3 : stage} onRetry={() => refetch()} />;
   }
 

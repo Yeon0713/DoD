@@ -215,10 +215,11 @@ export function CenterMessage({ img, icon, title, sub, children }: { img?: Donna
 }
 
 /** 목업(나중에 실제 API) 동작이 실패했을 때 화면 아래에 보여 주는 안내 (05-5f 모양). 쓴 내용은 그대로 둔다. */
-export function FailNote({ title, sub = "인터넷이 끊겼어요.\n다시 눌러 주세요" }: { title: string; sub?: string }) {
+/** icon: 인터넷이 끊긴 게 아닐 때(서버가 못 한다고 답했을 때)는 "refresh"를 준다 */
+export function FailNote({ title, sub = "인터넷이 끊겼어요.\n다시 눌러 주세요", icon = "wifiOff" }: { title: string; sub?: string; icon?: IconName }) {
   return (
     <View accessibilityRole="alert" className="mt-6 flex-row items-start gap-3 rounded-2xl bg-urgent-soft px-4 py-3.5">
-      <Icon name="wifiOff" size={26} color={C.urgent} />
+      <Icon name={icon} size={26} color={C.urgent} />
       <View className="flex-1">
         <Text className="text-body font-bold text-urgent">{title}</Text>
         <Text className="text-small text-ink-2">{sub}</Text>

@@ -8,9 +8,22 @@ import datetime as dt
 SEOUL = dt.timezone(dt.timedelta(hours=9), "Asia/Seoul")
 
 
+# 개발용 시계 앞당김. 로컬에서 "다음 날 다시 열기"를 시험할 때만 쓴다 (main.py 의 /dev/clock, DEV_CLOCK_ENABLED=true 일 때만 열린다).
+_clock_shift = dt.timedelta(0)
+
+
 def now_seoul() -> dt.datetime:
-    """지금 서울 시각."""
-    return dt.datetime.now(SEOUL)
+    """지금 서울 시각. 개발용 시계 앞당김이 있으면 그만큼 더한다."""
+    return dt.datetime.now(SEOUL) + _clock_shift
+
+
+def clock_shift() -> dt.timedelta:
+    return _clock_shift
+
+
+def set_clock_shift(shift: dt.timedelta) -> None:
+    global _clock_shift
+    _clock_shift = shift
 
 
 def to_seoul(t: dt.datetime) -> dt.datetime:

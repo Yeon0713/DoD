@@ -14,13 +14,24 @@ let ready = false;
 const USE_SERVER = process.env.EXPO_PUBLIC_USE_MOCK === "false";
 const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 const BOOT_KEY = `${PREFIX}serverBoot`;
+// 서버를 다시 켜거나 "처음 상태로"를 눌러도 남기는 값 (시험용 스위치: 데모 테스트 모드, 시연용 마우스 표시)
+const KEEP_PREFIX = `${PREFIX}keep.`;
+const wiped = (k: string) => !k.startsWith(KEEP_PREFIX);
+
+// 로컬 시험용 시계 앞당김(분). 서버를 DEV_CLOCK_ENABLED=true 로 켜고 /dev/clock 으로 옮기면 /health 가 알려 준다.
+// "다음 날 다시 열기"를 시험할 때 앱도 서버와 같은 날을 보게 한다 (time.ts nowFrom).
+let clockShiftMinutes = 0;
+export function serverClockShiftMs(): number {
+  return clockShiftMinutes * 60 * 1000;
+}
 
 async function serverBootId(): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 2000);
   try {
     const res = await fetch(`${BASE_URL}/health`, { signal: controller.signal });
-    const body = (await res.json()) as { boot_id?: string };
+    const body = (await res.json()) as { boot_id?: string; clock_shift_minutes?: number };
+    clockShiftMinutes = body.clock_shift_minutes ?? 0;
     return body.boot_id ?? null;
   } catch {
     return null; // 서버가 꺼져 있으면 지우지 않는다
@@ -38,8 +49,8 @@ export async function hydrateStorage(): Promise<void> {
     if (USE_SERVER) {
       const boot = await serverBootId();
       if (boot && mem.get(BOOT_KEY) !== boot) {
-        await AsyncStorage.multiRemove(keys);
-        mem.clear();
+        await AsyncStorage.multiRemove(keys.filter(wiped));
+        for (const k of [...mem.keys()]) if (wiped(k)) mem.delete(k);
         mem.set(BOOT_KEY, boot);
         await AsyncStorage.setItem(BOOT_KEY, boot);
       }
@@ -62,10 +73,10 @@ export const storage = {
     mem.delete(key);
     AsyncStorage.removeItem(key).catch(() => {});
   },
-  /** 개발 화면의 "처음부터 다시": 도나가 저장한 값을 모두 지운다. */
+  /** 개발 화면의 "처음부터 다시": 도나가 저장한 값을 모두 지운다 (시험용 스위치 dona.keep.* 는 남긴다). */
   clearAll() {
-    const keys = [...mem.keys()];
-    mem.clear();
+    const keys = [...mem.keys()].filter(wiped);
+    for (const k of keys) mem.delete(k);
     AsyncStorage.multiRemove(keys).catch(() => {});
   },
 };

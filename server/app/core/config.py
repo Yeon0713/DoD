@@ -14,6 +14,16 @@ class Settings(BaseSettings):
     demo_store_id: str = "s001"
     # 분석과 계획을 다시 계산하는 간격(분). 그 사이에는 계산해 둔 결과를 그대로 쓴다
     snapshot_refresh_minutes: int = 10
+    # 로컬 시험용: /dev/clock 으로 서버 시계를 앞당길 수 있게 한다. 배포에서는 켜지 않는다
+    dev_clock_enabled: bool = False
+    # 매장을 등록하면 우리 전용 목업 주문·매출·알바 데이터를 그 가게 파일에 넣는다 (POS·배달앱 연동 전 시연용)
+    demo_store_data: bool = True
+
+    # 네이버 아이디로 로그인 (developers.naver.com 에 등록한 애플리케이션). 데모 시험 모드에서 쓴다
+    naver_login_client_id: str = ""
+    naver_login_client_secret: str = ""
+    # 네이버 개발자 센터에 적은 Callback URL 과 글자 하나까지 같아야 한다
+    naver_login_callback_url: str = "http://localhost:8000/api/auth/naver/callback"
     # 카드 문장을 CLOVA X 로 사장님 말투로 다듬을지. 키가 없으면 켜 있어도 원래 문장을 쓴다
     sentence_polish_enabled: bool = True
 

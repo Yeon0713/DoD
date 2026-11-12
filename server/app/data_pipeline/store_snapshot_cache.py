@@ -24,10 +24,10 @@ from app.analysis.pattern.sales_daily import build_sales_daily
 from app.analysis.result_shapes import CustomerCycleRow, RiskSignalRow, SalesDailyRow
 from app.analysis.review.label_reviews import attach_labels, label_reviews
 from app.analysis.review.risk_signals import update_risk_signals
-from app.analysis.store_calendar.calendar_day import build_calendar_days
+from app.analysis.store_calendar.calendar_day import CALENDAR_DAYS, build_calendar_days
 from app.core.config import settings as app_settings
 from app.core.error_response import ApiError
-from app.core.seoul_time import now_seoul, to_seoul
+from app.core.seoul_time import at_time, now_seoul, to_seoul
 from app.data_pipeline import read_store_db
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
@@ -70,6 +70,7 @@ class StoreSnapshot:
 
 
 _snapshots: dict[str, StoreSnapshot] = {}
+_yesterday_cells: dict[str, tuple[dt.date, list[CalendarCell]]] = {}  # 가게별 어제 달력 칸 (하루에 한 번만 계산)
 _settings_changes: dict[str, dict] = {}  # 가게별 사장님이 고친 설정 (서버 메모리)
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
@@ -107,6 +108,7 @@ def clear_all() -> None:
     """보관한 결과와 고친 설정을 모두 지운다 (테스트용)."""
     _snapshots.clear()
     _settings_changes.clear()
+    _yesterday_cells.clear()
 
 
 def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) -> StoreSnapshot:
@@ -127,9 +129,16 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     try:
         settings = build_store_settings(store, _settings_changes.get(store_id))
         plan_inputs = build_plan_inputs(
-            settings, reviews, customer_cycles, calendar_cells, risk_signals, inputs.events, inputs.games
+            settings,
+            reviews,
+            customer_cycles,
+            calendar_for_planner(store_id, inputs, calendar_cells, now),
+            risk_signals,
+            inputs.events,
+            inputs.games,
         )
-        plan = keep_this_week_replies(make_plan(plan_inputs, now), now, settings)
+        plan = drop_yesterday_only_items(make_plan(plan_inputs, now), now, settings)
+        plan = keep_this_week_replies(plan, now, settings)
     except ApiError as error:
         unavailable = error
 
@@ -168,6 +177,65 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     seconds = (now_seoul() - started).total_seconds()
     logger.info("%s 가게 분석과 계획을 %.1f초 만에 다시 계산했다", store_id, seconds)
     return snapshot
+
+
+def first_known_at(day: dt.date) -> dt.datetime:
+    """달력에서 day 를 처음 알게 된 시각: day 가 35일 달력 안으로 처음 들어온 날의 0시.
+
+    달력은 서버가 10분마다 다시 계산하고 그때마다 computed_at 이 '지금'이 된다.
+    계획 엔진은 computed_at 을 '근거를 알게 된 시각'으로 보고, 그보다 이른 승인 요청을 다음 알림 시각으로 미룬다.
+    computed_at 을 그대로 넘기면 승인 요청 시각이 지날 때마다 다음 알림 시각으로 계속 밀려서
+    앱에 승인 요청 카드가 한 번도 뜨지 않는다 (11/11 14:00 → 21:30 → 11/12 10:00 → ...).
+    행사·경기·날씨는 DB 에 미리 들어 있으므로, 그 날짜가 달력에 처음 들어온 날에 이미 알았던 것으로 본다.
+    """
+    return at_time(day - dt.timedelta(days=CALENDAR_DAYS - 1), "00:00")
+
+
+def calendar_for_planner(
+    store_id: str, inputs: AnalysisInputs, calendar_cells: list[CalendarCell], now: dt.datetime
+) -> list[CalendarCell]:
+    """계획 엔진에 넘길 달력 칸. 화면에 보내는 달력(calendar_cells)과 두 가지가 다르다.
+
+    1. computed_at 을 '처음 알게 된 시각'(first_known_at)으로 바꾼다. 승인 요청 시각이 밀리지 않게 한다.
+    2. 어제 칸을 앞에 붙인다. 메뉴판 규칙은 전날과 태그가 달라야 할 일을 만드는데, 달력은 오늘부터라
+       오늘 실행할 메뉴판 바꾸기(어제 14:00 승인 요청, 오늘 출근 후 실행)가 당일 아침에 사라졌다.
+       어제 칸은 계산에 몇 초가 걸려서 가게마다 하루에 한 번만 계산해 기억한다.
+    """
+    yesterday = now.date() - dt.timedelta(days=1)
+    remembered = _yesterday_cells.get(store_id)
+    if remembered is None or remembered[0] != yesterday:
+        # 어제가 쉬는 날이면 달력 칸이 없다. 메뉴판 규칙이 견줄 수 있게 그 앞의 여는 날까지 거슬러 간다 (길어야 일주일)
+        cells_before: list[CalendarCell] = []
+        for days_back in range(1, 8):
+            day = now.date() - dt.timedelta(days=days_back)
+            rows = build_calendar_days(inputs, now - dt.timedelta(days=days_back))
+            cells_before = [to_calendar_cell(row) for row in rows if row.date == day]
+            if cells_before:
+                break
+        remembered = (yesterday, cells_before)
+        _yesterday_cells[store_id] = remembered
+    cells = [*remembered[1], *calendar_cells]
+    return [cell.model_copy(update={"computed_at": first_known_at(cell.date)}) for cell in cells]
+
+
+def drop_yesterday_only_items(plan: PlanResult, now: dt.datetime, settings: StoreSettings) -> PlanResult:
+    """어제 칸을 붙여서 새로 생긴 지난 일은 뺀다: 어제가 토요일일 때의 주말 포스터, 어제 아침의 주간 예고.
+
+    어제 칸은 오늘 실행할 메뉴판 바꾸기를 남기려고 붙인 것이라, 그 밖의 어제 일은 만들지 않는다.
+    """
+    today = now.date()
+    past_days = {today - dt.timedelta(days=days_back) for days_back in range(1, 8)}
+    items = [
+        item
+        for item in plan.plan_items
+        if not (item.task_type == "POSTER" and item.basis.kind == "CALENDAR_DAY" and item.target_date in past_days)
+    ]
+    notices = [
+        notice
+        for notice in plan.notice_items
+        if not (notice.kind == "WEEKLY_PREVIEW" and to_seoul(notice.slot_at).date() < today)
+    ]
+    return PlanResult(plan_items=items, notice_items=notices, batches=group_into_batches(items, notices, settings))
 
 
 def keep_this_week_replies(plan: PlanResult, now: dt.datetime, settings: StoreSettings) -> PlanResult:

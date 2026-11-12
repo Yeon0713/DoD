@@ -23,6 +23,8 @@ class PlaceMenu(BaseModel):
 class NaverPlace(BaseModel):
     place_id: str
     name: str
+    address: str  # 도로명 주소 (사장님이 검색해서 고른 가게가 있으면 그 주소)
+    category: str  # 업종. 예) "돈가스"
     weekly_hours: dict[Weekday, OpenClose | None]  # 요일별 장사 시간. None 이면 쉬는 날
     break_time: StartEnd | None  # 브레이크 타임. DB 에 칸이 없어서 지금은 None
     dayparts: dict[Daypart, StartEnd]  # 알림을 보낼지 정할 때 쓰는 장사 시간대
@@ -36,3 +38,19 @@ class NaverPlace(BaseModel):
 class NaverPlaceResponse(BaseModel):
     is_example: bool
     place: NaverPlace
+
+
+class SearchedPlace(BaseModel):
+    """네이버 지역 검색에서 찾은 가게 하나 (상호, 업종, 주소, 좌표만 온다. 메뉴, 영업시간, 리뷰는 오지 않는다)."""
+
+    name: str
+    category: str  # 예) "돈가스" (네이버 "음식점>일식>돈가스" 의 마지막 칸)
+    address: str  # 도로명 주소. 없으면 지번 주소
+    jibun_address: str
+    lat: float
+    lng: float
+
+
+class PlaceSearchResponse(BaseModel):
+    items: list[SearchedPlace]
+

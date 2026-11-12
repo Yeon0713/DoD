@@ -122,6 +122,10 @@ export interface StoreSettings {
   weekly_hours?: Record<Weekday, { open: string; close: string } | null>;
   /** 브레이크 타임. 서버에 아직 없는 필드 (docs/frontend_mock_and_api_needs.md 3장 P) */
   break_time?: { start: string; end: string } | null;
+  /** 사장님 출근·퇴근 예정 시간. 알림 시각을 고를 때 쓴다 (기본은 여는·닫는 시간) */
+  work_hours?: { start: string; end: string } | null;
+  /** 사장님이 더 넣은 알림 시각. 이때 남은 할 일을 다시 알려 준다 */
+  extra_slots?: string[];
 }
 
 export interface SettingsResponse extends Example {

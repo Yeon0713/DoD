@@ -1,7 +1,9 @@
 """② 메뉴판 바꾸기 규칙.
 
-날짜 D의 달력 이유 태그(행사, 경기, 날씨, 계절) 묶음이 전날과 다르면 메뉴판을 바꾼다.
+날짜 D의 달력 이유 태그(행사, 경기, 계절) 묶음이 전날과 다르면 메뉴판을 바꾼다.
 행사가 끝나 원래대로 돌아가는 날도 포함한다.
+날씨는 하루 단위로 생겼다 사라져 교체와 되돌리기가 연달아 생기기 쉬우므로 메뉴판 규칙에서만 뺀다
+(달력의 날씨 이유와 예상 매출은 그대로다).
 D-1 14:00 승인 요청, D 출근 후 실행, 기한은 D 마감.
 쉬는 날은 건너뛴다: 쉬는 날에는 바꾸지 않고, 쉬는 날 다음 날은 그 앞의 여는 날과 태그를 견준다.
 (승인 요청이 쉬는 날에 걸리면 make_plan 이 다음 여는 날로 옮긴다.)
@@ -13,14 +15,17 @@ from collections import defaultdict
 from app.planner.data_shapes import Basis, CalendarCell, PlanItem, StoreSettings
 from app.planner.notification_time_helpers import close_time_on, is_closed_day, postpone_if_passed, slot_at
 
-TAG_NAMES = {"EVENT": "근처 행사", "GAME": "경기", "WEATHER": "날씨 변화", "SEASON": "계절 변화"}
+TAG_NAMES = {"EVENT": "근처 행사", "GAME": "경기", "SEASON": "계절 변화"}
 
 
 def tags_by_date(calendar: list[CalendarCell]) -> dict[dt.date, frozenset[tuple[str, str]]]:
-    """날짜별 (태그, 근거 id) 묶음. 시간대 세 칸의 태그를 합친다."""
+    """날짜별 (태그, 근거 id) 묶음. 시간대 세 칸의 태그를 합친다.
+
+    날씨 태그는 뺀다. 날씨만 있던 날도 빈 묶음으로 남겨 다음 날의 비교 대상이 된다.
+    """
     tags = defaultdict(set)
     for cell in calendar:
-        tags[cell.date] |= {(reason.tag, reason.ref_id) for reason in cell.reasons}
+        tags[cell.date] |= {(reason.tag, reason.ref_id) for reason in cell.reasons if reason.tag != "WEATHER"}
     return {day: frozenset(day_tags) for day, day_tags in tags.items()}
 
 

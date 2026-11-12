@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from app.core.seoul_time import SEOUL
-from app.planner.data_shapes import PlanInputs
+from app.planner.data_shapes import CalendarReason, PlanInputs
 from app.planner.priority_and_grouping import approval_priority, needs_execute_reminder
 from app.planner.rule_complaint_fix import plan_complaint_fixes
 from app.planner.rule_menu_order import plan_menu_orders
@@ -109,6 +109,33 @@ def test_menu_order_is_planned_whenever_tags_change_from_previous_day():
     season = items["MENU_ORDER:2026-11-18:2026-11-18"]
     assert season.approval_request_at == kst("2026-11-17 14:00")
     assert season.execute_at == kst("2026-11-18 10:00")
+
+
+def with_rain(calendar, day: dt.date):
+    """그날 모든 시간대 칸에 비 이유를 더한 달력"""
+    rain = CalendarReason(tag="WEATHER", ref_id=f"weather:{day}:RAIN", effect=-0.2)
+    return [cell.model_copy(update={"reasons": [*cell.reasons, rain]}) if cell.date == day else cell for cell in calendar]
+
+
+def test_weather_alone_does_not_change_the_menu_board():
+    calendar = with_rain(INPUTS.calendar, dt.date(2026, 11, 16))  # 비 온 월요일, 다른 태그 없음
+    items = by_id(plan_menu_orders(calendar, STORE))
+    assert "MENU_ORDER:2026-11-16:2026-11-16" not in items  # 비가 왔다고 바꾸지 않는다
+    assert "MENU_ORDER:2026-11-17:2026-11-17" not in items  # 비가 그쳤다고 되돌리지 않는다
+
+
+def test_rain_only_day_still_counts_as_the_previous_day():
+    calendar = with_rain(INPUTS.calendar, dt.date(2026, 11, 17))  # 비만 있는 화요일, 다음 날 겨울 시작
+    items = by_id(plan_menu_orders(calendar, STORE))
+    assert "MENU_ORDER:2026-11-17:2026-11-17" not in items
+    assert items["MENU_ORDER:2026-11-18:2026-11-18"].reason_line == "계절 변화 때문에 메뉴판 순서를 바꿔요."
+
+
+def test_rain_on_festival_day_is_ignored_and_only_the_festival_is_compared():
+    calendar = with_rain(INPUTS.calendar, dt.date(2026, 11, 21))  # 축제 첫날(토)에 비, 둘째 날(일)은 맑음
+    items = by_id(plan_menu_orders(calendar, STORE))
+    assert items["MENU_ORDER:2026-11-21:2026-11-21"].reason_line == "근처 행사 때문에 메뉴판 순서를 바꿔요."
+    assert "MENU_ORDER:2026-11-22:2026-11-22" not in items  # 비만 그치고 축제는 이어진다
 
 
 # ── ③ 포스터 ──

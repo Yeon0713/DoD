@@ -92,8 +92,9 @@ function useOnce(ms = 500) {
 
 type ButtonProps = { children: ReactNode; href?: string; onPress?: () => void; disabled?: boolean; testID?: string };
 
-/** 화면마다 하나뿐인 주 버튼. 높이 56, 둥글기 14. 웹 검증 도구가 찾을 수 있게 testID 기본값은 "primary" */
-export function PrimaryButton({ children, href, onPress, disabled, testID = "primary" }: ButtonProps) {
+/** 화면마다 하나뿐인 주 버튼. 높이 56, 둥글기 14. 웹 검증 도구가 찾을 수 있게 testID 기본값은 "primary".
+ * chevron 이면 글 뒤에 ">" 를 붙인다 (다음 화면으로 넘어가는 버튼, Figma 10-s1b) */
+export function PrimaryButton({ children, href, onPress, disabled, chevron, testID = "primary" }: ButtonProps & { chevron?: boolean }) {
   const once = useOnce();
   return (
     <Pressable
@@ -106,9 +107,10 @@ export function PrimaryButton({ children, href, onPress, disabled, testID = "pri
           if (href) go(href);
         })
       }
-      className={`h-14 w-full items-center justify-center rounded-button bg-brand active:opacity-90 ${disabled ? "opacity-50" : ""}`}
+      className={`h-14 w-full flex-row items-center justify-center gap-1.5 rounded-button bg-brand active:opacity-90 ${disabled ? "opacity-50" : ""}`}
     >
       <Text className="text-button text-brand-ink">{children}</Text>
+      {chevron ? <Icon name="chevR" size={20} color={tokens.colors["brand-ink"]} /> : null}
     </Pressable>
   );
 }

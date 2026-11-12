@@ -4,7 +4,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect } from "expo-router";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Icon, type IconName } from "@/components/icons/Icon";
@@ -21,49 +21,103 @@ import tokens from "@/theme/tokens.json";
 import type { Slot } from "@/types/contract";
 import { AskLink, NaverButton, startProblem, StoreNotReady } from "./AccountScreens";
 import { DemoMenuBar } from "./DemoMenu";
+import { FeatureIcon, GreenUnderline, type FeatureIconName } from "./IntroArt";
 import { closingNotes, saveWeek, TimeStepper, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
 import { extraSuggestion } from "./StoreRegister";
 import { errorText, enterApp, NAVER_PLACE_KEY, STEPS } from "./flow";
 import { turnOnNotifications } from "./notify";
 
 const C = tokens.colors;
+const LOGO = require("../../../assets/images/donna-logo.png");
 const SLOT_ICON: Record<Slot, IconName> = { OPENING: "sunrise", AFTERNOON: "sun", CLOSING: "moon" };
 
-/** 06-1, 08-1 왜 도나인가. 08-1: 시작하기 대신 네이버로 시작하기, 휴대폰 번호로 시작하기, 로그인 */
+/** 10-s1b 시작 화면: 로고, 한 줄 소개, 도나와 제목, 도나가 하는 일 4가지, "도나를 비서로 영입하러 가기".
+ * 시작 방법(네이버, 휴대폰, 로그인)은 다음 화면(10-s2, /start/choose)에서 고른다. */
+const FEATURES: { icon: FeatureIconName; title: string; sub: string }[] = [
+  { icon: "revisit", title: "고객 재방문 유도", sub: "재방문 시점에 맞춘 리뷰 답변 예약" },
+  { icon: "menuOrder", title: "메뉴판 순서 재배치", sub: "매출·계절·행사에 맞는 메뉴를 상단에" },
+  { icon: "insta", title: "상황 맞춤 인스타 홍보", sub: "계절·경기에 맞는 홍보 이미지 제작·공유" },
+  { icon: "badReview", title: "부정 리뷰 기반 매장 개선", sub: "불만 리뷰에서 개선할 점 발견" },
+];
+
 export function IntroScreen() {
-  const reasons: { icon: IconName; text: string }[] = [
-    { icon: "message", text: "배달앱 리뷰에 답글을 써 둬요" },
-    { icon: "calendar", text: "축제, 경기, 날씨를 미리 알려요" },
-    { icon: "trendUp", text: "다시 온 손님 수까지 알려요" },
-  ];
   return (
     <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: C.paper }}>
-      <DemoMenuBar />
-      <View className="flex-1 px-6 pb-5 pt-2">
-        <View className="items-center">
-          <DonnaImage img="b4-0" size={180} />
-          <Text className="mt-2 text-center text-display text-ink" accessibilityRole="header">
-            {"손님이 다시 오게,\n도나가 먼저 챙겨요"}
-          </Text>
-          <Text className="mt-2 text-center text-body text-ink-2">사장님은 보고 누르기만 하세요</Text>
+      <DemoMenuBar center={<Image source={LOGO} style={{ width: 132, height: 44 }} resizeMode="contain" accessibilityLabel="도나" />} />
+      <View className="flex-1 justify-between gap-4 px-6 pb-7">
+        <View className="flex-row items-center justify-center gap-2">
+          <View className="h-0.5 w-5 bg-line" />
+          <Text className="text-small text-ink-3">사장님을 위한 AI 매장 비서</Text>
+          <View className="h-0.5 w-5 bg-line" />
         </View>
-        <View className="flex-1" />
-        <View className="mb-5">
-          {reasons.map((r) => (
-            <View key={r.text} className="h-12 flex-row items-center gap-3">
-              <Icon name={r.icon} size={28} color={C.brand} />
-              <Text className="text-body font-medium text-ink">{r.text}</Text>
+        <View className="items-center gap-1">
+          <DonnaImage img="b4-0" size={168} />
+          <View className="flex-row items-center justify-center gap-1.5" accessibilityRole="header" accessibilityLabel="매장 운영, 도나가 먼저 챙겨요">
+            <Text className="text-title text-ink">매장 운영,</Text>
+            <View className="flex-row">
+              <View>
+                <View pointerEvents="none" style={{ position: "absolute", left: -3, top: 25 }}>
+                  <GreenUnderline />
+                </View>
+                <Text className="text-title text-ink">도나</Text>
+              </View>
+              <Text className="text-title text-ink">가 먼저 챙겨요</Text>
+            </View>
+          </View>
+        </View>
+        <View>
+          {FEATURES.map((f, i) => (
+            <View key={f.title} className={`flex-row items-center gap-4 py-3 ${i < FEATURES.length - 1 ? "border-b border-line" : ""}`}>
+              <FeatureIcon name={f.icon} />
+              <View className="flex-1">
+                <Text className="text-body font-bold text-ink" style={{ lineHeight: 26 }}>
+                  {f.title}
+                </Text>
+                <Text className="text-label text-ink-3">{f.sub}</Text>
+              </View>
             </View>
           ))}
         </View>
-        <View className="gap-2.5">
-          <NaverButton testID="start-naver" onPress={() => go("/start/naver-login")}>
-            네이버로 시작하기
-          </NaverButton>
-          <SecondaryButton testID="start-phone" outline onPress={() => go("/start/phone")}>
-            휴대폰 번호로 시작하기
-          </SecondaryButton>
-          <AskLink ask="이미 쓰고 계세요?" label="로그인" testID="start-login" onPress={() => go("/login")} />
+        <PrimaryButton testID="start-go" chevron onPress={() => go("/start/choose")}>
+          도나를 비서로 영입하러 가기
+        </PrimaryButton>
+      </View>
+    </SafeAreaView>
+  );
+}
+
+/** 10-s2 시작 방법 고르기: 반기는 도나, "어떻게 시작할까요?", 네이버로 시작하기, 휴대폰 번호로 시작하기, 로그인 */
+export function ChooseStartScreen() {
+  return (
+    <SafeAreaView edges={["top", "bottom"]} style={{ flex: 1, backgroundColor: C.paper }}>
+      <View className="flex-1 px-6 pb-7">
+        <View className="h-11 flex-row items-center">
+          <Pressable
+            testID="choose-back"
+            accessibilityRole="button"
+            accessibilityLabel="뒤로"
+            onPress={() => back("/start")}
+            className="-ml-2.5 h-11 w-11 items-center justify-center rounded-full active:bg-brand-soft"
+          >
+            <Icon name="chevL" size={26} />
+          </Pressable>
+        </View>
+        <View className="flex-1 justify-center gap-6">
+          <View className="items-center gap-2">
+            <DonnaImage img="b2-1" size={200} />
+            <Text className="text-center text-display text-ink" accessibilityRole="header">
+              어떻게 시작할까요?
+            </Text>
+          </View>
+          <View className="gap-2">
+            <NaverButton testID="start-naver" onPress={() => go("/start/naver-login")}>
+              네이버로 시작하기
+            </NaverButton>
+            <SecondaryButton testID="start-phone" outline onPress={() => go("/start/phone")}>
+              휴대폰 번호로 시작하기
+            </SecondaryButton>
+            <AskLink ask="이미 쓰고 계세요?" label="로그인" testID="start-login" onPress={() => go("/login")} />
+          </View>
         </View>
       </View>
     </SafeAreaView>

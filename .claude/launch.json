@@ -12,6 +12,12 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd mobile && npx expo start --web --clear --port 8082"],
       "port": 8082
+    },
+    {
+      "name": "ui-text",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd mobile && npm run ui-text"],
+      "port": 8090
     }
   ]
 }

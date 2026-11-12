@@ -1,0 +1,12 @@
+{
+  "설명": "도나 화면 글 고치기. 각 줄의 original 이 지금 코드의 글, edited 가 바꿀 글입니다. `npm run ui-text` 화면에서 고치거나, 이 파일을 직접 고친 뒤 `npm run ui-text:apply` 로 코드에 넣습니다.",
+  "edits": {
+    "src/components/start/StartScreens.tsx::IntroScreen::0319b3f9::0": {
+      "file": "src/components/start/StartScreens.tsx",
+      "line": 46,
+      "func": "IntroScreen",
+      "original": "손님이 다시 오게,\n도나가 먼저 챙겨요",
+      "edited": "바쁜 사장님 대신,\n"
+    }
+  }
+}

@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>도나 화면 글 고치기</title>
+<style>
+  :root {
+    --ink: #2b2118; --ink2: #6b5d50; --ink3: #9a8c7e; --line: #e8e0d6; --bg: #faf7f2; --card: #fff;
+    --brand: #7a4e2d; --brand-soft: #f3e8dc; --edit: #fff7e0; --edit-line: #e9c46a; --bad: #c0392b; --ok: #2e7d4f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", sans-serif; color: var(--ink); background: var(--bg); }
+  header { position: sticky; top: 0; z-index: 5; display: flex; gap: 12px; align-items: center; padding: 10px 16px; background: var(--card); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 17px; margin: 0; white-space: nowrap; }
+  header .stat { color: var(--ink2); font-size: 13px; white-space: nowrap; }
+  header input[type=search] { flex: 1; min-width: 160px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  header .saved { font-size: 13px; color: var(--ink3); white-space: nowrap; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; padding: 8px 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink); white-space: nowrap; }
+  button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+  button:disabled { opacity: .5; cursor: default; }
+  .wrap { display: grid; grid-template-columns: 290px 1fr; height: calc(100vh - 57px); }
+  nav { overflow: auto; border-right: 1px solid var(--line); background: var(--card); padding: 8px 0 40px; }
+  nav h3 { font-size: 12px; color: var(--ink3); margin: 14px 16px 4px; font-weight: 600; }
+  nav a { display: flex; gap: 6px; align-items: baseline; padding: 6px 16px; color: var(--ink); text-decoration: none; cursor: pointer; }
+  nav a:hover { background: var(--bg); }
+  nav a.on { background: var(--brand-soft); }
+  nav a .n { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  nav a .r { font-size: 11px; color: var(--ink3); white-space: nowrap; }
+  nav a .b { font-size: 11px; background: var(--edit-line); color: var(--ink); border-radius: 10px; padding: 0 7px; }
+  main { overflow: auto; padding: 20px 24px 80px; }
+  .head h2 { margin: 0 0 2px; font-size: 22px; }
+  .head .route { color: var(--ink3); font-size: 13px; }
+  .head .desc { margin: 8px 0 0; padding: 10px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; color: var(--ink2); }
+  .uses { margin: 10px 0 0; font-size: 13px; color: var(--ink2); }
+  .uses a { display: inline-block; margin: 3px 4px 0 0; padding: 2px 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); color: var(--ink); cursor: pointer; text-decoration: none; }
+  .tip { margin: 14px 0 6px; font-size: 13px; color: var(--ink3); }
+  .row { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 12px; align-items: start; padding: 12px; margin-top: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  .row.changed { background: var(--edit); border-color: var(--edit-line); }
+  .row .meta .label { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 10px; background: var(--brand-soft); color: var(--brand); }
+  .row .meta .label.title { background: var(--brand); color: #fff; }
+  .row .meta .where { margin-top: 6px; font-size: 11px; color: var(--ink3); word-break: break-all; }
+  .row .meta .sub { margin-top: 2px; font-size: 11px; color: var(--ink3); }
+  .orig { white-space: pre-wrap; word-break: break-word; padding: 8px 10px; border-radius: 8px; background: var(--bg); min-height: 38px; }
+  .orig .ph, .ph-list .ph { color: #6a5acd; background: #eeeaff; border-radius: 4px; padding: 0 2px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+  .colname { font-size: 11px; color: var(--ink3); margin-bottom: 3px; }
+  textarea { width: 100%; min-height: 38px; resize: vertical; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; background: #fff; }
+  textarea:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); }
+  .warn { margin-top: 4px; font-size: 12px; color: var(--bad); }
+  .undo { margin-top: 4px; font-size: 12px; padding: 2px 8px; }
+  .empty { color: var(--ink3); padding: 20px 0; }
+  .panel { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); }
+  .panel.bad { border-color: var(--bad); }
+  .panel h4 { margin: 0 0 6px; }
+  .panel li { margin: 4px 0; }
+  .panel pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 8px; border-radius: 6px; max-height: 240px; overflow: auto; }
+  .hit { background: #ffe58a; }
+  dialog { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; max-width: 720px; width: 90vw; }
+  dialog ol { max-height: 50vh; overflow: auto; padding-left: 20px; }
+  dialog li { margin: 6px 0; }
+  .from { color: var(--ink3); text-decoration: line-through; white-space: pre-wrap; }
+  .to { color: var(--ink); white-space: pre-wrap; }
+  .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>도나 화면 글 고치기</h1>
+  <span class="stat" id="stat"></span>
+  <input type="search" id="q" placeholder="글 찾기 (모든 화면에서)" />
+  <span class="saved" id="saved"></span>
+  <button id="saveBtn">저장</button>
+  <button id="applyBtn" class="primary">코드에 넣기</button>
+</header>
+<div class="wrap">
+  <nav id="nav"></nav>
+  <main id="main"><div class="empty">불러오는 중…</div></main>
+</div>
+<dialog id="dlg"></dialog>
+<script>
+const $ = (s) => document.querySelector(s);
+let data = null;        // { groups, total, edits, stale, editsFile }
+let edits = {};         // id → { file, line, func, original, edited }
+let current = null;     // 보고 있는 묶음 id
+let saveTimer = null;
+let lastResult = null;  // 코드에 넣은 결과
+const items = new Map(); // id → item
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function placeholders(s) {
+  const out = [];
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "$" && s[i + 1] === "{") {
+      let d = 0, j = i + 1;
+      for (; j < s.length; j++) { if (s[j] === "{") d++; else if (s[j] === "}" && --d === 0) break; }
+      out.push(s.slice(i, j + 1)); i = j;
+    }
+  }
+  return out;
+}
+function showText(s, q) {
+  // ${…} 자리는 보라색으로, 찾는 글은 노란색으로
+  const parts = [];
+  let last = 0;
+  for (const ph of placeholders(s)) {
+    const at = s.indexOf(ph, last);
+    parts.push({ t: s.slice(last, at) }, { t: ph, ph: true });
+    last = at + ph.length;
+  }
+  parts.push({ t: s.slice(last) });
+  return parts.map((p) => {
+    let h = esc(p.t);
+    if (q && !p.ph) h = h.split(esc(q)).join(`<span class="hit">${esc(q)}</span>`);
+    return p.ph ? `<span class="ph" title="코드가 채우는 자리예요. 그대로 두세요">${h}</span>` : h;
+  }).join("");
+}
+
+async function load(keep) {
+  const res = await fetch("/api/data");
+  data = await res.json();
+  edits = data.edits || {};
+  items.clear();
+  for (const g of data.groups) for (const it of g.items) items.set(it.id, it);
+  if (!keep || !data.groups.find((g) => g.id === current)) current = (data.groups.find((g) => g.type === "screen") || data.groups[0]).id;
+  renderNav();
+  renderMain();
+  renderStat();
+}
+
+function editCount(g) { return g.items.filter((i) => edits[i.id]).length; }
+function renderStat() {
+  const n = Object.keys(edits).length;
+  $("#stat").textContent = `글 ${data.total}개 · 고친 글 ${n}개`;
+  $("#applyBtn").disabled = n === 0;
+}
+
+function renderNav() {
+  const sec = { screen: "화면", shared: "여러 화면이 같이 쓰는 글", unused: "쓰는 곳을 못 찾은 글" };
+  let html = "";
+  let lastType = null;
+  for (const g of data.groups) {
+    if (g.type !== lastType) { html += `<h3>${sec[g.type]}</h3>`; lastType = g.type; }
+    const n = editCount(g);
+    html += `<a data-g="${esc(g.id)}" class="${g.id === current ? "on" : ""}"><span class="n">${esc(g.name)}</span>${g.route && !g.route.startsWith("(") ? `<span class="r">${esc(g.route)}</span>` : ""}${n ? `<span class="b">${n}</span>` : ""}</a>`;
+  }
+  $("#nav").innerHTML = html;
+  $("#nav").querySelectorAll("a").forEach((a) => a.onclick = () => { current = a.dataset.g; $("#q").value = ""; renderNav(); renderMain(); $("#main").scrollTop = 0; });
+}
+
+function rowHtml(it, q, showGroup) {
+  const e = edits[it.id];
+  const val = e ? e.edited : "";
+  const isTitle = it.label === "제목" || it.label === "시트 제목";
+  const phs = it.placeholders || [];
+  return `<div class="row ${e ? "changed" : ""}" data-id="${esc(it.id)}">
+    <div class="meta">
+      <span class="label ${isTitle ? "title" : ""}">${esc(it.label)}</span>
+      ${showGroup ? `<div class="sub">${esc(showGroup)}</div>` : ""}
+      <div class="where">${esc(it.file.replace(/^src\//, ""))}:${it.line}<br>${esc(it.func)}</div>
+    </div>
+    <div><div class="colname">원본</div><div class="orig">${showText(it.text, q)}</div></div>
+    <div><div class="colname">[수정]</div>
+      <textarea rows="${Math.max(1, it.text.split("\n").length)}" placeholder="바꿀 글 (비워 두면 그대로)">${esc(val)}</textarea>
+      ${phs.length ? `<div class="ph-list" style="font-size:12px;color:var(--ink3);margin-top:3px">그대로 둘 자리: ${phs.map((p) => `<span class="ph">${esc(p)}</span>`).join(" ")}</div>` : ""}
+      <div class="warn"></div>
+      ${e ? `<button class="undo">원본으로</button>` : ""}
+    </div>
+  </div>`;
+}
+
+function groupName(id) {
+  for (const g of data.groups) if (g.items.some((i) => i.id === id)) return g.name;
+  return "";
+}
+
+function renderMain() {
+  const q = $("#q").value.trim();
+  let html = "";
+  if (lastResult) html += resultHtml(lastResult);
+  if (data.stale.length) {
+    html += `<div class="panel bad"><h4>원본을 못 찾은 수정 ${data.stale.length}개</h4><div style="font-size:13px;color:var(--ink2)">코드가 바뀌어 원래 글이 없어졌어요. 새 원본을 찾아 다시 적어 주세요.</div><ul>${data.stale.map((s) => `<li>${esc(s.file || "")}:${s.line || ""} <span class="from">${esc(s.original || "")}</span> → <span class="to">${esc(s.edited || "")}</span> <button data-drop="${esc(s.id)}" class="undo">지우기</button></li>`).join("")}</ul></div>`;
+  }
+  if (q) {
+    const hits = [];
+    for (const g of data.groups) for (const it of g.items) if (it.text.includes(q) || (edits[it.id]?.edited || "").includes(q)) hits.push([it, g.name]);
+    html += `<div class="head"><h2>"${esc(q)}" 찾은 글 ${hits.length}개</h2></div>`;
+    html += hits.map(([it, gname]) => rowHtml(it, q, gname)).join("") || `<div class="empty">찾은 글이 없어요</div>`;
+  } else {
+    const g = data.groups.find((x) => x.id === current);
+    const shared = g.type === "screen" ? data.groups.filter((x) => x.type === "shared" && x.routes.includes(g.route)) : [];
+    html += `<div class="head"><h2>${esc(g.name)}</h2>${g.route && !g.route.startsWith("(") ? `<div class="route">${esc(g.route)}</div>` : ""}<div class="desc">${esc(g.desc || "")}</div>
+      ${shared.length ? `<div class="uses">이 화면이 같이 쓰는 글: ${shared.map((s) => `<a data-g="${esc(s.id)}">${esc(s.name)} (${s.items.length})</a>`).join("")}</div>` : ""}</div>`;
+    html += `<div class="tip">왼쪽이 지금 코드의 글이에요. [수정] 칸에 바꿀 글을 적으면 바로 저장돼요. 줄 바꿈은 그대로 화면의 줄 바꿈이 돼요.</div>`;
+    html += g.items.map((it) => rowHtml(it)).join("") || `<div class="empty">이 화면에만 있는 글은 없어요. 위 "같이 쓰는 글"을 봐 주세요.</div>`;
+  }
+  $("#main").innerHTML = html;
+  bindRows();
+  $("#main").querySelectorAll(".uses a").forEach((a) => a.onclick = () => { current = a.dataset.g; renderNav(); renderMain(); $("#main").scrollTop = 0; });
+  $("#main").querySelectorAll("[data-drop]").forEach((b) => b.onclick = () => { delete edits[b.dataset.drop]; data.stale = data.stale.filter((s) => s.id !== b.dataset.drop); scheduleSave(); renderMain(); });
+  const close = $("#main").querySelector("[data-close-result]");
+  if (close) close.onclick = () => { lastResult = null; renderMain(); };
+}
+
+function check(row, it, value) {
+  const warn = row.querySelector(".warn");
+  const phs = it.placeholders || [];
+  if (value && phs.length && placeholders(value).join("\0") !== phs.join("\0")) {
+    warn.textContent = "보라색 자리(${…})를 원본과 같은 순서로 모두 남겨 주세요. 그대로가 아니면 코드에 넣지 않아요.";
+    return false;
+  }
+  warn.textContent = "";
+  return true;
+}
+
+function bindRows() {
+  $("#main").querySelectorAll(".row").forEach((row) => {
+    const it = items.get(row.dataset.id);
+    const ta = row.querySelector("textarea");
+    check(row, it, ta.value);
+    ta.oninput = () => {
+      const v = ta.value;
+      if (v === "" || v === it.text) delete edits[it.id];
+      else edits[it.id] = { file: it.file, line: it.line, func: it.func, original: it.text, edited: v };
+      row.classList.toggle("changed", !!edits[it.id]);
+      check(row, it, v);
+      scheduleSave();
+    };
+    const undo = row.querySelector(".undo");
+    if (undo) undo.onclick = () => { ta.value = ""; ta.oninput(); undo.remove(); };
+  });
+}
+
+function scheduleSave() {
+  $("#saved").textContent = "저장 기다리는 중…";
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(save, 600);
+}
+async function save() {
+  clearTimeout(saveTimer);
+  const res = await fetch("/api/save", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits }) });
+  const r = await res.json();
+  const t = new Date(r.at);
+  $("#saved").textContent = `${data.editsFile} 에 저장했어요 ${t.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  renderStat();
+  renderNav();
+}
+
+function resultHtml(r) {
+  const ok = r.failed.length === 0 && r.check.ok;
+  return `<div class="panel ${ok ? "" : "bad"}"><h4>코드에 넣었어요: 바꾼 글 ${r.applied.length}개${r.failed.length ? `, 못 바꾼 글 ${r.failed.length}개` : ""}</h4>
+    ${r.applied.length ? `<div style="font-size:13px;color:${r.check.ok ? "var(--ok)" : "var(--bad)"}">${r.check.ok ? "타입 검사 통과 (tsc). 앱을 다시 불러오면 바뀐 글이 보여요." : "타입 검사에서 오류가 났어요. 아래를 확인해 주세요."}</div>` : ""}
+    ${r.check.ok ? "" : `<pre>${esc(r.check.output)}</pre>`}
+    ${r.failed.length ? `<ul>${r.failed.map((f) => `<li>${esc(f.file || "")}:${f.line || ""} <span class="from">${esc(f.original || "")}</span> → <span class="to">${esc(f.edited || "")}</span><br><span style="color:var(--bad);font-size:13px">${esc(f.reason)}</span></li>`).join("")}</ul>` : ""}
+    <button data-close-result class="undo">닫기</button></div>`;
+}
+
+$("#q").oninput = () => renderMain();
+$("#saveBtn").onclick = save;
+$("#applyBtn").onclick = () => {
+  const list = Object.entries(edits);
+  const dlg = $("#dlg");
+  dlg.innerHTML = `<h3 style="margin-top:0">코드의 글 ${list.length}개를 바꿀게요</h3>
+    <ol>${list.map(([, e]) => `<li><div style="font-size:12px;color:var(--ink3)">${esc(e.file)}:${e.line}</div><div class="from">${esc(e.original)}</div><div class="to">${esc(e.edited)}</div></li>`).join("")}</ol>
+    <div style="font-size:13px;color:var(--ink2)">바꾼 뒤 타입 검사(tsc)를 돌려요. 잘못 바꾸면 git 으로 되돌릴 수 있어요.</div>
+    <div class="actions"><button id="no">그만두기</button><button id="yes" class="primary">바꾸기</button></div>`;
+  dlg.showModal();
+  dlg.querySelector("#no").onclick = () => dlg.close();
+  dlg.querySelector("#yes").onclick = async () => {
+    const yes = dlg.querySelector("#yes");
+    yes.disabled = true; yes.textContent = "바꾸고 검사하는 중…";
+    const res = await fetch("/api/apply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ edits }) });
+    lastResult = await res.json();
+    dlg.close();
+    await load(true);
+    $("#main").scrollTop = 0;
+  };
+};
+load();
+</script>
+</body>
+</html>

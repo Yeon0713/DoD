@@ -1,5 +1,3 @@
-<img width="1672" height="941" alt="모바일 앱 서버 데이터 흐름 인포그래픽" src="https://github.com/user-attachments/assets/2788cec4-3e92-4b0c-b7e2-8bf80798934d" /># 앱 · 서버 · DB · 분석은 어떻게 이어져 있나
-
 도나(DONNA) 프로젝트를 처음 보는 사람이 **네 파트가 어떻게 연결되어 움직이는지** 이해하도록 쓴 문서입니다.
 서버와 앱을 켜는 법은 [README.md](../README.md) 2장에 있습니다.
 
@@ -21,23 +19,6 @@
 ### 데이터가 흐르는 길
 <img width="1672" height="941" alt="모바일 앱 서버 데이터 흐름 인포그래픽" src="https://github.com/user-attachments/assets/1779caed-d217-41fe-aa17-504efeac34f7" />
 
-```
-                         ┌───────────────────────────── 서버 (server/app/) ─────────────────────────────┐
-                         │                                                                               │
- ┌─────────┐  ① 요청     │  화면용 API          ② 가게 데이터 꺼내기    ③ 모양 맞추기      ④ 분석         │
- │   앱    │ ──────────▶ │  (modules/)  ──▶  (data_pipeline/  ──▶  (data_pipeline/ ──▶ (analysis/)       │
- │ mobile/ │             │       ▲            read_store_db)         db_rows_to_...)        │  태성        │
- │  영웅   │ ◀────────── │       │                  │                                       ▼              │
- └─────────┘  ⑧ 응답     │       │                  ▼                                ⑤ 계획 엔진          │
-                         │       │            ┌───────────┐                           (planner/)          │
-                         │       │            │    DB     │                                │              │
-                         │       │            │ server/db/│                                ▼              │
-                         │       │            │   지호     │                       ⑥ CLOVA X 글쓰기       │
-                         │       │            └───────────┘                  (review_reply_writer/,       │
-                         │       │                                            sentence_polish/)          │
-                         │       └──────────── ⑦ 결과 보관함 (data_pipeline/store_snapshot_cache) ◀──────┘
-                         └───────────────────────────────────────────────────────────────────────────────┘
-```
 
 | 단계 | 무슨 일 | 코드 |
 |---|---|---|

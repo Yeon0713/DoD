@@ -5,7 +5,8 @@
   JSON 이면 이름이 새 줄(가짜 메뉴 줄, 가짜 상황 줄)이 되지 못한다.
 - 답은 JSON {"menu_ids": [...], "reason": "..."} 로 받아 검사한다. 이 검사가 마지막 방어선이다.
   - 목록에 없는 id, 겹친 id 는 버리고, 앞에서부터 최대 m = min(5, 메뉴 수)개만 쓴다.
-  - 이유 한 줄은 비었거나, 여러 줄이거나, 60자를 넘거나, 숫자·% 가 있으면 "" 로 둔다(후보는 쓴다).
+  - 이유 한 줄이 60자를 넘거나 여러 문장·여러 줄이면 첫 문장만 잘라 쓴다(첫 문장이 '~요.'로 끝나고 60자 이하일 때).
+    그다음 숫자·% 나 판매 주장(BANNED_REASON_WORDS)이 있으면 "" 로 둔다(후보는 쓴다).
     사장님 승인 카드에 그대로 나가므로 근거 없는 숫자를 약속하면 안 된다.
 - 실패(키 없음, 연결 오류, 시간 초과, JSON 아님, 남는 id 없음)하면 예외 없이 빈 후보를 돌려준다.
 - 성공한 결과만 서버 메모리에 기억한다. 키는 (매장, 세부 종류, 현재 메뉴 id 묶음)이다. 메뉴가 바뀌면 다시 묻는다.
@@ -37,6 +38,9 @@ TEMPERATURE = 0.2  # 결과를 기억해 다시 쓰므로 답이 흔들리지 �
 MAX_TOKENS = 200
 TIMEOUT_SECONDS = 15
 DIGIT_OR_PERCENT_RE = re.compile(r"[\d%％]")  # 전각 숫자도 \d 에 든다
+# 판매 데이터를 보지 않은 LLM 의 판매 주장 차단. 상황과 메뉴의 어울림(어울려요, 찾을 만해요, 따뜻해요)은 막지 않는다
+BANNED_REASON_WORDS = ("인기", "잘 팔", "많이 팔", "매출", "순위", "베스트", "대박")
+SENTENCE_BREAK_RE = re.compile(r"(?<=[.!?])\s+|[\r\n]+")  # 문장 끝(. ! ? 뒤 띄어쓰기) 또는 줄바꿈
 
 MenuBoardKind = EventKind | GameKind | Season  # 메뉴판 교체 계기 태그의 세부 종류
 
@@ -138,7 +142,13 @@ def _usable_reason(reason) -> str:
     if not isinstance(reason, str):
         return ""
     reason = reason.strip()
-    if len(reason.splitlines()) != 1 or len(reason) > MAX_REASON_LENGTH or DIGIT_OR_PERCENT_RE.search(reason):
+    parts = [part.strip() for part in SENTENCE_BREAK_RE.split(reason) if part.strip()]
+    if len(parts) > 1 or len(reason) > MAX_REASON_LENGTH:
+        first = parts[0] if parts else ""
+        if not (first.endswith("요.") and len(first) <= MAX_REASON_LENGTH):
+            return ""
+        reason = first
+    if not reason or DIGIT_OR_PERCENT_RE.search(reason) or any(word in reason for word in BANNED_REASON_WORDS):
         return ""
     return reason
 

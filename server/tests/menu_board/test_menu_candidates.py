@@ -112,14 +112,39 @@ def test_success_is_remembered_by_store_kind_and_menu_set():
 
 @pytest.mark.parametrize(
     "reason",
-    ["", "첫 줄\n둘째 줄", "첫 줄\r둘째 줄", "가" * 61, "축제 때 매출이 20% 올라요", "인기 1위 메뉴예요", "매출이 오릅니다％", "인기 １위예요"],
-    ids=["empty", "multi_line", "carriage_return", "too_long", "percent_and_digits", "digit", "fullwidth_percent", "fullwidth_digit"],
+    ["", "첫 줄\n둘째 줄", "첫 줄\r둘째 줄", "가" * 61, "축제 때 매출이 20% 올라요", "인기 1위 메뉴예요", "매출이 오릅니다％", "인기 １위예요",
+     "젊은 층에게 인기가 많아요", "축제 땐 국수가 잘 팔려요", "매출에 도움이 돼요", "판매 순위가 높아요", "축제엔 많이 팔리는 메뉴예요",
+     "우리 가게 베스트 메뉴예요", "축제 대박 메뉴예요",
+     "국물이 좋습니다. 만두도 함께 먹기 좋아요.", "젊은 손님이 많으니 인기가 많아요. 만두도 함께 먹기 좋아요."],
+    ids=["empty", "multi_line", "carriage_return", "too_long", "percent_and_digits", "digit", "fullwidth_percent", "fullwidth_digit",
+         "popular", "sells_well", "sales", "rank", "sells_a_lot", "best", "jackpot",
+         "first_sentence_not_yo", "first_sentence_banned"],
 )
 def test_unusable_reason_is_blanked_but_candidates_are_kept(reason):
     fake = FakeClova({"menu_ids": ["2", "3"], "reason": reason})
     result = menu_candidates(STORE, MENUS, "WINTER", post=fake)
     assert result == module.MenuCandidates(("2", "3"), "")
 
+
+@pytest.mark.parametrize(
+    ("reason", "kept"),
+    [
+        ("추운 날엔 온면이 잘 어울려요. 만두도 함께 먹기 좋아요.", "추운 날엔 온면이 잘 어울려요."),  # 여러 문장 → 첫 문장
+        ("대학 축제엔 나눠 먹기 좋은 국수와 만두가 잘 어울려요. 김밥과 주먹밥 같은 가벼운 메뉴도 함께 먹기 좋아요.", "대학 축제엔 나눠 먹기 좋은 국수와 만두가 잘 어울려요."),  # 60자 초과 → 첫 문장
+        ("추운 날엔 국물 메뉴를 찾을 만해요.\n만두도 좋아요.", "추운 날엔 국물 메뉴를 찾을 만해요."),  # 여러 줄 → 첫 문장
+        ("추운 날엔 따뜻해요", "추운 날엔 따뜻해요"),  # 한 문장이면 마침표가 없어도 그대로
+    ],
+    ids=["two_sentences", "too_long", "two_lines", "one_sentence"],
+)
+def test_long_or_multi_sentence_reason_keeps_its_first_sentence(reason, kept):
+    fake = FakeClova({"menu_ids": ["2"], "reason": reason})
+    assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == kept
+
+
+@pytest.mark.parametrize("reason", ["축제엔 국수가 잘 어울려요", "추운 날 찾을 만해요", "국물이 따뜻해요"])
+def test_reasons_about_how_well_menus_fit_are_allowed(reason):
+    fake = FakeClova({"menu_ids": ["2"], "reason": reason})
+    assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == reason
 
 def test_no_api_key_returns_empty_candidates(monkeypatch):
     monkeypatch.setattr(settings, "clova_studio_api_key", "")

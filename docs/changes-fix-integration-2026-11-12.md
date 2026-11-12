@@ -58,9 +58,10 @@ PR #12(앱을 실제 DB·분석·CLOVA X 와 연결) 뒤 통합 점검을 하면
 ## 3. 켜는 법
 
 ```bash
-cd server && DEV_CLOCK_ENABLED=true .venv/bin/uvicorn app.main:app --port 8000
-cd mobile && npx expo start --web --port 8082
+cd server && python run_dev.py     # 가상환경을 켠 뒤. Windows, Mac 같은 명령
+cd mobile && npm run web           # http://localhost:8082
 ```
+자세한 순서와 안 될 때 볼 것: [README.md](../README.md) 2-7.
 앱 시작 화면 ☰ › 데모 테스트 모드 켜기 → 네이버로 시작하기 → 임시 로그인(테스트 계정 넣기) → 가게 찾기.
 
 ## 4. 아직 안 된 것 (팀과 정할 것)

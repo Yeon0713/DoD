@@ -24,6 +24,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
+        allow_origin_regex=settings.cors_origin_regex or None,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -33,8 +34,9 @@ def create_app() -> FastAPI:
         """서버가 살아 있는지 확인용. 배포 후 로드밸런서도 이 주소를 확인한다.
 
         boot_id: 서버가 켜질 때마다 바뀌는 값. 앱(mobile/src/lib/storage.ts)이 켜질 때 이 값을 보고 초기화를 정한다.
+        dev_mode: 시험용(DEV_CLOCK_ENABLED=true, python run_dev.py)으로 켰는지. 앱 시작 화면 메뉴가 이 값을 보여 준다.
         """
-        body = {"status": "ok", "boot_id": BOOT_ID}
+        body = {"status": "ok", "boot_id": BOOT_ID, "dev_mode": settings.dev_clock_enabled}
         if settings.dev_clock_enabled:
             # 앱도 같은 만큼 시계를 앞당기게 알려 준다 (mobile/src/lib/storage.ts)
             body["clock_shift_minutes"] = int(clock_shift().total_seconds() // 60)

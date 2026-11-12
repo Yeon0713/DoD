@@ -74,7 +74,9 @@ export function setMockStore(name: string, category: string) {
 const HHMM = /^\d\d:\d\d$/;
 const DAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
-function patchSettings(update: Editable): MockResult {
+function patchSettings(raw: Editable & { allow_busy_slots?: boolean }): MockResult {
+  // 사장님이 바쁜 시간이어도 받겠다고 확인하면 바쁜 시간대 검사를 건너뛴다 (서버와 같게)
+  const { allow_busy_slots: allowBusy, ...update } = raw;
   const cur = currentSettings();
   let next: StoreSettings = { ...cur, ...update };
   if (update.weekly_hours) {
@@ -115,7 +117,7 @@ function patchSettings(update: Editable): MockResult {
       const b = busy.end === "24:00" ? 1440 : toMin(busy.end);
       const x = toMin(t);
       const inside = a <= b ? a <= x && x < b : x >= a || x < b;
-      if (inside) return fail(400, "SLOT_IN_BUSY_DAYPART", `${slot} 알림 시각 ${t} 이 바쁜 시간대(${d} ${busy.start}~${busy.end})에 걸립니다.`);
+      if (inside && !allowBusy) return fail(400, "SLOT_IN_BUSY_DAYPART", `${slot} 알림 시각 ${t} 이 바쁜 시간대(${d} ${busy.start}~${busy.end})에 걸립니다.`);
     }
   }
   const override = Object.fromEntries(EDITABLE.map((k) => [k, next[k]]));

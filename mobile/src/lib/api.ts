@@ -14,10 +14,10 @@ import type { SalesChannels, SalesLive, SalesMenus, SalesMonths, SalesPeriod, Sa
 import { handleMock } from "@/mocks/server";
 import { account } from "./account";
 import { devFlags } from "./dev";
+import { BASE_URL } from "./server";
 
 /** EXPO_PUBLIC_USE_MOCK=false가 아니면 앱 안의 목업 서버(src/mocks/server)를 쓴다. */
 export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK !== "false";
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export class ApiFailure extends Error {
   constructor(
@@ -95,7 +95,10 @@ export const salesApi = {
   months: (now: Date) => salesGet<SalesMonths>("months", now),
 };
 
-export type SettingsUpdate = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category" | "work_hours" | "extra_slots">>;
+export type SettingsUpdate = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category" | "work_hours" | "extra_slots">> & {
+  /** 사장님이 "바쁜 시간이어도 이때 받을게요"라고 확인했을 때 true */
+  allow_busy_slots?: boolean;
+};
 
 /** 06-2c 네이버 플레이스에서 불러온 가게 정보. 제안 API: GET /api/naver/place */
 export interface NaverPlace {

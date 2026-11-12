@@ -4,9 +4,8 @@
 // 로그인 창으로 이 탭을 옮겼다가, 로그인과 동의를 마치면 서버가 /start/naver-login?ticket= 으로 돌려보낸다.
 import { Platform } from "react-native";
 import type { Donna } from "./cards";
+import { BASE_URL, serverHealth } from "./server";
 import { createStore } from "./store";
-
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 // 로그아웃, 서버 재시작, "처음 상태로"에도 지워지지 않게 dona.keep. 에 둔다 (lib/storage.ts)
 export const demoMode = createStore<{ on: boolean }>("dona.keep.demoMode.v1", { on: false });
@@ -49,8 +48,14 @@ export function useRealNaver(): boolean {
   return demoMode.useValue().on && Platform.OS === "web";
 }
 
-/** 이 탭을 네이버 로그인 창으로 옮긴다. 마치면 backPath(이 앱 주소)로 돌아온다. */
-export function goToNaverLogin(backPath: string) {
+/** 이 탭을 네이버 로그인 창으로 옮긴다. 마치면 backPath(이 앱 주소)로 돌아온다.
+ *
+ * 서버가 꺼져 있으면 탭이 열리지 않는 주소로 가 버려 앱으로 돌아올 수 없다. 그래서 먼저 서버가 살아 있는지 보고,
+ * 닿지 않으면 옮기지 않고 SERVER_UNREACHABLE 로 알린다 (앱 화면에서 "다시 하기"를 누를 수 있게).
+ */
+export async function goToNaverLogin(backPath: string, stillWanted: () => boolean = () => true): Promise<void> {
+  if (!(await serverHealth(3000))) throw new Error("SERVER_UNREACHABLE");
+  if (!stillWanted()) return;
   const back = `${window.location.origin}${backPath}`;
   window.location.assign(`${BASE_URL}/api/auth/naver/start?back=${encodeURIComponent(back)}`);
 }
@@ -79,6 +84,7 @@ export async function readNaverResult(ticket: string): Promise<NaverProfile> {
 export function naverErrorText(code: string): { title: string; sub: string; img: Donna } {
   if (code === "access_denied") return { title: "네이버 동의를 취소했어요", sub: "도나를 쓰려면 네이버 동의가 필요해요.\n다시 하기를 누르면\n네이버 화면이 다시 열려요", img: "q-scratch" };
   if (code === "TICKET_EXPIRED") return { title: "시간이 지나서\n다시 해야 해요", sub: "다시 하기를 눌러 주세요", img: "q-scratch" };
+  if (code === "SERVER_UNREACHABLE") return { title: "도나 서버에\n닿지 않아요", sub: "서버가 켜져 있는지 확인하고\n다시 하기를 눌러 주세요", img: "q-laptop" };
   if (code === "NAVER_UNREACHABLE") return { title: "네이버에 연결되지 않아요", sub: "인터넷을 확인하고 다시 해 주세요", img: "q-laptop" };
   return { title: "네이버 로그인을\n마치지 못했어요", sub: "잠시 뒤 다시 해 주세요", img: "q-arms" };
 }

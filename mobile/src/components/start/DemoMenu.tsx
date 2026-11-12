@@ -1,7 +1,7 @@
 // 시작 화면과 로그인 화면 위의 메뉴(☰). 시험·시연용 기능을 모아 둔다.
 // - 데모 테스트 모드: 켜면 "네이버로 시작하기/로그인"이 서버의 네이버 로그인(앱 키가 없으면 임시 네이버 로그인)으로 가서 계정을 고를 수 있다.
 // - 초기화: 등록한 가게, 불러온 리뷰, 이 기기 기록을 지워 가게 찾기(지도)부터 다시 할 수 있게 한다.
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, View } from "react-native";
 import { Icon } from "@/components/icons/Icon";
@@ -15,12 +15,47 @@ import { USE_MOCK } from "@/lib/api";
 import { resetCardState } from "@/lib/cardState";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { demoMode, naverProfile } from "@/lib/naverDemo";
+import { BASE_URL, serverHealth, type ServerHealth } from "@/lib/server";
 import { storage } from "@/lib/storage";
 import tokens from "@/theme/tokens.json";
-import { pickedPlace } from "./StoreRegister";
+import { pickedPlace } from "./flow";
 
 const C = tokens.colors;
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+
+/** 메뉴를 열 때마다 서버에 닿는지 본다. 시험하는 팀원이 "왜 안 되지"를 메뉴에서 바로 알 수 있게.
+ * 확인 중이면 undefined, 닿지 않으면 null */
+function useServerCheck(open: boolean): ServerHealth | null | undefined {
+  const { data, isFetching } = useQuery({
+    queryKey: ["server-health"],
+    queryFn: () => serverHealth(3000),
+    enabled: open && !USE_MOCK,
+    staleTime: 0,
+    gcTime: 0,
+    retry: false,
+  });
+  return isFetching ? undefined : data;
+}
+
+function ServerLine({ health }: { health: ServerHealth | null | undefined }) {
+  const where = BASE_URL.replace(/^https?:\/\//, "");
+  if (USE_MOCK) return <Text testID="start-menu-server" className="text-small text-ink-3">앱 안 예시 데이터로 보고 있어요 (서버를 쓰지 않아요)</Text>;
+  if (health === undefined) return <Text testID="start-menu-server" className="text-small text-ink-3">{`서버 확인 중 · ${where}`}</Text>;
+  if (health === null)
+    return (
+      <Text testID="start-menu-server" className="text-small text-urgent">
+        {`서버에 닿지 않아요 · ${where}\n서버를 켰는지 확인해 주세요 (server 폴더에서 python run_dev.py)`}
+      </Text>
+    );
+  // 예전 서버는 dev_mode 를 알려 주지 않는다. 시계 앞당김 값이 오면 시험용으로 켠 것이다
+  const dev = health.dev_mode ?? health.clock_shift_minutes !== undefined;
+  if (!dev)
+    return (
+      <Text testID="start-menu-server" className="text-small text-urgent">
+        {`서버에 연결됐지만 시험용으로 켜지 않았어요 · ${where}\n초기화가 서버까지 닿으려면 python run_dev.py 로 켜 주세요`}
+      </Text>
+    );
+  return <Text testID="start-menu-server" className="text-small text-ink-3">{`서버에 연결됐어요 · ${where}`}</Text>;
+}
 
 /** 오른쪽 위 줄: 데모 모드 표시 + 메뉴 버튼. left 에는 뒤로 버튼 같은 것을 넣는다 */
 export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
@@ -30,6 +65,7 @@ export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
   const [resetting, setResetting] = useState(false);
   const [serverNote, setServerNote] = useState<string | null>(null);
   const demo = demoMode.useValue();
+  const health = useServerCheck(open);
 
   const reset = async () => {
     setResetting(true);
@@ -38,7 +74,7 @@ export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
     if (!USE_MOCK) {
       try {
         const res = await fetch(`${BASE_URL}/dev/reset`, { method: "POST" });
-        if (!res.ok) setServerNote("서버 기록은 지우지 못했어요. 서버를 DEV_CLOCK_ENABLED=true 로 켜 주세요");
+        if (!res.ok) setServerNote("서버 기록은 지우지 못했어요. 서버를 python run_dev.py 로 켜 주세요");
       } catch {
         setServerNote("서버에 닿지 않아 이 기기 기록만 지웠어요");
       }
@@ -103,6 +139,7 @@ export function DemoMenuBar({ left }: { left?: React.ReactNode }) {
             <Icon name="chevR" size={20} color={C["ink-3"]} />
           </Pressable>
           {serverNote ? <Text className="text-small text-urgent">{serverNote}</Text> : null}
+          <ServerLine health={health} />
         </View>
       </Sheet>
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="처음부터 다시 할까요?">

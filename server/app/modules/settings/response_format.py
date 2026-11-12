@@ -21,6 +21,8 @@ class SettingsUpdate(BaseModel):
     break_time: TimeRange | None = None  # 브레이크 타임. null 을 보내면 없앤다
     work_hours: TimeRange | None = None  # 출근·퇴근 예정 시간
     extra_slots: list[HHMM] | None = None  # 더 넣은 알림 시각. 빈 목록을 보내면 모두 없앤다
+    # 사장님이 "바쁜 시간이어도 이때 받을게요"라고 확인한 경우 true. 이번에 보낸 알림 시각은 바쁜 시간대 검사를 건너뛴다
+    allow_busy_slots: bool = False
 
     @field_validator("extra_slots")
     @classmethod

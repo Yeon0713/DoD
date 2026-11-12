@@ -116,3 +116,23 @@ def test_login_returns_store_registered_by_that_account(client, monkeypatch):
     res = client.get(res.headers["location"])
     ticket = parse_qs(urlparse(res.headers["location"]).query)["ticket"][0]
     assert client.get(f"/api/auth/naver/result/{ticket}").json()["store_id"] == "s003"
+
+
+def test_app_on_this_computer_is_accepted_on_any_port(client, monkeypatch):
+    """앱을 8081 같은 다른 포트로 켜거나, 예전 .env 의 CORS_ORIGINS 에 8082 가 없어도 로그인과 요청이 된다."""
+    monkeypatch.setattr(settings, "naver_login_client_id", "")
+    monkeypatch.setattr(settings, "cors_origins", ["http://localhost:3000"])
+    for origin in ("http://localhost:8081", "http://127.0.0.1:8082", "http://localhost:19006"):
+        assert client.get("/api/auth/naver/start", params={"back": f"{origin}/start/naver-login"}).status_code == 302
+        assert client.get("/health", headers={"Origin": origin}).headers["access-control-allow-origin"] == origin
+
+
+def test_other_sites_are_still_refused(client, monkeypatch):
+    monkeypatch.setattr(settings, "naver_login_client_id", "")
+    for origin in ("http://evil.example.com", "http://localhost.evil.example.com:8082", "https://localhost:8082"):
+        assert client.get("/api/auth/naver/start", params={"back": f"{origin}/start"}).json()["error"]["code"] == "BAD_BACK_URL"
+        assert "access-control-allow-origin" not in client.get("/health", headers={"Origin": origin}).headers
+
+
+def test_health_tells_whether_server_is_in_dev_mode(client, monkeypatch):
+    assert client.get("/health").json()["dev_mode"] is settings.dev_clock_enabled

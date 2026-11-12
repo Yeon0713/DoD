@@ -23,7 +23,7 @@ import { AskLink, NaverButton, startProblem, StoreNotReady } from "./AccountScre
 import { DemoMenuBar } from "./DemoMenu";
 import { closingNotes, saveWeek, TimeStepper, TitleWithDonna, weekLines, WeeklyEditor, weekStateOf, type WeekState } from "./HoursEditor";
 import { extraSuggestion } from "./StoreRegister";
-import { errorText, enterApp, NAVER_PLACE_KEY, PLATFORM_ORDER, PLATFORM_SHORT, STEPS } from "./flow";
+import { errorText, enterApp, NAVER_PLACE_KEY, STEPS } from "./flow";
 import { turnOnNotifications } from "./notify";
 
 const C = tokens.colors;
@@ -126,7 +126,6 @@ export function ImportedScreen() {
     return <StoreNotReady name={place.name} onBack={() => back("/start/naver-store")} />;
   }
   const week: WeekState = edit ?? { weekly: place.weekly_hours, brk: place.break_time };
-  const platforms = PLATFORM_ORDER.filter((p) => data.reviews.reviews.some((r) => r.platform === p));
   const menuNames = place.menus.map((m) => m.name);
   const menuLine = `${menuNames.slice(0, 3).join(", ")}${menuNames.length > 3 ? ` 외 ${menuNames.length - 3}개` : ""}`;
   // 메뉴와 사진은 네이버 플레이스(스마트플레이스)에서 고친다. 도나는 바꾸지 않는다. 돌아오면 다시 불러온다.
@@ -175,9 +174,6 @@ export function ImportedScreen() {
           </ImportedCard>
           <ImportedCard icon="image" title={`메뉴 사진 ${place.photo_count}장`} editId="photos-edit" onEdit={naverOnly}>
             <Text className="text-body text-ink-2">포스터 만들 때 써요</Text>
-          </ImportedCard>
-          <ImportedCard icon="messages" title={`리뷰 ${place.review_count}개`}>
-            <Text className="text-body text-ink-2">{platforms.map((p) => PLATFORM_SHORT[p]).join(", ")}</Text>
           </ImportedCard>
         </View>
         {err ? <FailNote title="저장하지 못했어요" sub={err} /> : null}
@@ -472,7 +468,7 @@ export function NotifyOnScreen() {
   };
   return (
     <SubPage
-      progress={{ total: STEPS, done: 7 }}
+      progress={{ total: STEPS, done: 6 }}
       footer={
         <>
           <PrimaryButton onPress={turnOn} disabled={busy || !s}>
@@ -484,7 +480,19 @@ export function NotifyOnScreen() {
         </>
       }
     >
-      <TitleWithDonna title={"알림을\n켜 주세요"} sub="하루 3번, 고른 시간에만 알려 드려요" />
+      <TitleWithDonna title={"알림을\n켜 주세요"} sub="할 일이 생기면 이때 알려 드려요" />
+      {s ? (
+        <View testID="notify-times" className="mt-4 gap-1.5 rounded-2xl bg-brand-soft px-4 py-3">
+          {(["OPENING", "AFTERNOON", "CLOSING"] as Slot[]).map((k) => (
+            <View key={k} className="flex-row items-center gap-2">
+              <Icon name={SLOT_ICON[k]} size={18} color={C["ink-2"]} />
+              <Text className="flex-1 text-label text-ink-2">{slotInfo(s)[k].label}</Text>
+              <Text className="text-label font-bold text-ink">{s.slots[k]}</Text>
+            </View>
+          ))}
+          <Text className="mt-1 text-small text-ink-3">출근·퇴근 시간과 브레이크에 맞춰 정했어요. 설정에서 바꿀 수 있어요</Text>
+        </View>
+      ) : null}
       <View className="mt-5 rounded-2xl border border-line bg-surface px-4 py-3.5" accessibilityLabel="알림 예시">
         <View className="flex-row items-center gap-1.5">
           <Icon name="bell" size={18} color={C["ink-2"]} />

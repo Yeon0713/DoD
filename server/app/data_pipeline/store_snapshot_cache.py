@@ -28,7 +28,7 @@ from app.analysis.store_calendar.calendar_day import CALENDAR_DAYS, build_calend
 from app.core.config import settings as app_settings
 from app.core.error_response import ApiError
 from app.core.seoul_time import at_time, now_seoul, to_seoul
-from app.data_pipeline import read_store_db
+from app.data_pipeline import registered_stores, read_store_db
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
 from app.planner.data_shapes import CalendarCell, PlanResult, Review, StoreSettings
@@ -93,8 +93,22 @@ def get_snapshot(store_id: str, now: dt.datetime | None = None) -> StoreSnapshot
         return snapshot
 
 
+def _registered_base(store_id: str) -> dict:
+    """사장님이 등록한 가게는 등록 때 네이버 지도에서 읽어 DB 에 저장한 요일별 영업시간과 브레이크 타임을 기본으로 쓴다.
+
+    고친 설정은 서버 메모리에만 있어 서버를 다시 켜면 사라지므로, 그때도 실제 가게 시간이 나오게 한다.
+    """
+    info = registered_stores.place_info(store_id)
+    if info is None or not any(info.weekly_hours.values()):
+        return {}
+    if any(h and h["close"] <= h["open"] for h in info.weekly_hours.values()):
+        return {}  # 자정을 넘겨 여는 가게는 아직 계획을 못 만든다 (기본 대표 시간으로 둔다)
+    return {"weekly_hours": info.weekly_hours, "break_time": info.break_time}
+
+
 def get_settings_changes(store_id: str) -> dict:
-    return dict(_settings_changes.get(store_id, {}))
+    """그 가게 설정에 덮어쓸 값: 등록한 가게의 기본 시간 위에 사장님이 고친 값."""
+    return {**_registered_base(store_id), **_settings_changes.get(store_id, {})}
 
 
 def save_settings_changes(store_id: str, changes: dict) -> None:
@@ -127,7 +141,7 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     # 계획 엔진
     settings, plan, unavailable = None, None, None
     try:
-        settings = build_store_settings(store, _settings_changes.get(store_id))
+        settings = build_store_settings(store, get_settings_changes(store_id))
         plan_inputs = build_plan_inputs(
             settings,
             reviews,

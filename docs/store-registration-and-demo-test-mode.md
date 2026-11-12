@@ -124,8 +124,15 @@
 
 ```bash
 cd server
-DEV_CLOCK_ENABLED=true .venv/bin/uvicorn app.main:app --port 8000
+python run_dev.py        # 가상환경을 켠 뒤. Windows, Mac 같은 명령 (DEV_CLOCK_ENABLED=true, 8000번 포트)
 ```
+```bash
+cd mobile
+npm run web              # http://localhost:8082
+```
+
+순서와 안 될 때 볼 것은 [README.md](../README.md) 2-7 에 있다. 앱은 연 주소와 같은 이름으로 서버를 부른다
+(`http://localhost:8082` 로 열면 서버도 `http://localhost:8000`, `mobile/src/lib/server.ts`).
 
 | 설정 (`server/.env` 또는 환경 변수) | 쓰임 |
 |---|---|

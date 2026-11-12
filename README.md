@@ -22,10 +22,11 @@ DoD/
 │   └── fixtures/analysis/   분석 결과 예시 JSON
 ├── docs/                    팀이 같이 보는 안내 문서 (앱 · 서버 · DB · 분석 연결)
 ├── mobile/                  사장님 앱 (Expo, React Native). 웹 · iOS · 안드로이드를 한 코드로
-│   └── .env.local           앱 설정 파일. 직접 만듦, GitHub에 올라가지 않음 (2-5)
+│   └── .env.local           앱 설정 파일. 비밀 값이 없어 저장소에 들어 있음 (2-5)
 └── server/                  백엔드 서버 (FastAPI)
     ├── requirements.txt     서버에 필요한 파이썬 패키지 목록
     ├── .env.example         설정 파일(.env)의 틀. 값은 비워서 공유 (2-2)
+    ├── run_dev.py           시험용으로 서버 켜기: python run_dev.py (2-3, 2-7)
     ├── app/
     │   ├── main.py          서버 시작점. modules/ 안의 기능을 자동으로 연결, 오류 응답 형식 등록
     │   ├── core/            모든 모듈이 같이 쓰는 코드
@@ -116,16 +117,18 @@ cp .env.example .env
 
 | 이름 | 앱 연결에 필요? | 넣을 값 | 비워 두면 |
 |---|---|---|---|
-| `CORS_ORIGINS` | **필요** | `["http://localhost:3000","http://localhost:8082","http://127.0.0.1:8082"]` (틀에 이미 들어 있음) | 앱 화면이 서버를 못 불러서 "인터넷이 끊겼어요"가 뜸 |
+| `CORS_ORIGINS` | 기본값 있음 | `["http://localhost:3000","http://localhost:8082","http://127.0.0.1:8082"]` (틀에 이미 들어 있음). 내 컴퓨터에서 켠 앱(`localhost`, `127.0.0.1`)은 여기에 없어도 포트와 상관없이 받습니다 | 내 컴퓨터가 아닌 주소(배포한 앱, 같은 와이파이 IP)에서 연 앱이 서버를 못 부름 |
+| `DEV_CLOCK_ENABLED` | 데모 테스트 모드에 필요 | `true`면 시험용 기능(앱 메뉴의 초기화, 시계 앞당기기)이 열림. `python run_dev.py`로 켜면 자동으로 켜짐 (2-3) | 꺼짐. 앱 메뉴의 초기화가 서버 기록을 지우지 못함 |
 | `DEMO_STORE_ID` | 기본값 있음 | 보여 줄 가게. `s001` 한림국수, `s002` 두리맥주, `s003` 석사돈가스 | `s001` |
 | `SNAPSHOT_REFRESH_MINUTES` | 기본값 있음 | 분석을 다시 계산하는 간격(분) | `10` |
 | `SENTENCE_POLISH_ENABLED` | 기본값 있음 | 화면 문장을 CLOVA X로 다듬을지 (`true`/`false`) | `true` |
 | `CLOVA_STUDIO_API_KEY` | 있으면 좋음 | CLOVA Studio > API 키. 화면 문장 다듬기에 씀 | 다듬지 않고 원래 문장을 씀 (앱은 정상 동작) |
 | `CLOVA_STUDIO_BASE_URL`, `CLOVA_STUDIO_MODEL`, `CLOVA_STUDIO_TIMEOUT` | 기본값 있음 | 틀에 적힌 값 그대로 | 틀의 기본값 |
-| `NCLOUD_ACCESS_KEY`, `NCLOUD_SECRET_KEY` | 아니요 | 네이버 클라우드 > 인증키 관리 | 지금 앱 화면에는 쓰지 않음 |
-| `NAVER_MAPS_*`, `NAVER_API_HUB_*`, `SENS_SMS_*` | 아니요 | 각 서비스 콘솔의 인증 정보 | 지금 앱 화면에는 쓰지 않음 |
+| `NAVER_API_HUB_CLIENT_ID`, `NAVER_API_HUB_CLIENT_SECRET` | 데모 테스트 모드에 필요 | NAVER API HUB 인증 정보. 가입할 때 **가게 찾기(네이버 검색)** 에 씀 | 가게 찾기에서 "네이버 검색이 잠시 안 돼요"가 뜸 (로그인과 테스트 계정은 됨) |
+| `NAVER_MAPS_CLIENT_ID`, `NAVER_MAPS_CLIENT_SECRET` | 데모 테스트 모드에 필요 | Maps 인증 정보. 가게 찾기의 **지도 그림** 에 씀 | 지도 자리에 그림이 안 나옴 |
+| `NCLOUD_ACCESS_KEY`, `NCLOUD_SECRET_KEY`, `SENS_SMS_*` | 아니요 | 네이버 클라우드 > 인증키 관리, SENS 콘솔 | 지금 앱 화면에는 쓰지 않음 |
 
-> ⚠️ **예전에 `.env`를 만들었다면** `CORS_ORIGINS` 줄이 `["http://localhost:3000"]`만 있을 수 있습니다. 위 표의 값으로 바꾸세요.
+> 키 값은 GitHub에 올리지 않습니다. 팀 채널에서 받은 값을 각자 `server/.env`에 넣으세요. `python run_dev.py`로 서버를 켜면 어떤 키가 채워져 있는지(있음/없음) 알려 줍니다.
 > `.env`를 고친 뒤에는 **서버를 껐다가 다시 켜야** 적용됩니다. (`--reload`는 코드 파일만 다시 읽어요)
 
 새 설정 값이 생기면 `.env.example`에도 **이름만** 추가해서 팀원들과 공유하세요. (비밀 값은 비워 두기)
@@ -145,6 +148,17 @@ uvicorn app.main:app --reload
 - `app.main:app`은 "`app/main.py` 안의 `app`을 실행하라"는 뜻이에요.
 - `--reload`를 붙이면 코드를 저장할 때마다 서버가 자동으로 다시 켜집니다.
 - 끌 때는 `Ctrl + C`
+
+**데모 테스트 모드(네이버 로그인, 테스트 계정, 가게 등록)를 시험할 때는** 위 명령 대신 이렇게 켭니다. Windows와 Mac에서 명령이 같아요.
+
+```bash
+python run_dev.py
+```
+
+- 시험용 기능(앱 메뉴의 초기화, 시계 앞당기기)을 열고 `http://127.0.0.1:8000`에 켭니다.
+- 8000번 포트를 이미 쓰는 프로그램(예전에 켜 둔 서버)이 있으면 켜지 않고 끄는 방법을 알려 줍니다. 예전 서버가 남아 있으면 브라우저가 그쪽에 붙어서 **새 코드가 안 보이거나 응답이 오지 않아요.** Windows는 같은 포트에 서버가 두 개 켜져도 오류가 나지 않아서 특히 알아채기 어렵습니다.
+- `server/.env`에 어떤 키가 채워져 있는지 알려 줍니다.
+- 앱에서 켜는 법은 2-7에 있어요.
 
 ### 2-4. 서버가 잘 켜졌는지 확인
 
@@ -174,7 +188,7 @@ npm(설치 도구)이 이미 깔려 있어도 이 명령은 한 번 해야 합�
 
 **앱 설정 파일 만들기**
 
-`mobile/` 폴더에 `.env.local` 파일을 새로 만들고 아래 두 줄을 넣습니다.
+`mobile/.env.local`은 저장소에 들어 있어서 따로 만들지 않아도 됩니다. 아래 두 줄이 들어 있어요.
 
 ```
 EXPO_PUBLIC_USE_MOCK=false
@@ -186,7 +200,7 @@ EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 | `EXPO_PUBLIC_USE_MOCK` | `false`면 우리 서버에서 실제 데이터를 받음 | 앱 안의 예시 데이터(목업)만 보여 줌 |
 | `EXPO_PUBLIC_API_BASE_URL` | 서버 주소 | `http://127.0.0.1:8000` |
 
-- `.env.local`은 `mobile/.gitignore`에 등록돼 있어서 GitHub에 올라가지 않아요.
+- `.env.local`에는 비밀 값이 없어서 팀이 같이 쓰도록 GitHub에 올려 두었어요. 웹에서는 앱을 연 주소와 같은 이름으로 서버를 부릅니다 (`http://localhost:8082`로 열면 서버도 `http://localhost:8000`).
 - 이름이 `EXPO_PUBLIC_`으로 시작하는 값은 **앱 안에 그대로 들어가서 누구나 볼 수 있으니 비밀 값을 넣으면 안 됩니다.** API 키는 서버 `.env`에만 넣으세요.
 
 ### 2-6. 앱 화면 켤 때마다
@@ -194,9 +208,10 @@ EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8000
 먼저 서버가 켜져 있어야 합니다 (2-3). 그다음 `mobile/` 폴더에서:
 
 ```bash
-npx expo start --web --port 8082
+npm run web
 ```
 
+- `npx expo start --web --port 8082`와 같은 명령입니다.
 - 브라우저에서 http://localhost:8082 를 엽니다. 하얀 화면이면 몇 초 기다렸다가 새로 고침하세요.
 - 휴대폰 크기로 보려면 크롬 개발자 도구(F12)에서 기기 모양 버튼을 누르세요.
 - 끌 때는 `Ctrl + C`
@@ -205,7 +220,26 @@ npx expo start --web --port 8082
 
 **휴대폰에서 보려면 (Expo Go 앱)**: `npx expo start`로 켜고 화면의 QR 코드를 찍습니다. 이때 `EXPO_PUBLIC_API_BASE_URL`은 `127.0.0.1`이 아니라 **같은 와이파이의 내 컴퓨터 IP**(예: `http://192.168.0.10:8000`)여야 하고, 서버도 `uvicorn app.main:app --reload --host 0.0.0.0`으로 켜야 합니다.
 
-**"인터넷이 끊겼어요"가 뜨면**: 서버가 켜져 있는지, 서버 `.env`의 `CORS_ORIGINS`에 `http://localhost:8082`가 있는지(2-2) 확인하세요. 그래도 안 되면 서버 터미널에 `404 Not Found`로 찍힌 주소가 앱이 부르는데 서버에 아직 없는 API입니다.
+**"인터넷이 끊겼어요"가 뜨면**: 서버가 켜져 있는지 확인하세요. 그래도 안 되면 서버 터미널에 `404 Not Found`로 찍힌 주소가 앱이 부르는데 서버에 아직 없는 API입니다.
+
+### 2-7. 데모 테스트 모드 (네이버 로그인, 테스트 계정, 가게 등록)
+
+1. 서버를 `python run_dev.py`로 켭니다 (2-3). 터미널에 `[있음] 가게 찾기 (네이버 검색)`이 나와야 가게 찾기가 됩니다.
+2. 앱을 `npm run web`으로 켜고 http://localhost:8082 를 엽니다.
+3. 시작 화면 오른쪽 위 **☰ › 데모 테스트 모드**를 켭니다. 메뉴 맨 아래에 **"서버에 연결됐어요"** 가 보여야 합니다.
+4. **네이버로 시작하기**를 누르면 임시 네이버 로그인 화면이 나옵니다. **테스트 계정 보기 › 넣기 › 로그인** (`dona_test1` ~ `dona_test3`).
+5. 가게 찾기(예: `춘천 피플스클럽`) → 이 가게가 맞나요? → 가게 정보 → 리뷰 불러오기 → 출근·퇴근 → 알림 켜기 → 홈.
+6. 처음부터 다시 하려면 **☰ › 초기화**.
+
+**안 될 때**
+
+| 보이는 것 | 까닭과 고치는 법 |
+|---|---|
+| 메뉴에 "서버에 닿지 않아요", 개발자 도구에 `ERR_CONNECTION_TIMED_OUT` 또는 `ERR_CONNECTION_REFUSED` | 브라우저가 서버에 못 붙은 것입니다. 서버 터미널이 켜져 있는지 보고, 브라우저에서 http://localhost:8000/health 를 직접 열어 보세요. 안 열리면 예전에 켠 서버가 8000번 포트를 붙잡고 있을 수 있습니다. 서버를 끄고 `python run_dev.py`로 다시 켜면 겹치는 프로그램과 끄는 방법을 알려 줍니다 |
+| "네이버로 시작하기"를 눌러도 임시 로그인 화면이 안 나오고 앱 안의 화면만 지나감 | 데모 테스트 모드가 꺼져 있습니다 (3번). 시작 화면 위에 "데모 테스트 모드" 표시가 있어야 합니다 |
+| 메뉴에 "서버에 연결됐지만 시험용으로 켜지 않았어요" | 서버를 `uvicorn …`으로 켠 것입니다. 로그인은 되지만 초기화가 서버 기록을 못 지웁니다. `python run_dev.py`로 켜세요 |
+| 화면이 예전 그대로이거나 메뉴(☰)가 없음 | 최신 코드를 받은 뒤 서버와 앱을 모두 껐다 켜세요. 앱은 `npx expo start --web --port 8082 --clear`로 한 번 켜면 예전 묶음을 지웁니다 |
+| 가게 찾기에서 "네이버 검색이 잠시 안 돼요" | `server/.env`에 `NAVER_API_HUB_CLIENT_ID`, `NAVER_API_HUB_CLIENT_SECRET`이 없습니다 (2-2) |
 
 ---
 

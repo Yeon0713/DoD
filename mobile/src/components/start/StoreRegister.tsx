@@ -14,27 +14,23 @@ import { Sheet } from "@/components/ui/Sheet";
 import { FailNote, Note, SubPage } from "@/components/ui/sub";
 import { Text } from "@/components/ui/Text";
 import { account } from "@/lib/account";
-import { api, storeMapUrl, USE_MOCK, type ReviewSource, type SearchedPlace, type StorePlace } from "@/lib/api";
+import { api, ApiFailure, storeMapUrl, USE_MOCK, type ReviewSource, type SearchedPlace, type StorePlace } from "@/lib/api";
 import { fromMin, suggestSlots, toMin, WEEKDAY_KO } from "@/lib/hours";
 import { flashToast } from "@/lib/localStore";
 import { naverProfile } from "@/lib/naverDemo";
-import { createStore } from "@/lib/store";
 import { currentNow } from "@/lib/time";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Weekday } from "@/types/contract";
 import { startProblem } from "./AccountScreens";
-import { TimeStepper, TitleWithDonna, weekLines, weekStateOf } from "./HoursEditor";
-import { errorText, param, STEPS } from "./flow";
+import { TitleWithDonna, weekLines, weekStateOf } from "./HoursEditor";
+import { errorText, param, pickedPlace, STEPS } from "./flow";
 
 const C = tokens.colors;
 const DAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const JS_DAY: Weekday[] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const CHUNCHEON = { lat: 37.8747, lng: 127.7342 };
 const EXAMPLES = ["춘천 피플스클럽", "석사동 돈가스", "효자동 국수"];
-
-/** 우리 가게 찾기에서 고른 곳 (확인 화면으로 넘긴다) */
-export const pickedPlace = createStore<{ value: SearchedPlace | null }>("dona.pickedPlace.v1", { value: null });
 
 /** 이 기기 사장님 계정 열쇠. 같은 계정으로 다시 로그인하면 등록해 둔 가게로 들어온다 */
 function ownerKey(): string | undefined {
@@ -502,7 +498,40 @@ export function ReviewImportScreen() {
   );
 }
 
-/** 06-2w 출근·퇴근 시간. 처음에는 여는 시간·닫는 시간으로 채워 두고 사장님이 고친다. 알림 시각을 이 시간에 맞춰 고른다 */
+/** "1030" → "10:30". 숫자만 남기고 두 자리 뒤에 쌍점을 넣는다 */
+function formatTime(raw: string): string {
+  const d = raw.replace(/\D/g, "").slice(0, 4);
+  return d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
+}
+const validTime = (t: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t);
+
+/** 시각을 키보드로 적는 칸 (숫자 4개, 예: 1030) */
+function TimeField({ label, value, onChange, testID }: { label: string; value: string; onChange: (v: string) => void; testID: string }) {
+  const bad = value.length === 5 && !validTime(value);
+  return (
+    <View className="flex-row items-center gap-3">
+      <Text className="w-12 text-body font-medium text-ink">{label}</Text>
+      <TextInput
+        testID={testID}
+        accessibilityLabel={`${label} 시간`}
+        value={value}
+        onChangeText={(t) => onChange(formatTime(t))}
+        keyboardType="number-pad"
+        inputMode="numeric"
+        maxLength={5}
+        placeholder="10:30"
+        placeholderTextColor={C["ink-3"]}
+        selectTextOnFocus
+        className={`h-14 flex-1 rounded-2xl border bg-surface px-4 text-center text-title text-ink ${bad ? "border-urgent" : "border-line"}`}
+      />
+    </View>
+  );
+}
+
+const DAYPART_KO: Record<string, string> = { LUNCH: "점심", DINNER: "저녁", NIGHT: "밤" };
+
+/** 06-2w 출근·퇴근 시간. 처음에는 여는 시간·닫는 시간으로 채워 두고 사장님이 키보드로 고친다.
+ *  알림 시각은 여기서 도나가 정한다 (출근 후, 브레이크, 퇴근 전). 알림이 바쁜 장사 시간에 걸리면 막지 않고 사장님께 묻는다. */
 export function WorkHoursScreen() {
   const qc = useQueryClient();
   const { data, error, refetch } = useHome();
@@ -510,6 +539,8 @@ export function WorkHoursScreen() {
   const [end, setEnd] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // 바쁜 시간에 걸리는 알림: 사장님께 이때 받아도 되는지 묻는다
+  const [clash, setClash] = useState<string[] | null>(null);
 
   if (!data) {
     const problem = startProblem(error, () => refetch(), () => back("/start/reviews"));
@@ -524,59 +555,100 @@ export function WorkHoursScreen() {
   const st = start ?? s.work_hours?.start ?? s.open_time;
   const en = end ?? s.work_hours?.end ?? s.close_time;
   const lines = weekLines(weekStateOf(s));
+  const work = { start: st, end: en };
+  const sug = validTime(st) && validTime(en) ? suggestSlots({ ...s, work_hours: work }) : null;
 
-  const save = async () => {
+  const save = async (allowBusy: boolean) => {
+    if (!validTime(st) || !validTime(en)) {
+      setErr("시간을 10:30 처럼 적어 주세요");
+      return;
+    }
     if (toMin(st) >= toMin(en)) {
       setErr("퇴근 시간이 출근 시간보다 늦어야 해요");
       return;
     }
+    if (!sug) return;
+    // 알림이 바쁜 장사 시간에 걸리는지 먼저 본다. 걸리면 사장님께 묻는다
+    if (!allowBusy) {
+      const hits: string[] = [];
+      for (const k of ["OPENING", "AFTERNOON", "CLOSING"] as const) {
+        for (const d of s.busy_dayparts) {
+          const r = s.dayparts[d];
+          if (r.start <= sug[k].time && sug[k].time < r.end) hits.push(`${sug[k].label} ${sug[k].time} (${DAYPART_KO[d] ?? d} 손님이 많은 ${r.start}~${r.end})`);
+        }
+      }
+      if (hits.length) {
+        setClash(hits);
+        return;
+      }
+    }
     setSaving(true);
     setErr(null);
     try {
-      const work = { start: st, end: en };
-      const sug = suggestSlots({ ...s, work_hours: work });
-      await api.updateSettings({ work_hours: work, slots: { OPENING: sug.OPENING.time, AFTERNOON: sug.AFTERNOON.time, CLOSING: sug.CLOSING.time } });
+      await api.updateSettings({ work_hours: work, slots: { OPENING: sug.OPENING.time, AFTERNOON: sug.AFTERNOON.time, CLOSING: sug.CLOSING.time }, allow_busy_slots: allowBusy });
       await qc.invalidateQueries({ queryKey: ["home"] });
-      go("/start/notify-time");
+      setClash(null);
+      go("/start/notify-on");
     } catch (e) {
-      setErr(errorText(e));
+      if (e instanceof ApiFailure && e.code === "SLOT_IN_BUSY_DAYPART") setClash([e.message]);
+      else setErr(errorText(e));
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <SubPage
-      progress={{ total: STEPS, done: 5 }}
-      onBack={() => back("/start/reviews")}
-      footer={
-        <PrimaryButton testID="work-hours-next" disabled={saving} onPress={save}>
-          {saving ? "저장하는 중" : "다음"}
-        </PrimaryButton>
-      }
-    >
-      <TitleWithDonna title={"출근하고 퇴근하는\n시간을 알려 주세요"} img="b3-1" sub="이 시간에 맞춰 알림을 보내요" />
-      <View className="mt-5 gap-4 rounded-2xl border border-line bg-surface px-4 py-4">
-        <TimeStepper id="work-start" label="출근" value={st} onChange={setStart} step={10} />
-        <View className="h-px bg-line" />
-        <TimeStepper id="work-end" label="퇴근" value={en} onChange={setEnd} step={10} />
-      </View>
-      <Text className="mt-2 text-small text-ink-3">가게 여는 시간, 닫는 시간으로 먼저 채워 뒀어요</Text>
+    <>
+      <SubPage
+        progress={{ total: STEPS, done: 5 }}
+        onBack={() => back("/start/reviews")}
+        footer={
+          <PrimaryButton testID="work-hours-next" disabled={saving} onPress={() => save(false)}>
+            {saving ? "저장하는 중" : "다음"}
+          </PrimaryButton>
+        }
+      >
+        <TitleWithDonna title={"출근하고 퇴근하는\n시간을 적어 주세요"} img="b3-1" sub="이 시간에 맞춰 할 일을 알려 드려요" />
+        <View className="mt-5 gap-3">
+          <TimeField testID="work-start" label="출근" value={st} onChange={setStart} />
+          <TimeField testID="work-end" label="퇴근" value={en} onChange={setEnd} />
+        </View>
+        <Text className="mt-2 text-small text-ink-3">가게 여는 시간, 닫는 시간으로 먼저 채워 뒀어요. 숫자 4개로 적어요 (예: 1030)</Text>
 
-      <View className="mt-5 gap-1 rounded-2xl bg-brand-soft px-4 py-3.5">
-        <Text className="text-label font-bold text-ink">우리 가게 장사 시간</Text>
-        {lines.map((l) => (
-          <Text key={l} className="text-label text-ink-2">
-            {l}
+        <View className="mt-5 gap-1 rounded-2xl bg-brand-soft px-4 py-3.5">
+          <Text className="text-label font-bold text-ink">우리 가게 장사 시간</Text>
+          {lines.map((l) => (
+            <Text key={l} className="text-label text-ink-2">
+              {l}
+            </Text>
+          ))}
+        </View>
+        {err ? (
+          <Text accessibilityRole="alert" className="mt-3 text-label text-urgent">
+            {err}
           </Text>
-        ))}
-      </View>
-      {err ? (
-        <Text accessibilityRole="alert" className="mt-3 text-label text-urgent">
-          {err}
-        </Text>
-      ) : null}
-    </SubPage>
+        ) : null}
+      </SubPage>
+      <Sheet open={clash !== null} onClose={() => setClash(null)} title={"손님이 많은 시간에\n알림이 가요"}>
+        <Text className="text-body text-ink-2">이 시간에 알림을 받아도 괜찮을까요?</Text>
+        <View className="mt-3 gap-1.5 rounded-xl bg-paper px-3.5 py-3">
+          {(clash ?? []).map((c) => (
+            <Text key={c} className="text-label text-ink">
+              {c}
+            </Text>
+          ))}
+        </View>
+        <Text className="mt-2 text-small text-ink-3">바쁜 시간은 설정 › 바쁜 장사 시간에서 바꿀 수 있어요</Text>
+        <View className="mt-5 gap-2.5">
+          <PrimaryButton testID="work-hours-busy-ok" disabled={saving} onPress={() => save(true)}>
+            {saving ? "저장하는 중" : "괜찮아요, 이때 받을게요"}
+          </PrimaryButton>
+          <SecondaryButton testID="work-hours-busy-change" onPress={() => setClash(null)}>
+            출근·퇴근 시간 다시 적을게요
+          </SecondaryButton>
+        </View>
+      </Sheet>
+    </>
   );
 }
 

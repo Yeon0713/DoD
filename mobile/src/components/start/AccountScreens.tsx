@@ -130,12 +130,9 @@ export function NaverLoginScreen() {
           qc.clear();
         });
       if (tries === 0 && naverError) return Promise.reject(new Error(naverError));
-      // 기다리게 하지 않고 바로 네이버 로그인 화면으로 옮긴다 (개발 모드에서 효과가 두 번 돌아도 한 번만 옮기게 다음 틱에)
-      return new Promise<void>(() => {
-        void Promise.resolve().then(() => {
-          if (alive) goToNaverLogin(`/start/naver-login${mode === "signup" ? "" : `?mode=${mode}`}`);
-        });
-      });
+      // 바로 네이버 로그인 화면으로 옮긴다 (개발 모드에서 효과가 두 번 돌아도 살아 있는 쪽만 옮긴다).
+      // 옮기고 나면 이 화면은 사라지므로 끝나지 않는 약속으로 기다린다. 서버에 닿지 않으면 옮기지 않고 실패로 알린다.
+      return goToNaverLogin(`/start/naver-login${mode === "signup" ? "" : `?mode=${mode}`}`, () => alive).then(() => new Promise<void>(() => {}));
     };
     signIn()
       .then(async () => {

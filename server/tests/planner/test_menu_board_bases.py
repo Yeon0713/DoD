@@ -4,7 +4,6 @@ import datetime as dt
 import json
 from pathlib import Path
 
-from app.analysis.store_calendar.season import season_ref_id
 from app.planner.data_shapes import CalendarReason, PlanInputs
 from app.planner.rule_menu_order import TagPeriod, menu_board_bases, plan_menu_orders, unchanged_menu_orders
 
@@ -104,9 +103,8 @@ def test_closed_day_does_not_cut_the_period():
     assert bases[d(22)] == "event_012"  # 0.11 × 2일 = 0.22 > 0.2. 토요일에서 끊겼다면 하루뿐이라 탈락
 
 
-def test_season_period_matches_calendar_ref_id():
-    assert season_ref_id("WINTER") == "season_winter"  # 달력 칸의 계절 근거 id와 같은 값
-    started_early = [TagPeriod(season_ref_id("WINTER"), d(1)), *PERIODS[1:]]  # 11/1부터 겨울 23일
+def test_period_started_before_calendar_counts_from_its_real_start():
+    started_early = [TagPeriod("season_winter", d(1)), *PERIODS[1:]]  # 11/1부터 겨울 23일
     bases = menu_board_bases(INPUTS.calendar, started_early, STORE, k=5)  # 부담 0.5
     assert bases[d(18)] == "season_winter"  # 0.05 × 23일 = 1.15. 달력에 보인 6일만 세면 0.30이라 탈락
 

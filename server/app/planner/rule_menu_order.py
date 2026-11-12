@@ -179,7 +179,7 @@ def menu_board_bases(
     return bases
 
 
-def _previous_open_day(day: dt.date, store: StoreSettings) -> dt.date:
+def previous_open_day(day: dt.date, store: StoreSettings) -> dt.date:
     """plan_menu_orders 가 견주는 직전 영업일. 전날부터 거슬러 가되 일주일까지만 본다."""
     previous = day - dt.timedelta(days=1)
     while is_closed_day(previous, store) and (day - previous).days < 7:
@@ -197,7 +197,7 @@ def unchanged_menu_orders(plan_items: list[PlanItem], bases: dict[dt.date, str |
         if item.task_type != "MENU_ORDER":
             continue
         day = dt.date.fromisoformat(item.basis.ref_id)  # 메뉴판 카드의 근거는 날짜다
-        previous = _previous_open_day(day, store)
+        previous = previous_open_day(day, store)
         if day in bases and previous in bases and bases[day] == bases[previous]:
             unchanged.add(item.plan_id)
     return unchanged

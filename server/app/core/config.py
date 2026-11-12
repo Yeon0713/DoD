@@ -1,3 +1,5 @@
+import re
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -9,6 +11,9 @@ class Settings(BaseSettings):
     app_name: str = "DoD API"
     # 서버를 부를 수 있는 웹 주소. 8082 는 mobile/ 앱을 웹으로 켠 주소, 3000 은 예전 frontend/
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8082", "http://127.0.0.1:8082"]
+    # 내 컴퓨터에서 켠 앱(localhost, 127.0.0.1)은 포트가 무엇이든 받는다. 예전에 만든 .env 의 CORS_ORIGINS 에 8082 가 없거나,
+    # 앱을 8081 같은 다른 포트로 켜도 서버를 부를 수 있게 한다. 배포 서버에서 끄려면 .env 에 CORS_ORIGIN_REGEX= (빈 값)
+    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
 
     # 로그인이 생기기 전까지 보여 줄 가게. 주소에 ?store_id=s002 를 붙이면 그 가게를 보여 준다
     demo_store_id: str = "s001"
@@ -50,6 +55,12 @@ class Settings(BaseSettings):
     # SENS 문자 (Application Services > Simple & Easy Notification Service)
     sens_sms_service_id: str = ""
     sens_sms_from: str = ""
+
+    def allows_origin(self, origin: str) -> bool:
+        """이 서버를 불러도 되는 앱 주소인지 (CORS 와 네이버 로그인 뒤 돌려보낼 주소가 같은 기준을 쓴다)."""
+        if origin in self.cors_origins:
+            return True
+        return bool(self.cors_origin_regex and re.fullmatch(self.cors_origin_regex, origin))
 
 
 settings = Settings()

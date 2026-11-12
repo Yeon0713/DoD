@@ -18,23 +18,19 @@ import { api, ApiFailure, storeMapUrl, USE_MOCK, type ReviewSource, type Searche
 import { fromMin, suggestSlots, toMin, WEEKDAY_KO } from "@/lib/hours";
 import { flashToast } from "@/lib/localStore";
 import { naverProfile } from "@/lib/naverDemo";
-import { createStore } from "@/lib/store";
 import { currentNow } from "@/lib/time";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Weekday } from "@/types/contract";
 import { startProblem } from "./AccountScreens";
 import { TitleWithDonna, weekLines, weekStateOf } from "./HoursEditor";
-import { errorText, param, STEPS } from "./flow";
+import { errorText, param, pickedPlace, STEPS } from "./flow";
 
 const C = tokens.colors;
 const DAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const JS_DAY: Weekday[] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const CHUNCHEON = { lat: 37.8747, lng: 127.7342 };
 const EXAMPLES = ["춘천 피플스클럽", "석사동 돈가스", "효자동 국수"];
-
-/** 우리 가게 찾기에서 고른 곳 (확인 화면으로 넘긴다) */
-export const pickedPlace = createStore<{ value: SearchedPlace | null }>("dona.pickedPlace.v1", { value: null });
 
 /** 이 기기 사장님 계정 열쇠. 같은 계정으로 다시 로그인하면 등록해 둔 가게로 들어온다 */
 function ownerKey(): string | undefined {

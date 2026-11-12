@@ -14,10 +14,10 @@ import type { SalesChannels, SalesLive, SalesMenus, SalesMonths, SalesPeriod, Sa
 import { handleMock } from "@/mocks/server";
 import { account } from "./account";
 import { devFlags } from "./dev";
+import { BASE_URL } from "./server";
 
 /** EXPO_PUBLIC_USE_MOCK=false가 아니면 앱 안의 목업 서버(src/mocks/server)를 쓴다. */
 export const USE_MOCK = process.env.EXPO_PUBLIC_USE_MOCK !== "false";
-const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 export class ApiFailure extends Error {
   constructor(

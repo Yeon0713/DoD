@@ -59,9 +59,9 @@ def _forget_old() -> None:
 
 
 def _allowed_back(back: str) -> bool:
-    """앱 주소로만 돌려보낸다 (아무 주소로나 보내는 통로가 되지 않게). CORS 에 적은 앱 주소와 같은 곳만."""
+    """앱 주소로만 돌려보낸다 (아무 주소로나 보내는 통로가 되지 않게). CORS 로 받는 앱 주소와 같은 곳만."""
     parsed = urlparse(back)
-    return f"{parsed.scheme}://{parsed.netloc}" in settings.cors_origins
+    return settings.allows_origin(f"{parsed.scheme}://{parsed.netloc}")
 
 
 def _back_with(back: str, **params: str) -> RedirectResponse:

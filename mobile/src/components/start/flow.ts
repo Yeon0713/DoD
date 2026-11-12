@@ -1,10 +1,14 @@
 // 처음 쓰는 날(06-1 ~ 06-3b)과 설정 화면이 같이 쓰는 작은 도우미.
 import { router, type Href } from "expo-router";
-import { ApiFailure } from "@/lib/api";
+import { ApiFailure, type SearchedPlace } from "@/lib/api";
+import { createStore } from "@/lib/store";
 import type { Platform } from "@/types/contract";
 
 /** 진행 막대 5칸: 가게 찾기, 연결, 확인, 알림 시간, 알림 켜기 */
 export const STEPS = 6; // 가게 찾기, 가게 확인, 가게 정보, 리뷰 불러오기, 출근·퇴근, 알림 켜기 (알림 시각은 출퇴근에 맞춰 도나가 정한다)
+
+/** 우리 가게 찾기에서 고른 곳 (확인 화면으로 넘긴다). 시작 화면 메뉴의 초기화도 지워서 여기에 둔다 */
+export const pickedPlace = createStore<{ value: SearchedPlace | null }>("dona.pickedPlace.v1", { value: null });
 
 /** 네이버 플레이스 불러오기 응답을 화면끼리 나눠 쓰는 캐시 키 */
 export const NAVER_PLACE_KEY = ["naver-place"] as const;

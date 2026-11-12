@@ -74,6 +74,7 @@ _yesterday_cells: dict[str, tuple[dt.date, list[CalendarCell]]] = {}  # 가게�
 _settings_changes: dict[str, dict] = {}  # 가게별 사장님이 고친 설정 (서버 메모리)
 _locks: dict[str, threading.Lock] = {}
 _locks_guard = threading.Lock()
+_compute_seconds: dict[str, float] = {}  # 가게별 마지막 계산에 걸린 초 (개발자 대시보드 '시스템')
 
 
 def _lock_for(store_id: str) -> threading.Lock:
@@ -118,6 +119,22 @@ def save_settings_changes(store_id: str, changes: dict) -> None:
         _snapshots.pop(store_id, None)
 
 
+def cached_snapshot(store_id: str) -> StoreSnapshot | None:
+    """보관 중인 결과. 없으면 None 이고 새로 계산하지 않는다 (개발자 대시보드가 상태만 볼 때)."""
+    return _snapshots.get(store_id)
+
+
+def compute_seconds(store_id: str) -> float | None:
+    """그 가게 마지막 계산에 걸린 초."""
+    return _compute_seconds.get(store_id)
+
+
+def forget(store_id: str) -> None:
+    """그 가게 보관 결과를 지운다. 다음 요청에서 바로 다시 계산한다 (개발자 대시보드 '다시 계산')."""
+    with _lock_for(store_id):
+        _snapshots.pop(store_id, None)
+
+
 def clear_all() -> None:
     """보관한 결과와 고친 설정을 모두 지운다 (테스트용)."""
     _snapshots.clear()
@@ -130,31 +147,12 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     store = read_store_db.read_store(store_id)
     inputs = build_analysis_inputs(store_id, now)
 
-    # 태성 분석
-    sales_daily = build_sales_daily(inputs, now).rows
-    calendar_cells = [to_calendar_cell(row) for row in build_calendar_days(inputs, now)]
-    customer_cycles = build_customer_cycles(inputs, now)
-    labels = label_reviews(inputs.reviews, now, classifier=None)  # 키워드 규칙만 쓴다 (CLOVA 분류는 끔)
-    reviews = attach_labels(inputs.reviews, labels)
-    risk_signals = update_risk_signals(inputs.reviews, labels, previous.risk_signals if previous else [], now)
-
-    # 계획 엔진
-    settings, plan, unavailable = None, None, None
-    try:
-        settings = build_store_settings(store, get_settings_changes(store_id))
-        plan_inputs = build_plan_inputs(
-            settings,
-            reviews,
-            customer_cycles,
-            calendar_for_planner(store_id, inputs, calendar_cells, now),
-            risk_signals,
-            inputs.events,
-            inputs.games,
-        )
-        plan = drop_yesterday_only_items(make_plan(plan_inputs, now), now, settings)
-        plan = keep_this_week_replies(plan, now, settings)
-    except ApiError as error:
-        unavailable = error
+    sales_daily = build_sales_daily(inputs, now).rows  # 태성 분석: 하루 매출 (화면용, 계획 엔진은 쓰지 않는다)
+    parts = _analyze_and_plan(store_id, store, inputs, now, previous)
+    calendar_cells, customer_cycles, reviews, risk_signals = (
+        parts.calendar_cells, parts.customer_cycles, parts.reviews, parts.risk_signals
+    )
+    settings, plan, unavailable = parts.settings, parts.plan, parts.unavailable
 
     # 답글 초안: 이번 한 주 답글과 가까운 재주문 인사만 (같은 리뷰는 한 번만 CLOVA 를 부른다)
     draft_texts = {}
@@ -189,8 +187,63 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     )
     _request_polish(snapshot)
     seconds = (now_seoul() - started).total_seconds()
+    _compute_seconds[store_id] = round(seconds, 2)
     logger.info("%s 가게 분석과 계획을 %.1f초 만에 다시 계산했다", store_id, seconds)
     return snapshot
+
+
+@dataclass
+class _PlanParts:
+    """태성 분석 중 계획 엔진이 쓰는 것과 계획 엔진 결과."""
+
+    calendar_cells: list[CalendarCell]
+    customer_cycles: list[CustomerCycleRow]
+    reviews: list[Review]
+    risk_signals: list[RiskSignalRow]
+    settings: StoreSettings | None
+    plan: PlanResult | None
+    unavailable: ApiError | None
+
+
+def _analyze_and_plan(
+    store_id: str, store: dict, inputs: AnalysisInputs, now: dt.datetime, previous: StoreSnapshot | None
+) -> _PlanParts:
+    """태성 분석(35일 달력, 손님 주문 주기, 리뷰 분류, 반복 불만)을 돌리고 계획 엔진을 돌린다."""
+    calendar_cells = [to_calendar_cell(row) for row in build_calendar_days(inputs, now)]
+    customer_cycles = build_customer_cycles(inputs, now)
+    labels = label_reviews(inputs.reviews, now, classifier=None)  # 키워드 규칙만 쓴다 (CLOVA 분류는 끔)
+    reviews = attach_labels(inputs.reviews, labels)
+    risk_signals = update_risk_signals(inputs.reviews, labels, previous.risk_signals if previous else [], now)
+
+    settings, plan, unavailable = None, None, None
+    try:
+        settings = build_store_settings(store, get_settings_changes(store_id))
+        plan_inputs = build_plan_inputs(
+            settings,
+            reviews,
+            customer_cycles,
+            calendar_for_planner(store_id, inputs, calendar_cells, now),
+            risk_signals,
+            inputs.events,
+            inputs.games,
+        )
+        plan = drop_yesterday_only_items(make_plan(plan_inputs, now), now, settings)
+        plan = keep_this_week_replies(plan, now, settings)
+    except ApiError as error:
+        unavailable = error
+    return _PlanParts(calendar_cells, customer_cycles, reviews, risk_signals, settings, plan, unavailable)
+
+
+def plan_only(store_id: str, now: dt.datetime) -> tuple[StoreSettings | None, PlanResult | None, ApiError | None]:
+    """그 시각의 계획만 만든다. 보관하지 않고, CLOVA 초안과 문장 다듬기도 부르지 않는다.
+
+    개발자 대시보드 시연 탭이 시연 주간의 알림 시각을 하나씩 훑어 볼 때 쓴다 (modules/dev_tools/demo_week_scan.py).
+    반복 불만은 앞 결과 없이 처음부터 본다 (시계를 앞뒤로 옮겨도 늘 같은 결과가 나오게).
+    """
+    now = to_seoul(now)
+    store = read_store_db.read_store(store_id)
+    parts = _analyze_and_plan(store_id, store, build_analysis_inputs(store_id, now), now, previous=None)
+    return parts.settings, parts.plan, parts.unavailable
 
 
 def first_known_at(day: dt.date) -> dt.datetime:

@@ -37,3 +37,15 @@ def test_extra_alerts_are_sorted_and_must_be_within_work_hours(client):
 
 def test_work_hours_must_end_after_start(client):
     assert patch(client, {"work_hours": {"start": "20:00", "end": "09:00"}}).status_code == 422
+
+
+def test_busy_alert_is_saved_when_owner_confirms_and_stays_allowed(client):
+    slots = client.get("/api/settings", params={"store_id": "s001"}).json()["settings"]["slots"]
+    busy = {**slots, "AFTERNOON": "12:00"}  # 점심 바쁜 시간
+    assert patch(client, {"slots": busy}).json()["error"]["code"] == "SLOT_IN_BUSY_DAYPART"
+    res = patch(client, {"slots": busy, "allow_busy_slots": True})
+    assert res.status_code == 200 and res.json()["settings"]["slots"]["AFTERNOON"] == "12:00"
+    # 확인한 알림은 다음 저장 때도 막지 않는다
+    assert patch(client, {"extra_slots": ["16:30"]}).status_code == 200
+    # 시각을 다른 바쁜 시간으로 바꾸면 다시 묻는다
+    assert patch(client, {"slots": {**slots, "AFTERNOON": "12:30"}}).json()["error"]["code"] == "SLOT_IN_BUSY_DAYPART"

@@ -92,6 +92,7 @@ def test_register_saves_and_links_owner(client, monkeypatch):
     monkeypatch.setattr(stores_router.registered_stores, "register", lambda info: saved.append(info) or "s101")
     monkeypatch.setattr(stores_router.registered_stores, "set_owner", lambda key, sid: owners.update({key: sid}))
     monkeypatch.setattr(stores_router, "save_settings_changes", lambda sid, ch: None)
+    monkeypatch.setattr(stores_router.demo_data, "fill", lambda *a, **k: {"orders": 0})
     body = client.post("/api/stores/register", json={"place_id": "123456", "owner_key": "naver:abc"}).json()
     assert body["store_id"] == "s101" and saved[0].name == "피플스클럽" and owners == {"naver:abc": "s101"}
 

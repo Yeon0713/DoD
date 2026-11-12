@@ -21,14 +21,19 @@ def get_settings(store_id: str) -> SettingsResponse:
 
 
 def update_settings(store_id: str, update: SettingsUpdate) -> SettingsResponse:
-    changes = update.model_dump(exclude_none=True)
+    changes = update.model_dump(exclude_none=True, exclude={"allow_busy_slots"})
     if "break_time" in update.model_fields_set:
         changes["break_time"] = update.break_time.model_dump() if update.break_time else None
     if "work_hours" in update.model_fields_set:
         changes["work_hours"] = update.work_hours.model_dump() if update.work_hours else None
     merged = {**get_settings_changes(store_id), **changes}
     new_settings = build_store_settings(read_store_db.read_store(store_id), merged)
-    _check_slots(new_settings)
+    # 사장님이 확인하고 바쁜 시간에 둔 알림은 기억해 두고 다음 저장 때도 막지 않는다 (그 시각이 그대로일 때만)
+    accepted = dict(merged.get("busy_ok_slots") or {})
+    if update.allow_busy_slots:
+        accepted.update(new_settings.slots.model_dump())
+        changes["busy_ok_slots"] = accepted
+    _check_slots(new_settings, accepted)
     save_settings_changes(store_id, changes)
     return SettingsResponse(is_example=False, settings=new_settings)
 
@@ -38,7 +43,7 @@ def _minutes(hhmm: str) -> int:
     return hour * 60 + minute
 
 
-def _check_slots(settings: StoreSettings) -> None:
+def _check_slots(settings: StoreSettings, busy_ok: dict[str, str] | None = None) -> None:
     """알림 시각은 문 열기 1시간 전(출근 예정이 더 이르면 출근 시간) ~ 마감(퇴근 예정이 더 늦으면 퇴근 시간) 사이에 있고,
     바쁜 시간대에 걸리면 안 된다. 더 넣은 알림(extra_slots)은 그 사이에만 있으면 된다 (바쁜 시간에도 받을 수 있다).
 
@@ -59,6 +64,8 @@ def _check_slots(settings: StoreSettings) -> None:
                 "SLOT_OUTSIDE_OPEN_HOURS",
                 f"{slot_name} 알림 시각 {slot_time} 이 영업시간({settings.open_time}~{settings.close_time}) 밖입니다.",
             )
+        if (busy_ok or {}).get(slot_name) == slot_time:
+            continue  # 사장님이 바쁜 시간이어도 받겠다고 한 알림
         for daypart in settings.busy_dayparts:
             busy = getattr(settings.dayparts, daypart)
             if busy.start <= slot_time < busy.end:

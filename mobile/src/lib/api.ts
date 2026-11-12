@@ -95,7 +95,10 @@ export const salesApi = {
   months: (now: Date) => salesGet<SalesMonths>("months", now),
 };
 
-export type SettingsUpdate = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category" | "work_hours" | "extra_slots">>;
+export type SettingsUpdate = Partial<Pick<StoreSettings, "slots" | "dayparts" | "busy_dayparts" | "open_time" | "close_time" | "closed_weekdays" | "break_time" | "weekly_hours" | "name" | "category" | "work_hours" | "extra_slots">> & {
+  /** 사장님이 "바쁜 시간이어도 이때 받을게요"라고 확인했을 때 true */
+  allow_busy_slots?: boolean;
+};
 
 /** 06-2c 네이버 플레이스에서 불러온 가게 정보. 제안 API: GET /api/naver/place */
 export interface NaverPlace {

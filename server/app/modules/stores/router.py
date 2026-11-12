@@ -119,9 +119,9 @@ def register(body: RegisterRequest):
         demo_data.fill(store_id, info.weekly_hours, info.break_time)
     if body.owner_key:
         registered_stores.set_owner(body.owner_key, store_id)
-    # 네이버 지도의 요일별 영업시간과 브레이크 타임을 가게 설정에 넣는다 (사장님이 다음 화면에서 고칠 수 있다)
-    if any(info.weekly_hours.values()) and all(h is None or h["open"] < h["close"] for h in info.weekly_hours.values()):
-        save_settings_changes(store_id, {"weekly_hours": info.weekly_hours, "break_time": info.break_time})
+    # 요일별 영업시간과 브레이크 타임은 DB(등록 기록)에 있어 가게 설정의 기본이 된다 (store_snapshot_cache._registered_base).
+    # 새로 등록한 가게라 지난 계산 결과는 지운다
+    save_settings_changes(store_id, {})
     return {"store_id": store_id, "place": _place_payload(info)}
 
 

@@ -14,6 +14,7 @@ import { Bone, DonnaImage, PrimaryButton, SecondaryButton } from "@/components/u
 import { Sheet } from "@/components/ui/Sheet";
 import { FailNote, ListRow, Note, SubPage, Toggle } from "@/components/ui/sub";
 import { ApiFailure, api } from "@/lib/api";
+import { openDevDashboard } from "@/lib/devDashboard";
 import { hoursLabel, slotChoices, slotInfo, slotLabel } from "@/lib/hours";
 import { account } from "@/lib/account";
 import { flashToast, prefs } from "@/lib/localStore";
@@ -78,9 +79,15 @@ export function SettingsScreen() {
       <View className="flex-1" />
       {/* 검토용 개발 화면 (가상 시각, 실패, 인터넷 끊김). 개발 빌드에서만 보인다. 배포 빌드에서 보려면 EXPO_PUBLIC_SHOW_DEV=true */}
       {SHOW_DEV ? (
-        <Pressable testID="settings-dev" accessibilityRole="link" onPress={() => go("/dev")} className="mt-10 self-center px-4 py-2">
-          <Text className="text-small text-ink-3">개발 화면</Text>
-        </Pressable>
+        <View className="mt-10 flex-row self-center">
+          <Pressable testID="settings-dev" accessibilityRole="link" onPress={() => go("/dev")} className="px-4 py-2">
+            <Text className="text-small text-ink-3">개발 화면</Text>
+          </Pressable>
+          {/* 서버의 웹 개발자 대시보드 (dev/ 폴더). 서버를 DEV_TOOLS_ENABLED=true 로 켰을 때만 열린다 */}
+          <Pressable testID="settings-dev-dashboard" accessibilityRole="link" onPress={openDevDashboard} className="px-4 py-2">
+            <Text className="text-small text-ink-3">개발자 대시보드</Text>
+          </Pressable>
+        </View>
       ) : null}
     </>
   );

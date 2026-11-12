@@ -1,4 +1,4 @@
-# 앱 · 서버 · DB · 분석은 어떻게 이어져 있나
+<img width="1672" height="941" alt="모바일 앱 서버 데이터 흐름 인포그래픽" src="https://github.com/user-attachments/assets/2788cec4-3e92-4b0c-b7e2-8bf80798934d" /># 앱 · 서버 · DB · 분석은 어떻게 이어져 있나
 
 도나(DONNA) 프로젝트를 처음 보는 사람이 **네 파트가 어떻게 연결되어 움직이는지** 이해하도록 쓴 문서입니다.
 서버와 앱을 켜는 법은 [README.md](../README.md) 2장에 있습니다.
@@ -19,6 +19,7 @@
 | **앱** | 사장님 휴대폰 화면 | 서버가 보낸 것을 보여 주고, 사장님이 누른 것을 서버에 보낸다 | 영웅 | `mobile/` |
 
 ### 데이터가 흐르는 길
+<img width="1672" height="941" alt="모바일 앱 서버 데이터 흐름 인포그래픽" src="https://github.com/user-attachments/assets/1779caed-d217-41fe-aa17-504efeac34f7" />
 
 ```
                          ┌───────────────────────────── 서버 (server/app/) ─────────────────────────────┐

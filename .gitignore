@@ -26,3 +26,6 @@ jh/
 # 매장 등록으로 실행 중에 생기는 파일 (server/app/data_pipeline/registered_stores.py)
 server/db/app_data/
 server/db/data/s1[0-9][0-9].db
+
+# macOS 폴더 설정 파일
+.DS_Store

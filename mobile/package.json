@@ -47,7 +47,6 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "sync-mocks": "node scripts/sync-mocks.mjs",
-    "ui-text": "node scripts/ui-text/server.mjs",
     "ui-text:apply": "node scripts/ui-text/apply.mjs"
   },
   "private": true

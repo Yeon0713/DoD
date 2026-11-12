@@ -16,6 +16,9 @@ GET  /api/dev_tools/demo_steps?store_id=    시연: Figma UC01~UC16 단계 (그 
 POST /api/dev_tools/demo_go                 시연: 서버 시계를 그 단계 시각으로 맞추고 가게를 다시 계산 {"store_id", "at"}
 POST /api/dev_tools/demo_clock_reset        시연: 서버 시계를 실제 시각으로
 POST /api/dev_tools/demo_rescan?store_id=   시연: 기억한 시연 기간 훑기 결과를 지우고 다시 훑기
+GET  /api/dev_tools/ui_text                 화면 글: 화면별 앱 글과 저장해 둔 수정
+POST /api/dev_tools/ui_text/save            화면 글: 수정을 mobile/scripts/ui-text/edits.json 에 저장 {"edits"}
+POST /api/dev_tools/ui_text/apply           화면 글: 저장하고 앱 코드에 넣은 뒤 타입 검사 {"edits"}
 시연의 시계 옮기기는 DEV_CLOCK_ENABLED=true 도 필요하다.
 시계 앞당기기와 초기화는 팀원이 만든 /dev/clock, /dev/reset 을 쓴다 (DEV_CLOCK_ENABLED=true 필요).
 """
@@ -26,8 +29,8 @@ from app.core import clova_usage_log
 from app.core.config import settings
 from app.core.error_response import ApiError
 from app.data_pipeline.store_selection import resolve_store_id
-from app.modules.dev_tools import data_provider, demo_scenario, demo_week_scan
-from app.modules.dev_tools.response_format import DemoGo, PolishSwitch
+from app.modules.dev_tools import data_provider, demo_scenario, demo_week_scan, ui_text
+from app.modules.dev_tools.response_format import DemoGo, PolishSwitch, UiTextEdits
 
 
 def require_dev_tools() -> None:
@@ -113,3 +116,18 @@ def demo_rescan(store_id: str | None = STORE):
     sid = resolve_store_id(store_id)
     demo_week_scan.forget(sid)
     return demo_scenario.build_steps(sid)
+
+
+@router.get("/ui_text", summary="화면 글: 화면별 앱 글과 저장해 둔 수정")
+def ui_text_data():
+    return ui_text.run("data")
+
+
+@router.post("/ui_text/save", summary="화면 글: 수정 저장")
+def ui_text_save(body: UiTextEdits):
+    return ui_text.run("save", body.model_dump())
+
+
+@router.post("/ui_text/apply", summary="화면 글: 앱 코드에 넣고 타입 검사")
+def ui_text_apply(body: UiTextEdits):
+    return ui_text.run("apply", body.model_dump())

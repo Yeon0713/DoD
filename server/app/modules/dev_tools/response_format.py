@@ -12,3 +12,15 @@ class PolishSwitch(BaseModel):
 class DemoGo(BaseModel):
     store_id: str
     at: dt.datetime  # 서버 시계를 둘 시각 (시연 단계의 at)
+
+
+class UiTextEdit(BaseModel):
+    file: str
+    line: int
+    func: str
+    original: str
+    edited: str  # 바꿀 글
+
+
+class UiTextEdits(BaseModel):
+    edits: dict[str, UiTextEdit]  # 글 id(파일::함수::해시::순서) → 수정

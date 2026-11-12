@@ -1,4 +1,4 @@
-// edits.json 의 [수정] 글을 코드에 넣는다 (페이지 없이): `npm run ui-text:apply`
+// edits.json 의 [수정] 글을 코드에 넣는다 (개발자 대시보드 없이): `npm run ui-text:apply`
 import { apply, EDITS_FILE } from "./core.mjs";
 
 const { applied, failed } = apply();

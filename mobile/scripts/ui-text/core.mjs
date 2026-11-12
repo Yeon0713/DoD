@@ -375,7 +375,7 @@ export function saveEdits(edits) {
     if (e && typeof e.edited === "string" && e.edited !== e.original) clean[id] = e;
   }
   const doc = {
-    "설명": "도나 화면 글 고치기. 각 줄의 original 이 지금 코드의 글, edited 가 바꿀 글입니다. `npm run ui-text` 화면에서 고치거나, 이 파일을 직접 고친 뒤 `npm run ui-text:apply` 로 코드에 넣습니다.",
+    "설명": "도나 화면 글 고치기. 각 줄의 original 이 지금 코드의 글, edited 가 바꿀 글입니다. 개발자 대시보드(http://localhost:8000/dev-dashboard/#uitext) '화면 글' 탭에서 고치거나, 이 파일을 직접 고친 뒤 `npm run ui-text:apply` 로 코드에 넣습니다.",
     edits: clean,
   };
   writeFileSync(EDITS_FILE, JSON.stringify(doc, null, 2) + "\n");

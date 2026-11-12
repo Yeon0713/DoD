@@ -524,6 +524,260 @@ async function onDemoClick(button) {
   }
 }
 
+// ── 탭: 화면 글 (앱 화면의 글을 화면별로 보고 고쳐서 앱 코드에 넣기) ──
+// 서버가 mobile/scripts/ui-text/cli.mjs 를 불러 글을 뽑고(GET ui_text), 저장하고(save), 코드에 넣는다(apply).
+// [수정] 칸에 적으면 0.6초 뒤 mobile/scripts/ui-text/edits.json 에 저장된다. 넣은 수정은 edits.json 에서 빠지고 원본이 수정본으로 바뀐다.
+
+const ut = { data: null, edits: {}, items: new Map(), current: null, q: "", saveTimer: null, result: null };
+const UT_SECTION = { screen: "화면", shared: "여러 화면이 같이 쓰는 글", unused: "쓰는 곳을 못 찾은 글" };
+
+function utPlaceholders(text) {
+  const out = [];
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === "$" && text[i + 1] === "{") {
+      let depth = 0;
+      let j = i + 1;
+      for (; j < text.length; j++) {
+        if (text[j] === "{") depth++;
+        else if (text[j] === "}" && --depth === 0) break;
+      }
+      out.push(text.slice(i, j + 1));
+      i = j;
+    }
+  }
+  return out;
+}
+
+/** ${…} 자리는 보라색, 찾는 글은 노란색으로 */
+function utShow(text, q = "") {
+  const parts = [];
+  let last = 0;
+  for (const ph of utPlaceholders(text)) {
+    const at = text.indexOf(ph, last);
+    parts.push({ t: text.slice(last, at) }, { t: ph, ph: true });
+    last = at + ph.length;
+  }
+  parts.push({ t: text.slice(last) });
+  return parts
+    .map((p) => {
+      let h = esc(p.t);
+      if (q && !p.ph) h = h.split(esc(q)).join(`<mark>${esc(q)}</mark>`);
+      return p.ph ? `<span class="ut-ph" title="코드가 채우는 자리예요. 그대로 두세요">${h}</span>` : h;
+    })
+    .join("");
+}
+
+async function utLoad() {
+  if (ut.saveTimer) await utSave();
+  ut.data = await api(`${API}/ui_text`);
+  ut.edits = ut.data.edits || {};
+  ut.items.clear();
+  for (const g of ut.data.groups) for (const it of g.items) ut.items.set(it.id, it);
+  if (!ut.data.groups.some((g) => g.id === ut.current)) ut.current = (ut.data.groups.find((g) => g.type === "screen") || ut.data.groups[0])?.id;
+}
+
+function utStat() {
+  const n = Object.keys(ut.edits).length;
+  const stat = document.getElementById("ut-stat");
+  if (stat) stat.textContent = `글 ${num(ut.data.total)}개 · 고친 글 ${n}개`;
+  const apply = document.querySelector('[data-ut="apply"]');
+  if (apply) apply.disabled = n === 0;
+}
+
+function utNavHtml() {
+  let html = "";
+  let lastType = null;
+  for (const g of ut.data.groups) {
+    if (g.type !== lastType) {
+      html += `<div class="ut-nav-head">${esc(UT_SECTION[g.type] ?? g.type)}</div>`;
+      lastType = g.type;
+    }
+    const n = g.items.filter((i) => ut.edits[i.id]).length;
+    const route = g.route && !g.route.startsWith("(") ? `<span class="ut-route mono">${esc(g.route)}</span>` : "";
+    html += `<button class="ut-nav-item ${g.id === ut.current && !ut.q ? "on" : ""}" data-ut-group="${esc(g.id)}"><span class="ut-name">${esc(g.name)}</span>${route}${n ? `<span class="ut-count">${n}</span>` : ""}</button>`;
+  }
+  return html;
+}
+
+function utRowHtml(it, q = "", groupName = "") {
+  const e = ut.edits[it.id];
+  const title = it.label === "제목" || it.label === "시트 제목";
+  const phs = it.placeholders || [];
+  return `<div class="ut-row ${e ? "changed" : ""}" data-ut-id="${esc(it.id)}">
+    <div class="ut-meta">
+      <span class="tag ${title ? "brand" : ""}">${esc(it.label)}</span>
+      ${groupName ? `<div class="muted small">${esc(groupName)}</div>` : ""}
+      <div class="ut-where mono">${esc(it.file.replace(/^src\//, ""))}:${it.line}<br>${esc(it.func)}</div>
+    </div>
+    <div><div class="ut-col">원본</div><div class="ut-orig">${utShow(it.text, q)}</div></div>
+    <div><div class="ut-col">[수정]</div>
+      <textarea rows="${Math.max(1, it.text.split("\n").length)}" placeholder="바꿀 글 (비워 두면 그대로)">${esc(e ? e.edited : "")}</textarea>
+      ${phs.length ? `<div class="muted small">그대로 둘 자리: ${phs.map((p) => `<span class="ut-ph">${esc(p)}</span>`).join(" ")}</div>` : ""}
+      <div class="ut-warn"></div>
+      ${e ? `<button class="btn-outline small" data-ut="undo">원본으로</button>` : ""}
+    </div>
+  </div>`;
+}
+
+function utResultHtml(r) {
+  const ok = r.failed.length === 0 && r.check.ok;
+  const typeLine = r.applied.length
+    ? `<div class="small ${r.check.ok ? "ut-ok" : "ut-fail"}">${r.check.ok ? "타입 검사 통과 (tsc). 앱을 다시 불러오면 바뀐 글이 보여요." : "타입 검사에서 오류가 났어요. 아래를 확인해 주세요."}</div>`
+    : "";
+  const failed = r.failed.length
+    ? `<ul>${r.failed.map((f) => `<li><span class="mono small">${esc(f.file || "")}:${f.line || ""}</span> <span class="ut-from">${esc(f.original || "")}</span> → <span class="ut-to">${esc(f.edited || "")}</span><div class="small ut-fail">${esc(f.reason)}</div></li>`).join("")}</ul>`
+    : "";
+  return `<div class="card ut-panel ${ok ? "" : "bad"}"><h2>코드에 넣었어요: 바꾼 글 ${r.applied.length}개${r.failed.length ? `, 못 바꾼 글 ${r.failed.length}개` : ""}</h2>
+    ${typeLine}${r.check.ok ? "" : `<pre class="ut-pre">${esc(r.check.output)}</pre>`}${failed}
+    <button class="btn-outline small" data-ut="close-result">닫기</button></div>`;
+}
+
+function utMainHtml() {
+  let html = ut.result ? utResultHtml(ut.result) : "";
+  const stale = ut.data.stale || [];
+  if (stale.length) {
+    html += `<div class="card ut-panel bad"><h2>원본을 못 찾은 수정 ${stale.length}개</h2>
+      <div class="muted small">코드가 바뀌어 원래 글이 없어졌어요. 새 원본을 찾아 다시 적어 주세요.</div>
+      <ul>${stale.map((s) => `<li><span class="mono small">${esc(s.file || "")}:${s.line || ""}</span> <span class="ut-from">${esc(s.original || "")}</span> → <span class="ut-to">${esc(s.edited || "")}</span> <button class="btn-outline small" data-ut-drop="${esc(s.id)}">지우기</button></li>`).join("")}</ul></div>`;
+  }
+  if (ut.q) {
+    const hits = [];
+    for (const g of ut.data.groups) for (const it of g.items) if (it.text.includes(ut.q) || (ut.edits[it.id]?.edited || "").includes(ut.q)) hits.push([it, g.name]);
+    html += `<div class="ut-head"><h3>"${esc(ut.q)}" 찾은 글 ${hits.length}개</h3></div>`;
+    return html + (hits.map(([it, name]) => utRowHtml(it, ut.q, name)).join("") || `<div class="empty">찾은 글이 없어요</div>`);
+  }
+  const g = ut.data.groups.find((x) => x.id === ut.current);
+  if (!g) return html + `<div class="empty">화면이 없어요</div>`;
+  const shared = g.type === "screen" ? ut.data.groups.filter((x) => x.type === "shared" && x.routes?.includes(g.route)) : [];
+  html += `<div class="ut-head"><h3>${esc(g.name)}</h3>${g.route && !g.route.startsWith("(") ? `<div class="muted small mono">${esc(g.route)}</div>` : ""}
+    ${g.desc ? `<div class="note info">${esc(g.desc)}</div>` : ""}
+    ${shared.length ? `<div class="small muted">이 화면이 같이 쓰는 글: ${shared.map((s) => `<button class="tag" data-ut-group="${esc(s.id)}">${esc(s.name)} (${s.items.length})</button>`).join(" ")}</div>` : ""}
+    <div class="muted small">왼쪽이 지금 코드의 글이에요. [수정] 칸에 바꿀 글을 적으면 바로 저장돼요. 줄 바꿈은 그대로 화면의 줄 바꿈이 돼요.</div></div>`;
+  return html + (g.items.map((it) => utRowHtml(it)).join("") || `<div class="empty">이 화면에만 있는 글은 없어요. 위 "같이 쓰는 글"을 봐 주세요.</div>`);
+}
+
+function utCheck(row, it, value) {
+  const phs = it.placeholders || [];
+  const bad = value && phs.length && utPlaceholders(value).join("\0") !== phs.join("\0");
+  row.querySelector(".ut-warn").textContent = bad ? "보라색 자리(${…})를 원본과 같은 순서로 모두 남겨 주세요. 그대로가 아니면 코드에 넣지 않아요." : "";
+}
+
+function utRedraw({ nav = true, main = true } = {}) {
+  if (nav) document.getElementById("ut-nav").innerHTML = utNavHtml();
+  if (main) {
+    const el = document.getElementById("ut-main");
+    el.innerHTML = utMainHtml();
+    el.querySelectorAll(".ut-row").forEach((row) => utCheck(row, ut.items.get(row.dataset.utId), row.querySelector("textarea").value));
+  }
+  utStat();
+}
+
+function utSaved(text) {
+  const el = document.getElementById("ut-saved");
+  if (el) el.textContent = text;
+}
+
+function utScheduleSave() {
+  utSaved("저장 기다리는 중…");
+  clearTimeout(ut.saveTimer);
+  ut.saveTimer = setTimeout(utSave, 600);
+}
+
+async function utSave() {
+  clearTimeout(ut.saveTimer);
+  ut.saveTimer = null;
+  const r = await api(`${API}/ui_text/save`, { method: "POST", body: JSON.stringify({ edits: ut.edits }) });
+  utSaved(`${ut.data.editsFile} 에 저장했어요 ${new Date(r.at).toLocaleTimeString("ko-KR")}`);
+  utStat();
+}
+
+async function renderUiText() {
+  await utLoad();
+  return `<div class="ut" data-uitext>
+    <div class="card ut-bar">
+      <span id="ut-stat" class="muted small"></span>
+      <input id="ut-q" type="search" placeholder="글 찾기 (모든 화면에서)" value="${esc(ut.q)}">
+      <span id="ut-saved" class="muted small"></span>
+      <button class="btn-outline" data-ut="save">저장</button>
+      <button class="btn" data-ut="apply">코드에 넣기</button>
+    </div>
+    <div class="ut-layout">
+      <div class="card ut-nav" id="ut-nav"></div>
+      <div class="ut-main" id="ut-main"></div>
+    </div>
+    <dialog id="ut-dialog" class="ut-dialog"></dialog>
+  </div>`;
+}
+
+function utConfirmApply() {
+  const list = Object.values(ut.edits);
+  const dialog = document.getElementById("ut-dialog");
+  dialog.innerHTML = `<h3>앱 코드의 글 ${list.length}개를 바꿀게요</h3>
+    <ol>${list.map((e) => `<li><div class="mono small muted">${esc(e.file)}:${e.line}</div><div class="ut-from">${esc(e.original)}</div><div class="ut-to">${esc(e.edited)}</div></li>`).join("")}</ol>
+    <div class="muted small">바꾼 뒤 타입 검사(tsc)를 돌려요. 잘못 바꾸면 git 으로 되돌릴 수 있어요.</div>
+    <div class="ut-actions"><button class="btn-outline" data-ut="cancel">그만두기</button><button class="btn" data-ut="apply-yes">바꾸기</button></div>`;
+  dialog.showModal();
+}
+
+async function onUiTextClick(button) {
+  const { ut: action, utGroup, utDrop } = button.dataset;
+  if (utGroup) {
+    ut.current = utGroup;
+    ut.q = "";
+    document.getElementById("ut-q").value = "";
+    utRedraw();
+    return window.scrollTo({ top: 0 });
+  }
+  if (utDrop) {
+    delete ut.edits[utDrop];
+    ut.data.stale = ut.data.stale.filter((s) => s.id !== utDrop);
+    utScheduleSave();
+    return utRedraw({ nav: false });
+  }
+  if (action === "undo") {
+    const row = button.closest(".ut-row");
+    const textarea = row.querySelector("textarea");
+    textarea.value = "";
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    return button.remove();
+  }
+  if (action === "save") return utSave();
+  if (action === "apply") return utConfirmApply();
+  if (action === "cancel") return document.getElementById("ut-dialog").close();
+  if (action === "close-result") {
+    ut.result = null;
+    return utRedraw({ nav: false });
+  }
+  if (action === "apply-yes") {
+    button.disabled = true;
+    button.textContent = "바꾸고 검사하는 중…";
+    clearTimeout(ut.saveTimer);
+    ut.saveTimer = null;
+    ut.result = await api(`${API}/ui_text/apply`, { method: "POST", body: JSON.stringify({ edits: ut.edits }) });
+    document.getElementById("ut-dialog").close();
+    await utLoad();
+    utRedraw();
+    return window.scrollTo({ top: 0 });
+  }
+}
+
+function onUiTextInput(target) {
+  if (target.id === "ut-q") {
+    ut.q = target.value.trim();
+    return utRedraw();
+  }
+  const row = target.closest(".ut-row");
+  if (!row || target.tagName !== "TEXTAREA") return;
+  const it = ut.items.get(row.dataset.utId);
+  const value = target.value;
+  if (value === "" || value === it.text) delete ut.edits[it.id];
+  else ut.edits[it.id] = { file: it.file, line: it.line, func: it.func, original: it.text, edited: value };
+  row.classList.toggle("changed", Boolean(ut.edits[it.id]));
+  utCheck(row, it, value);
+  document.getElementById("ut-nav").innerHTML = utNavHtml();
+  utScheduleSave();
+}
+
 // ── 탭 전환, 버튼 ──
 
 const RENDER = {
@@ -536,6 +790,7 @@ const RENDER = {
   quality: renderQuality,
   system: renderSystem,
   controls: renderControls,
+  uitext: renderUiText,
 };
 
 async function show(tab = state.tab) {
@@ -549,6 +804,7 @@ async function show(tab = state.tab) {
   content.innerHTML = `<div class="card"><div class="empty">${loading}</div></div>`;
   try {
     content.innerHTML = await RENDER[tab]();
+    if (tab === "uitext") utRedraw();
   } catch (error) {
     content.innerHTML = `<div class="error">${esc(error.message)}</div>`;
   }
@@ -598,6 +854,16 @@ content.addEventListener("click", async (e) => {
   const button = e.target.closest("button");
   if (!button) return;
   // 시연 탭 버튼은 휴대폰 틀을 살려 두려고 화면 전체를 다시 그리지 않는다
+  // 화면 글 탭도 적던 칸을 살려 두려고 화면 전체를 다시 그리지 않는다
+  if (button.closest("[data-uitext]")) {
+    try {
+      await onUiTextClick(button);
+    } catch (error) {
+      toast(error.message);
+      button.disabled = false;
+    }
+    return;
+  }
   if (button.closest("[data-demo]")) {
     try {
       await onDemoClick(button);
@@ -649,6 +915,10 @@ content.addEventListener("click", async (e) => {
     toast(error.message);
     button.disabled = false;
   }
+});
+
+content.addEventListener("input", (e) => {
+  if (e.target.closest("[data-uitext]")) onUiTextInput(e.target);
 });
 
 content.addEventListener("change", (e) => {

@@ -264,6 +264,23 @@ def test_change_back_to_original_order_after_festival_is_not_unchanged():
     assert card(result, 18).unchanged is True  # 어제도 원래 순서, 오늘도 원래 순서
 
 
+def test_reason_follows_the_basis_when_llm_reason_is_empty():
+    lookup = FakeLookup({"WINTER": MenuCandidates(("5", "3"), ""), "NATIONAL_TEAM": MenuCandidates(("4",), "")})
+    result, _ = assemble(lookup=lookup)
+    assert card(result, 18).reason == "계절 변화 때문에 메뉴판 순서를 바꿔요."
+    # 경기가 끝나 겨울 배치로 바뀌는 날: 엔진 문구("경기 기간이 끝나 … 되돌려요")가 아니라 기준 태그(겨울) 문구
+    assert card(result, 20).reason == "계절 변화 때문에 메뉴판 순서를 바꿔요."
+    assert card(result, 19).reason == "경기 때문에 메뉴판 순서를 바꿔요."
+
+
+def test_reason_for_going_back_to_original_order_names_the_tag_that_ended():
+    no_season = [cell.model_copy(update={"reasons": [r for r in cell.reasons if r.tag != "SEASON"]}) for cell in PLAN.calendar]
+    result, _ = assemble(calendar=no_season)
+    assert card(result, 20).basis is None
+    assert card(result, 20).reason == "경기 기간이 끝나 메뉴판 순서를 되돌려요."
+    assert card(result, 23).reason == "근처 행사 기간이 끝나 메뉴판 순서를 되돌려요."
+
+
 def test_unknown_ref_id_is_dropped_before_choosing_the_basis(caplog):
     unknown = CalendarReason(tag="EVENT", ref_id="event_099", effect=0.5)  # inputs.events 에 없는 행사. 교체 이득이 부담을 넘는 크기
     calendar = with_reason(PLAN.calendar, d(20), unknown)

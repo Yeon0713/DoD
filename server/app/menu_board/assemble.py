@@ -13,7 +13,9 @@
    LLM 후보는 세부 종류마다 한 번만 조회한다.
 4. '바뀌는 것 없음' = 기준 태그가 직전 영업일과 같다(unchanged_menu_orders), 또는 직전 영업일 배치안의 전체 순서와
    그날 전체 순서가 같다. 예) 어제 축제 배치 → 오늘 점수가 모두 0(원래 순서)이면 메뉴판이 바뀌므로 '바뀌는 것 없음'이 아니다.
-5. 이유 문구는 배치안 이유(LLM 이유 또는 '추천할 메뉴를 찾지 못했어요')이고, 비어 있으면 그 카드의 기존 문구(reason_line)다.
+5. 이유 문구 우선순위: (1) 배치안 이유(LLM 이유, 점수가 모두 0이면 '추천할 메뉴를 찾지 못했어요')
+   (2) 기준 태그로 만든 틀 문구: '{태그 이름} 때문에 …바꿔요.', 기준 태그가 없으면 직전 영업일 기준 태그로 '… 기간이 끝나 …되돌려요.'
+   (3) 그 카드의 기존 문구(reason_line). 엔진 문구는 태그 묶음 변화 기준이라 배치와 어긋날 수 있어 마지막에 쓴다.
 """
 
 import datetime as dt
@@ -29,6 +31,7 @@ from app.menu_board.menu_candidates import EMPTY, MenuBoardKind, MenuCandidates
 from app.menu_board.menu_share_lift import MenuBoardTag, ShareLift, menu_share_lift
 from app.planner.data_shapes import CalendarCell, PlanItem, StoreSettings
 from app.planner.rule_menu_order import (
+    TAG_NAMES,
     TagPeriod,
     menu_board_bases,
     previous_open_day,
@@ -122,10 +125,19 @@ def assemble_menu_board_cards(
             plan_id=item.plan_id,
             basis=bases[day],
             arrangement=arrangement,
-            reason=arrangement.reason or item.reason_line,
+            reason=arrangement.reason or _basis_reason(bases[day], bases.get(previous), known) or item.reason_line,
             unchanged=item.plan_id in same_basis or same_order,
         )
     return result
+
+
+def _basis_reason(basis: str | None, previous_basis: str | None, known: dict[str, _Tag]) -> str:
+    """기준 태그로 만든 틀 문구. 만들 수 없으면 ""."""
+    if basis is not None:
+        return f"{TAG_NAMES[known[basis].tag]} 때문에 메뉴판 순서를 바꿔요."
+    if previous_basis is not None:
+        return f"{TAG_NAMES[known[previous_basis].tag]} 기간이 끝나 메뉴판 순서를 되돌려요."
+    return ""
 
 
 def tag_periods_from_inputs(inputs: AnalysisInputs, calendar: list[CalendarCell]) -> list[TagPeriod]:

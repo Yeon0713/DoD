@@ -37,7 +37,7 @@ from typing import Literal
 import httpx
 
 from app.analysis.review.hcx_classifier import mask_personal_info
-from app.core import clova
+from app.core import clova, clova_usage_log
 from app.core.clova import Post
 from app.core.config import settings
 from app.core.seoul_time import now_seoul
@@ -107,13 +107,28 @@ def clean_answer(answer: str | None) -> str:
     return " ".join(lines).strip().strip(QUOTES).strip()
 
 
+def rejection_reason(text: str, menus: list[str] | None = None) -> str | None:
+    """초안으로 쓰면 안 되는 까닭. 써도 되면 None. (개발자 대시보드 'AI 품질'에 그대로 보인다)"""
+    if len(text) < MIN_LENGTH:
+        return "너무 짧거나 빈 답"
+    if len(text) > MAX_LENGTH:
+        return "너무 김"
+    if PLACEHOLDER_RE.search(text):
+        return "빈칸([손님 이름] 등)이 남음"
+    if PROMISE_RE.search(text):
+        return "보상 약속"
+    if MADE_UP_FACT_RE.search(text):
+        return "지어낸 가게 사정"
+    if MEMORY_RE.search(text):
+        return "손님을 기억하는 척"
+    if menus and not any(menu in text for menu in menus):
+        return "가게 메뉴 이름이 없음"
+    return None
+
+
 def is_usable(text: str, menus: list[str] | None = None) -> bool:
     """초안으로 써도 되는지. 길이, 빈칸, 보상 약속을 본다. menus 를 주면(재주문 인사) 메뉴 이름이 하나는 있어야 한다."""
-    if not (MIN_LENGTH <= len(text) <= MAX_LENGTH) or PLACEHOLDER_RE.search(text):
-        return False
-    if PROMISE_RE.search(text) or MADE_UP_FACT_RE.search(text) or MEMORY_RE.search(text):
-        return False
-    return not menus or any(menu in text for menu in menus)
+    return rejection_reason(text, menus) is None
 
 
 def today_line(today: dt.date | None = None) -> str:
@@ -165,9 +180,14 @@ def write_one(item: PlanItem, review: Review, store: dict, menus: list[str], *, 
         system, user = load_prompt("review_reply_prompt.txt", store), reply_message(review, item.revisit_class)
     for temperature in TEMPERATURES:
         answer = clean_answer(
-            clova.ask(system, user, max_tokens=300, temperature=temperature, timeout=TIMEOUT_SECONDS, post=post)
+            clova.ask(
+                system, user, max_tokens=300, temperature=temperature, timeout=TIMEOUT_SECONDS, post=post,
+                feature="reorder_nudge" if nudge else "reply_draft", store_id=store.get("store_id"),
+            )
         )
-        if is_usable(answer, menus if nudge else None):
+        reason = rejection_reason(answer, menus if nudge else None)
+        clova_usage_log.set_verdict(reason is None, reason)
+        if reason is None:
             return answer
     return None
 
@@ -243,9 +263,12 @@ def rewrite(text: str, style: RewriteStyle, store: dict, review: Review | None =
             clova.ask(
                 load_prompt("rewrite_reply_prompt.txt", store), user,
                 max_tokens=300, temperature=temperature, timeout=TIMEOUT_SECONDS, post=post,
+                feature="reply_rewrite", store_id=store.get("store_id"),
             )
         )
-        if is_usable(answer) and keeps_numbers(text, answer):
+        reason = rejection_reason(answer) or (None if keeps_numbers(text, answer) else "사장님이 쓴 숫자가 바뀜")
+        clova_usage_log.set_verdict(reason is None, reason)
+        if reason is None:
             return answer
     return None
 

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DONNA 개발자 대시보드</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!--
+    도나 개발자 대시보드 (로컬 시험용).
+    서버를 DEV_TOOLS_ENABLED=true 로 켜면 http://localhost:8000/dev-dashboard/ 에서 열린다.
+    데이터는 같은 서버의 /api/dev_tools/... 에서 읽는다 (app.js).
+  -->
+  <header class="topbar">
+    <div class="brand">DONNA<span class="brand-dot">•</span><span class="badge-dev">DEV</span></div>
+    <div class="topbar-center">개발자 대시보드</div>
+    <div class="topbar-right">
+      <span id="server-dot" class="server-dot" title="서버 연결"></span>
+      <span id="server-time" class="muted mono"></span>
+    </div>
+  </header>
+
+  <section class="page-head">
+    <div class="page-head-inner">
+      <div>
+        <h1>개발자 대시보드</h1>
+        <div class="sub mono">DONNA ADMIN CONSOLE · 로컬 시험용</div>
+      </div>
+      <div class="head-actions">
+        <label class="store-picker">
+          <span class="muted">가게</span>
+          <select id="store-select"></select>
+        </label>
+        <button id="refresh" class="btn-outline">↻ 새로고침</button>
+      </div>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="demo">시연</button>
+    <button data-tab="overview" class="active">개요</button>
+    <button data-tab="stores">매장</button>
+    <button data-tab="analysis">분석</button>
+    <button data-tab="timeline">알림 타임라인</button>
+    <button data-tab="usage">AI 비용</button>
+    <button data-tab="quality">AI 품질</button>
+    <button data-tab="system">시스템</button>
+    <button data-tab="controls">조작</button>
+  </nav>
+
+  <main id="content" class="content"></main>
+
+  <script src="app.js"></script>
+</body>
+</html>

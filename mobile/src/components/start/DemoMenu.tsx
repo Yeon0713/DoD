@@ -1,5 +1,6 @@
 // 시작 화면과 로그인 화면 위의 메뉴(☰). 시험·시연용 기능을 모아 둔다.
 // - 데모 테스트 모드: 켜면 "네이버로 시작하기/로그인"이 서버의 네이버 로그인(앱 키가 없으면 임시 네이버 로그인)으로 가서 계정을 고를 수 있다.
+// - 개발자 대시보드 접속: 서버의 웹 개발자 대시보드(dev/ 폴더)를 새 탭(휴대폰은 브라우저)으로 연다. 실제 서버에 붙었을 때만 보인다.
 // - 초기화: 등록한 가게, 불러온 리뷰, 이 기기 기록을 지워 가게 찾기(지도)부터 다시 할 수 있게 한다.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -14,6 +15,7 @@ import { account } from "@/lib/account";
 import { USE_MOCK } from "@/lib/api";
 import { resetCardState } from "@/lib/cardState";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
+import { openDevDashboard } from "@/lib/devDashboard";
 import { demoMode, naverProfile } from "@/lib/naverDemo";
 import { BASE_URL, serverHealth, type ServerHealth } from "@/lib/server";
 import { storage } from "@/lib/storage";
@@ -136,6 +138,25 @@ export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?:
             </View>
             <Toggle testID="start-menu-demo-toggle" label="데모 테스트 모드" checked={demo.on} onChange={(on) => demoMode.write({ on })} />
           </View>
+          {/* 목업 모드에서는 서버를 쓰지 않으므로 숨긴다 */}
+          {!USE_MOCK ? (
+            <Pressable
+              testID="start-menu-dev-dashboard"
+              accessibilityRole="link"
+              onPress={() => {
+                setOpen(false);
+                openDevDashboard();
+              }}
+              className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3 active:bg-brand-soft"
+            >
+              <Icon name="chart" size={24} color={C.brand} />
+              <View className="flex-1">
+                <Text className="text-body font-medium text-ink">개발자 대시보드 접속</Text>
+                <Text className="text-small text-ink-2">서버 데이터, AI 비용, 시연 화면을 웹에서 봐요</Text>
+              </View>
+              <Icon name="chevR" size={20} color={C["ink-3"]} />
+            </Pressable>
+          ) : null}
           <Pressable
             testID="start-menu-reset"
             accessibilityRole="button"

@@ -21,6 +21,9 @@ class Settings(BaseSettings):
     snapshot_refresh_minutes: int = 10
     # 로컬 시험용: /dev/clock 으로 서버 시계를 앞당길 수 있게 한다. 배포에서는 켜지 않는다
     dev_clock_enabled: bool = False
+    # 로컬 시험용: 개발자 대시보드(dev/ 폴더, http://localhost:8000/dev-dashboard/)와 그 API(/api/dev_tools)를 연다.
+    # 모든 가게 데이터와 AI 기록이 보이므로 배포에서는 켜지 않는다
+    dev_tools_enabled: bool = False
     # 매장을 등록하면 우리 전용 목업 주문·매출·알바 데이터를 그 가게 파일에 넣는다 (POS·배달앱 연동 전 시연용)
     demo_store_data: bool = True
 
@@ -41,6 +44,10 @@ class Settings(BaseSettings):
     clova_studio_base_url: str = "https://clovastudio.stream.ntruss.com"
     clova_studio_model: str = "HCX-005"
     clova_studio_timeout: float = 30
+    # CLOVA 토큰 단가(원, 1,000 토큰당, VAT 별도). 네이버 클라우드 CLOVA Studio 요금표를 보고 넣는다.
+    # 0 이면 개발자 대시보드에 '단가 미설정'으로 보이고 비용은 0원으로 센다
+    clova_price_input_per_1k: float = 0
+    clova_price_output_per_1k: float = 0
 
     # Maps (Application Services > Maps > Application 등록)
     naver_maps_client_id: str = ""

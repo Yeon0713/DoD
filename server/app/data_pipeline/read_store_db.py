@@ -10,7 +10,7 @@
 
 import datetime as dt
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from db import models
 from app.data_pipeline.registered_stores import review_platforms
@@ -87,6 +87,18 @@ def read_reviews(store_id: str, until: dt.datetime) -> list[dict]:
         for row in rows:
             row["platform"] = platforms.get(row["review_id"])
     return rows
+
+
+def count_rows(store_id: str, until: dt.datetime) -> dict[str, int]:
+    """until 까지 쌓인 주문·리뷰 수와 메뉴·알바 수 (개발자 대시보드 '매장' 탭). 행을 다 읽지 않고 세기만 한다."""
+    order, review = models.Order, models.Review
+    with store_engine(store_id).connect() as conn:
+        return {
+            "orders": conn.execute(select(func.count()).select_from(order).where(order.ordered_at <= until)).scalar(),
+            "reviews": conn.execute(select(func.count()).select_from(review).where(review.written_at <= until)).scalar(),
+            "menus": conn.execute(select(func.count()).select_from(models.Menu)).scalar(),
+            "staff": conn.execute(select(func.count()).select_from(models.Staff)).scalar(),
+        }
 
 
 def read_staff(store_id: str) -> list[dict]:

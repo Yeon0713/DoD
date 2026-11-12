@@ -1,8 +1,11 @@
 import datetime as dt
 import uuid
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import settings
 from app.core.error_response import register_error_handlers
@@ -12,6 +15,9 @@ from app.modules import load_modules
 # 서버가 켜질 때마다 새로 정해지는 값. 앱이 이 값이 바뀐 것을 보면 이 기기에 저장한 값을 지우고 처음부터 시작한다.
 # (서버의 계산 결과와 고친 설정도 서버를 다시 켜면 사라지므로, 앱도 같이 처음 상태로 맞춘다)
 BOOT_ID = uuid.uuid4().hex
+
+# 개발자 대시보드 화면 (저장소 맨 위 dev/ 폴더). DEV_TOOLS_ENABLED=true 일 때 /dev-dashboard/ 로 보여 준다
+DEV_DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dev"
 
 
 def create_app() -> FastAPI:
@@ -67,6 +73,15 @@ def create_app() -> FastAPI:
 
     for name, router in load_modules():
         app.include_router(router, prefix=f"/api/{name}", tags=[name])
+
+    if settings.dev_tools_enabled and DEV_DASHBOARD_DIR.is_dir():
+
+        @app.get("/dev-dashboard", include_in_schema=False)
+        def dev_dashboard_home():
+            return RedirectResponse("/dev-dashboard/")
+
+        # 같은 서버 주소에서 열리므로 CORS 설정이 필요 없다
+        app.mount("/dev-dashboard", StaticFiles(directory=DEV_DASHBOARD_DIR, html=True), name="dev-dashboard")
 
     return app
 

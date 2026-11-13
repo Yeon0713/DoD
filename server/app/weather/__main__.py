@@ -49,7 +49,7 @@ def main() -> int:
         print(f"  실패 {error.section}: {error.code} {error.message}")
     print(f"저장: {args.output}")
     if args.save:
-        if store_weather.registered_stores.is_mock_store(args.store_id) or int(args.store_id[1:]) < store_weather.registered_stores.FIRST_NUMBER:
+        if not store_weather.registered_stores.is_mock_store(args.store_id) and int(args.store_id[1:]) < store_weather.registered_stores.FIRST_NUMBER:
             print("목업 가게 파일은 고치지 않아요 (--save 건너뜀)")
         else:
             print(store_weather.save(args.store_id, result))

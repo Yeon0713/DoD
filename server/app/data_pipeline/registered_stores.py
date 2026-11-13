@@ -15,11 +15,13 @@
 
 import datetime as dt
 import json
+import shutil
 import sqlite3
 from collections import Counter
 from pathlib import Path
 
-from sqlalchemy import insert, select, update
+from sqlalchemy import Engine, create_engine, insert, select, update
+from sqlalchemy.pool import NullPool
 from sqlalchemy.schema import CreateIndex, CreateTable
 
 from app.core.naver_place import PlaceInfo
@@ -36,6 +38,14 @@ MOCK_PLACES = {"1909851296": "s004", "2004174048": "s005"}  # 피플스클럽, �
 
 def is_mock_store(store_id: str) -> bool:
     return store_id in MOCK_PLACES.values()
+
+
+def mock_weather_engine(store_id: str) -> Engine:
+    """목업 가게로 이은 실제 가게(s004 ...)의 기상청 날씨 파일: db/app_data/weather/<가게>.db.
+    git 에 올라간 목업 가게 파일을 고치지 않으려고 따로 둔다. 표 이름 앞에 가게 스키마를 붙이지 않는다."""
+    path = REGISTRY_PATH.parent / "weather" / f"{store_id}.db"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return create_engine(f"sqlite:///{path}", poolclass=NullPool).execution_options(schema_translate_map={models.STORE_SCHEMA: None})
 
 
 def _db() -> sqlite3.Connection:
@@ -237,7 +247,7 @@ def mark_platform(store_id: str, platform: str, review_ids: list[int]) -> int:
 
 
 def reset_all() -> list[str]:
-    """시험용 초기화: 등록한 가게 파일(s101 ...)과 등록 기록을 모두 지운다. 목업 가게(s001~s099)는 건드리지 않는다.
+    """시험용 초기화: 등록한 가게 파일(s101 ...)과 등록 기록, 목업 가게로 이은 가게의 날씨를 모두 지운다. 목업 가게 파일(s001~s099)은 건드리지 않는다.
 
     지운 가게 id 를 돌려준다.
     """
@@ -248,5 +258,6 @@ def reset_all() -> list[str]:
             path.unlink(missing_ok=True)
             removed.append(path.stem)
     REGISTRY_PATH.unlink(missing_ok=True)
+    shutil.rmtree(REGISTRY_PATH.parent / "weather", ignore_errors=True)  # 목업 가게로 이은 가게의 날씨
     engine.dispose()
     return removed

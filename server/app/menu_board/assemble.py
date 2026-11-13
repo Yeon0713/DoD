@@ -90,7 +90,7 @@ def assemble_menu_board_cards(
         raise ValueError("메뉴판 카드가 있는데 계획 엔진 매장 설정이 없습니다.")
     known = _known_tags(inputs, calendar)
     calendar = _without_unknown_reasons(calendar, known)
-    periods = [tag.period for tag in known.values()]
+    periods = _periods(known)
     k = min(MAX_RAISED, len(original))
     bases = menu_board_bases(calendar, periods, settings, k)
     first_days = {ref_id: start for ref_id, (start, _) in tag_periods(calendar, periods).items()}
@@ -141,8 +141,15 @@ def _basis_reason(basis: str | None, previous_basis: str | None, known: dict[str
 
 
 def tag_periods_from_inputs(inputs: AnalysisInputs, calendar: list[CalendarCell]) -> list[TagPeriod]:
-    """달력에 보인 근거 id(날씨 제외)의 원본 일정 기간. 세부 종류를 알 수 없는 근거 id는 빠진다."""
-    return [tag.period for tag in _known_tags(inputs, calendar).values()]
+    """달력에 보인 근거 id(날씨 제외)의 원본 일정 기간. 세부 종류를 알 수 없는 근거 id는 빠진다.
+
+    조립(assemble_menu_board_cards)이 쓰는 기간과 같다. 달력의 근거 id 가 빠짐없이 기간을 갖는지 확인할 때 쓴다.
+    """
+    return _periods(_known_tags(inputs, calendar))
+
+
+def _periods(known: dict[str, _Tag]) -> list[TagPeriod]:
+    return [tag.period for tag in known.values()]
 
 
 def _known_tags(inputs: AnalysisInputs, calendar: list[CalendarCell]) -> dict[str, _Tag]:

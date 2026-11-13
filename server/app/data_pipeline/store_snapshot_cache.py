@@ -172,6 +172,8 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
             reply_items, {review.review_id: review for review in reviews}, store, [menu.name for menu in inputs.menus]
         )
 
+    menu_boards = snapshot_menu_boards(store_id, store, inputs, settings, plan, parts.planner_calendar)
+
     snapshot = StoreSnapshot(
         store_id=store_id,
         computed_at=now,
@@ -187,7 +189,7 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
         plan_unavailable=unavailable,
         ordered_at_by_order={order.order_id: order.ordered_at for order in inputs.orders},
         draft_texts=draft_texts,
-        menu_boards=snapshot_menu_boards(store_id, store, inputs, settings, plan, parts.planner_calendar),
+        menu_boards=menu_boards,
     )
     _request_polish(snapshot)
     seconds = (now_seoul() - started).total_seconds()
@@ -207,7 +209,7 @@ class _PlanParts:
     settings: StoreSettings | None
     plan: PlanResult | None
     unavailable: ApiError | None
-    planner_calendar: list[CalendarCell] = field(default_factory=list)  # 계획 엔진에 넣은 달력 (메뉴판 배치안도 쓴다)
+    planner_calendar: list[CalendarCell]  # 계획 엔진에 넣은 달력 (메뉴판 배치안도 쓴다)
 
 
 def _analyze_and_plan(

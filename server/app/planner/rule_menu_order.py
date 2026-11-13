@@ -95,7 +95,7 @@ class TagPeriod:
     end: dt.date | None = None
 
 
-def switch_benefit(effects: list[float], open_days: int) -> float:
+def _switch_benefit(effects: list[float], open_days: int) -> float:
     """교체 이득 = 대표 |effect|(평균) × 기간 안의 영업일 수. 교체 여부를 정하는 점수이고 매출액이 아니다."""
     return _strength(effects) * open_days
 
@@ -149,7 +149,7 @@ def menu_board_bases(
 ) -> dict[dt.date, str | None]:
     """영업일별 메뉴판 기준 태그(근거 id). None 이면 원래 순서다.
 
-    1. 근거 id마다 교체 이득(switch_benefit)이 교체 부담(cost_per_menu × k)보다 커야 바꿀 만하다. k 는 맨 위로 올릴 메뉴 수.
+    1. 근거 id마다 교체 이득(_switch_benefit)이 교체 부담(cost_per_menu × k)보다 커야 바꿀 만하다. k 는 맨 위로 올릴 메뉴 수.
        기간은 tag_periods 를 따른다.
     2. 그날 붙은 태그 가운데 바꿀 만한 것 중에서 하루 효과(대표 |effect|)가 가장 큰 것이 기준 태그다.
        같으면 근거 id 순으로 앞선 것. 이득 합계로 고르지 않는 까닭: 기간이 긴 계절이 늘 이긴다.
@@ -167,7 +167,7 @@ def menu_board_bases(
 
     worthwhile: dict[str, float] = {}  # 바꿀 만한 근거 id → 하루 효과
     for ref_id, values in effects.items():
-        if switch_benefit(values, _open_days(*bounds[ref_id], store)) > burden + _EPSILON:
+        if _switch_benefit(values, _open_days(*bounds[ref_id], store)) > burden + _EPSILON:
             worthwhile[ref_id] = _strength(values)
 
     bases = {}

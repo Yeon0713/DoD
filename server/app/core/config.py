@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     sens_sms_service_id: str = ""
     sens_sms_from: str = ""
 
+    # 기상청 API허브 인증키 (apihub.kma.go.kr > 마이페이지). 비어 있으면 등록한 가게도 공통 목업 날씨를 쓴다 (app/weather)
+    kma_api_key: str = ""
+
     def allows_origin(self, origin: str) -> bool:
         """이 서버를 불러도 되는 앱 주소인지 (CORS 와 네이버 로그인 뒤 돌려보낼 주소가 같은 기준을 쓴다)."""
         if origin in self.cors_origins:

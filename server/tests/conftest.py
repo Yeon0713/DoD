@@ -23,3 +23,13 @@ def separate_demo_scan_files(tmp_path, monkeypatch):
 def separate_test_accounts_db(tmp_path, monkeypatch):
     """테스트 계정 DB(db/test_accounts.db)를 고치지 않게, 테스트마다 기본값으로 새로 만든 임시 DB 를 쓴다."""
     monkeypatch.setattr(test_accounts, "DB_PATH", tmp_path / "test_accounts.db")
+
+
+@pytest.fixture(autouse=True)
+def no_real_kma_calls(monkeypatch):
+    """server/.env 에 기상청 키가 있어도 테스트가 실제 기상청을 부르지 않게 한다 (날씨 테스트는 가짜 응답을 쓴다)."""
+    from app.core.config import settings
+    from app.weather import stations
+
+    monkeypatch.setattr(settings, "kma_api_key", "")
+    stations.clear_cache()

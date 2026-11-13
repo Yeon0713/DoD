@@ -3,6 +3,8 @@
 - 가게 전용 테이블(store, menu, orders, order_items, reviews, staff, shifts)은 store_id 로 그 가게 것만 읽는다.
   나중에 로그인이 생기면 '이 사장님이 이 가게를 볼 수 있는지' 검사도 여기 들어오기 전에 한 번만 하면 된다.
 - 공통 테이블(events, games, weather_daily)은 모든 가게가 같이 쓴다.
+  단, 사장님이 등록한 가게는 기상청에서 받은 그 지역 날씨(가게 파일 store_weather_daily)가 있으면 그것을 쓴다.
+  목업 가게로 이은 실제 가게(s004 ...)는 그 날씨를 db/app_data/weather/<가게>.db 에 둔다 (registered_stores.mock_weather_engine).
 - until 을 받는 함수는 그 시각까지 생긴 행만 돌려준다. 목업 DB 에는 12/31 까지 주문이 들어 있어서
   미래 데이터를 꺼내지 않도록 여기서 막는다.
 - 돌려주는 값은 DB 칸 이름 그대로의 dict 목록이다. 분석이나 화면 모양으로 바꾸는 일은 다른 파일이 한다.
@@ -10,11 +12,16 @@
 
 import datetime as dt
 
-from sqlalchemy import func, select
+from sqlalchemy import func, inspect, select
 
 from db import models
+from app.data_pipeline import registered_stores
 from app.data_pipeline.registered_stores import review_platforms
 from db.session import engine, store_db_files, store_engine
+
+
+# 배달 주문과 이어진 리뷰 중 주문 번호 끝자리 0~2(약 30%)를 쿠팡이츠 리뷰로 보는 목업 가게
+COUPANG_SPLIT_STORES = {"s004", "s005"}
 
 
 def list_store_ids() -> list[str]:
@@ -86,6 +93,11 @@ def read_reviews(store_id: str, until: dt.datetime) -> list[dict]:
     if platforms:
         for row in rows:
             row["platform"] = platforms.get(row["review_id"])
+    # 리뷰 표에 플랫폼 칸이 없어 배달 리뷰는 배민으로 본다. 쿠팡이츠를 나누는 목업 가게는 배달 리뷰 일부를 쿠팡이츠로 정한다
+    if store_id in COUPANG_SPLIT_STORES:
+        for row in rows:
+            if not row.get("platform") and row["order_channel"] == "delivery" and row["order_id"] % 10 < 3:
+                row["platform"] = "COUPANG"
     return rows
 
 
@@ -129,6 +141,44 @@ def read_games() -> list[dict]:
     return _common_rows(select(models.Game.__table__).order_by(models.Game.starts_at))
 
 
-def read_weather() -> list[dict]:
-    """날씨. 지난날은 관측, 앞날은 예보로 본다. 칸: date, temp_max, temp_min, precip_mm"""
-    return _common_rows(select(models.WeatherDaily.__table__).order_by(models.WeatherDaily.date))
+def read_weather(store_id: str | None = None) -> list[dict]:
+    """날씨. 지난날은 관측, 앞날은 예보로 본다. 칸: date, temp_max, temp_min, precip_mm (값이 없으면 None)
+
+    store_id 를 주면 기상청에서 받아 둔 그 가게 지역 날씨(store_weather_daily)를 쓴다.
+    받은 적이 없으면(목업 가게, 인증키 없음) 모든 가게가 같이 쓰는 목업 날씨(weather_daily).
+    목업 가게로 이은 실제 가게(s004 ...)는 주문이 1년치라, 받은 날만 기상청 날씨로 바꾸고 나머지 날은 목업 날씨를 쓴다.
+    """
+    common = _common_rows(select(models.WeatherDaily.__table__).order_by(models.WeatherDaily.date))
+    if not store_id:
+        return common
+    rows = read_store_weather(store_id)
+    if rows and registered_stores.is_mock_store(store_id):
+        got = {r["date"] for r in rows}
+        return sorted([r for r in common if r["date"] not in got] + rows, key=lambda r: r["date"])
+    return rows or common
+
+
+def weather_engine(store_id: str):
+    """가게 날씨 표(store_weather_daily, store_weather_fetch)가 있는 곳. 목업 가게로 이은 가게는 따로 둔 파일."""
+    return registered_stores.mock_weather_engine(store_id) if registered_stores.is_mock_store(store_id) else store_engine(store_id)
+
+
+def _weather_rows(store_id: str, table) -> list[dict]:
+    """가게 날씨 표의 행. 표가 아직 없으면(받은 적 없음) 빈 목록."""
+    schema = None if registered_stores.is_mock_store(store_id) else store_id
+    with weather_engine(store_id).connect() as conn:
+        if not inspect(conn).has_table(table.__tablename__, schema=schema):
+            return []
+        return [dict(row._mapping) for row in conn.execute(select(table.__table__).order_by(*table.__table__.primary_key))]
+
+
+def read_store_weather(store_id: str) -> list[dict]:
+    """기상청에서 받아 둔 가게 지역 날씨 (app/weather/store_weather.py). 없으면 빈 목록.
+    칸: date, kind(observed/forecast), source, temp_avg, temp_max, temp_min, sky, precip_type, precip_mm, pop_max, issued_at, fetched_at"""
+    return _weather_rows(store_id, models.StoreWeatherDaily)
+
+
+def read_store_weather_fetch(store_id: str) -> dict | None:
+    """마지막으로 받은 기상청 날씨 전체. 칸: fetch_id, fetched_at, payload"""
+    rows = _weather_rows(store_id, models.StoreWeatherFetch)
+    return rows[0] if rows else None

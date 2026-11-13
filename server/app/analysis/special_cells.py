@@ -77,10 +77,10 @@ def _weather_kinds(w: WeatherDay | None) -> list[WeatherKind]:
     if w is None:
         return []
     kinds: list[WeatherKind] = []
-    if w.rain_mm >= RAIN_MM:
+    if w.rain_mm is not None and w.rain_mm >= RAIN_MM:
         kinds.append("RAIN")
-    if w.temp_max >= HEAT_MAX_C:
+    if w.temp_max is not None and w.temp_max >= HEAT_MAX_C:
         kinds.append("HEAT")
-    if w.temp_min <= COLD_MIN_C:
+    if w.temp_min is not None and w.temp_min <= COLD_MIN_C:
         kinds.append("COLD")
     return kinds

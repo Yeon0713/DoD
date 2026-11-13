@@ -180,6 +180,51 @@ class Game(Base):
     starts_at: Mapped[dt.datetime] = mapped_column(TZ)
 
 
+class StoreWeatherDaily(Base):
+    """사장님이 등록한 가게 지역의 하루 날씨 (기상청 API허브, app/weather).
+
+    STORE_TABLES 에 넣지 않는다. 목업 가게 파일에는 이 표가 없고 공통 weather_daily 를 쓴다.
+    등록한 가게 파일에 날씨를 처음 받을 때 만든다 (app/weather/store_weather.py).
+    지난날은 관측(kind=observed), 오늘부터는 예보(kind=forecast). 모르는 값은 0 이 아니라 비워 둔다.
+    """
+
+    __tablename__ = "store_weather_daily"
+    __table_args__ = (
+        CheckConstraint("kind IN ('observed','forecast')"),
+        CheckConstraint("source IN ('asos_daily','short_term')"),
+        CheckConstraint("sky IN ('맑음','구름많음','흐림')"),
+        CheckConstraint("precip_type IN ('없음','비','비/눈','눈','소나기')"),
+        {"schema": STORE_SCHEMA},
+    )
+
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)
+    kind: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(Text)
+    temp_avg: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    temp_max: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    temp_min: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    # 하늘상태: 관측은 일 평균 전운량(0~5 맑음, 6~8 구름많음, 9~10 흐림), 예보는 그날 시간별 하늘상태 중 가장 많은 것
+    sky: Mapped[str | None] = mapped_column(Text)
+    # 강수형태: 관측은 신적설이 있으면 눈, 강수량이 있으면 비. 예보는 그날 시간별 강수형태를 합친 것
+    precip_type: Mapped[str | None] = mapped_column(Text)
+    # 관측: 일강수량. 예보: 시간별 강수량 범주의 아래 끝을 더한 값(적어도 이만큼)
+    precip_mm: Mapped[float | None] = mapped_column(Numeric(5, 1))
+    pop_max: Mapped[int | None] = mapped_column(SmallInteger)  # 예보 강수확률 중 가장 큰 값(%). 관측은 비움
+    issued_at: Mapped[dt.datetime | None] = mapped_column(TZ)  # 예보 발표 시각. 관측은 비움
+    fetched_at: Mapped[dt.datetime] = mapped_column(TZ)
+
+
+class StoreWeatherFetch(Base):
+    """마지막으로 받은 기상청 날씨 전체 (위치, 관측소, 시간별 예보 포함, app/weather/schemas.py 모양). 한 줄만 둔다."""
+
+    __tablename__ = "store_weather_fetch"
+    __table_args__ = {"schema": STORE_SCHEMA}
+
+    fetch_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    fetched_at: Mapped[dt.datetime] = mapped_column(TZ)
+    payload: Mapped[dict] = mapped_column(JSON)
+
+
 class WeatherDaily(Base):
     __tablename__ = "weather_daily"
 

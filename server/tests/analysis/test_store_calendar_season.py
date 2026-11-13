@@ -5,13 +5,13 @@
 """
 
 import datetime as dt
-
-import pytest
+from pathlib import Path
 
 from app.analysis.input_shapes import WeatherDay
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.store_calendar.season import Season, season_ref_id, seasons_between
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 D1 = dt.date(2026, 11, 1)
 
 
@@ -95,9 +95,8 @@ def test_when_a_date_appears_twice_the_later_record_is_used():
 # ── 목업 데이터: 원본 weather_daily.csv 를 손으로 훑은 결과와 비교 ──
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_seasons_match_hand_calculation():
-    result = seasons_between(read_mock_csv().weather, dt.date(2026, 8, 17), dt.date(2026, 12, 21))
+    result = seasons_between(read_mock_csv(FIXTURE_DIR).weather, dt.date(2026, 8, 17), dt.date(2026, 12, 21))
 
     assert result[dt.date(2026, 8, 17)] == "SUMMER"  # 8/17~19: 33.3·30.9·32.6도
     assert result[dt.date(2026, 9, 14)] == "SUMMER"

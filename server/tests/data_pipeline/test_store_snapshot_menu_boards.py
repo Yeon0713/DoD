@@ -97,7 +97,7 @@ def test_snapshot_does_not_wait_for_clova(monkeypatch):
         first = store_snapshot_cache.get_snapshot("s001", NOW)
         assert time.monotonic() - started < 20  # CLOVA(여기서는 30초 막힘)를 기다리지 않았다
         board = first.menu_boards["MENU_ORDER:2026-11-18:2026-11-18"]
-        assert board.reason != "잘 어울려요"  # 아직 후보가 없어 데이터 점수만으로 만든 배치안
+        assert board.reason != "잘 어울려요."  # 아직 후보가 없어 데이터 점수만으로 만든 배치안
     finally:
         gate.set()  # 테스트가 실패해도 막아 둔 가짜 CLOVA 를 풀어 다른 테스트에 남지 않게 한다
         candidates_module.wait_for_background(timeout=35)
@@ -105,4 +105,4 @@ def test_snapshot_does_not_wait_for_clova(monkeypatch):
 
     store_snapshot_cache.clear_all()  # 다음 계산 때 반영된다
     second = store_snapshot_cache.get_snapshot("s001", NOW)
-    assert second.menu_boards["MENU_ORDER:2026-11-18:2026-11-18"].reason == "잘 어울려요"
+    assert second.menu_boards["MENU_ORDER:2026-11-18:2026-11-18"].reason == "잘 어울려요."

@@ -19,6 +19,7 @@ from app.core.seoul_time import SEOUL
 from app.data_pipeline import store_snapshot_cache
 from app.data_pipeline.menu_original_order import original_menu_order
 from app.menu_board.arrangement import NO_PICK_REASON
+from app.menu_board.assemble import BACK_TO_ORIGINAL_REASON, UNCHANGED_REASON
 from app.menu_board.assemble import assemble_menu_board_cards, tag_periods_from_inputs
 from app.menu_board.menu_candidates import EMPTY, MenuCandidates
 from app.planner.data_shapes import CalendarReason, Event, PlanInputs
@@ -243,6 +244,7 @@ def test_switching_to_another_festival_of_the_same_kind_changes_nothing():
     result, lookup = assemble(calendar=calendar, inputs=analysis_inputs(events=[first, second]))
     assert card(result, 22).basis == "event_013"
     assert card(result, 22).unchanged is True  # 근거 id 는 바뀌었지만 같은 종류라 배치가 같다
+    assert card(result, 22).reason == UNCHANGED_REASON  # LLM 이유보다 먼저
     assert lookup.calls[("store_001", "LOCAL_FESTIVAL")] == 1
 
 
@@ -250,6 +252,7 @@ def test_festival_filtered_by_benefit_changes_nothing():
     calendar = with_effect(PLAN.calendar, "event_012", 0.08)  # 0.08 × 2일 < 0.2
     result, lookup = assemble(calendar=calendar)
     assert card(result, 21).unchanged is True and card(result, 23).unchanged is True
+    assert card(result, 21).reason == card(result, 23).reason == UNCHANGED_REASON == "메뉴판은 지금 순서 그대로 두면 돼요."
     assert raised(result, 21) == raised(result, 23) == ("5", "3")  # 계속 겨울 배치
     assert lookup.calls[("store_001", "LOCAL_FESTIVAL")] == 0
 
@@ -260,8 +263,9 @@ def test_change_back_to_original_order_after_festival_is_not_unchanged():
     result, _ = assemble(lookup=lookup)
     assert card(result, 23).arrangement.same_as_original is True
     assert card(result, 23).unchanged is False  # 어제는 축제 배치였으니 오늘 원래 순서로 바뀐다
-    assert card(result, 23).reason == NO_PICK_REASON
+    assert card(result, 23).reason == BACK_TO_ORIGINAL_REASON == "추천할 메뉴를 찾지 못해 원래 순서로 돌려요."
     assert card(result, 18).unchanged is True  # 어제도 원래 순서, 오늘도 원래 순서
+    assert card(result, 18).reason == UNCHANGED_REASON
 
 
 def test_reason_follows_the_basis_when_llm_reason_is_empty():
@@ -370,6 +374,7 @@ def test_mock_store_day_after_closed_monday_is_compared_with_sunday(no_clova, mo
     tuesday = result["MENU_ORDER:2026-12-08:2026-12-08"]
     assert tuesday.basis == "season_winter"
     assert tuesday.unchanged is True
+    assert tuesday.reason == UNCHANGED_REASON
 
 
 def test_overnight_store_without_cards_gets_nothing(no_clova):

@@ -13,7 +13,10 @@
    LLM 후보는 세부 종류마다 한 번만 조회한다.
 4. '바뀌는 것 없음' = 기준 태그가 직전 영업일과 같다(unchanged_menu_orders), 또는 직전 영업일 배치안의 전체 순서와
    그날 전체 순서가 같다. 예) 어제 축제 배치 → 오늘 점수가 모두 0(원래 순서)이면 메뉴판이 바뀌므로 '바뀌는 것 없음'이 아니다.
-5. 이유 문구 우선순위: (1) 배치안 이유(LLM 이유, 점수가 모두 0이면 '추천할 메뉴를 찾지 못했어요')
+5. 이유 문구 우선순위 (사장님 카드에 그대로 나가므로 모두 '~요.'로 끝난다)
+   (0) '바뀌는 것 없음'이면 다른 문구보다 먼저 UNCHANGED_REASON.
+       기준 태그는 있는데 점수가 모두 0이라 직전 영업일 배치에서 원래 순서로 돌아가면 BACK_TO_ORIGINAL_REASON.
+   (1) 배치안 이유(LLM 이유, 점수가 모두 0이면 '추천할 메뉴를 찾지 못했어요.')
    (2) 기준 태그로 만든 틀 문구: '{태그 이름} 때문에 …바꿔요.', 기준 태그가 없으면 직전 영업일 기준 태그로 '… 기간이 끝나 …되돌려요.'
    (3) 그 카드의 기존 문구(reason_line). 엔진 문구는 태그 묶음 변화 기준이라 배치와 어긋날 수 있어 마지막에 쓴다.
 """
@@ -40,6 +43,9 @@ from app.planner.rule_menu_order import (
 )
 
 logger = logging.getLogger(__name__)
+
+UNCHANGED_REASON = "메뉴판은 지금 순서 그대로 두면 돼요."
+BACK_TO_ORIGINAL_REASON = "추천할 메뉴를 찾지 못해 원래 순서로 돌려요."
 
 MAX_RAISED = 2  # K = min(2, 메뉴 수)
 SEASONS: tuple[Season, ...] = get_args(Season)
@@ -120,13 +126,21 @@ def assemble_menu_board_cards(
             continue
         arrangement = arrangement_for(bases[day])
         previous = previous_open_day(day, settings)
-        same_order = previous in bases and arrangement_for(bases[previous]).order == arrangement.order
+        previous_order = arrangement_for(bases[previous]).order if previous in bases else None
+        same_order = previous_order == arrangement.order
+        unchanged = item.plan_id in same_basis or same_order
+        if unchanged:
+            reason = UNCHANGED_REASON
+        elif bases[day] is not None and not arrangement.raised and previous_order is not None:
+            reason = BACK_TO_ORIGINAL_REASON  # 점수가 모두 0이라 원래 순서. 직전 영업일과 순서가 달라 되돌린다
+        else:
+            reason = arrangement.reason or _basis_reason(bases[day], bases.get(previous), known) or item.reason_line
         result[item.plan_id] = MenuBoardCard(
             plan_id=item.plan_id,
             basis=bases[day],
             arrangement=arrangement,
-            reason=arrangement.reason or _basis_reason(bases[day], bases.get(previous), known) or item.reason_line,
-            unchanged=item.plan_id in same_basis or same_order,
+            reason=reason,
+            unchanged=unchanged,
         )
     return result
 

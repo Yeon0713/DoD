@@ -7,6 +7,7 @@
   - 목록에 없는 id, 겹친 id 는 버리고, 앞에서부터 최대 m = min(5, 메뉴 수)개만 쓴다.
   - 이유 한 줄이 60자를 넘거나 여러 문장·여러 줄이면 첫 문장만 잘라 쓴다(첫 문장이 '~요.'로 끝나고 60자 이하일 때).
     그다음 숫자·% 나 판매 주장(BANNED_REASON_WORDS)이 있으면 "" 로 둔다(후보는 쓴다).
+    끝맺음은 '~요.'로 맞춘다: '~요'로 끝나면 마침표를 붙이고, '~요'나 '~요.'로 끝나지 않으면 "" 로 둔다.
     사장님 승인 카드에 그대로 나가므로 근거 없는 숫자를 약속하면 안 된다.
 - 실패(키 없음, 연결 오류, 시간 초과, JSON 아님, 남는 id 없음)하면 예외 없이 빈 후보를 돌려준다.
 - 성공한 결과만 서버 메모리에 기억한다. 키는 (매장, 세부 종류, 현재 메뉴 id 묶음)이다. 메뉴가 바뀌면 다시 묻는다.
@@ -40,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 PROMPT_FILE = Path(__file__).parent / "prompts" / "menu_candidates_prompt.txt"
 MAX_CANDIDATES = 5
-MAX_REASON_LENGTH = 60
+MAX_REASON_LENGTH = 60  # 프롬프트는 40자 안쪽을 부탁하지만, 조금 넘긴 좋은 이유를 버리지 않으려고 검사는 60자까지 받는다
 TEMPERATURE = 0.2  # 결과를 기억해 다시 쓰므로 답이 흔들리지 않게 낮게
 MAX_TOKENS = 200
 TIMEOUT_SECONDS = 15
@@ -207,7 +208,9 @@ def _usable_reason(reason) -> str:
         reason = first
     if not reason or DIGIT_OR_PERCENT_RE.search(reason) or any(word in reason for word in BANNED_REASON_WORDS):
         return ""
-    return reason
+    if reason.endswith("요."):
+        return reason
+    return reason + "." if reason.endswith("요") else ""  # 카드 문구 끝맺음을 '~요.'로 맞춘다
 
 
 def forget_all() -> None:

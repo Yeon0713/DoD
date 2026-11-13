@@ -44,7 +44,7 @@ def test_returns_ranked_menu_ids_and_reason():
     fake = FakeClova({"menu_ids": ["2", "3"], "reason": "추운 날엔 따뜻한 국물이 잘 어울려요"})
     result = menu_candidates(STORE, MENUS, "WINTER", post=fake)
     assert result.menu_ids == ("2", "3")
-    assert result.reason == "추운 날엔 따뜻한 국물이 잘 어울려요"
+    assert result.reason == "추운 날엔 따뜻한 국물이 잘 어울려요."  # 마침표를 붙인다
     assert "겨울" in fake.user_text() and "온면" in fake.user_text()  # 상황 이름과 메뉴 목록만 보낸다
     assert fake.requests[-1]["temperature"] == 0.2
     assert fake.requests[-1]["maxTokens"] == 200
@@ -132,7 +132,7 @@ def test_unusable_reason_is_blanked_but_candidates_are_kept(reason):
         ("추운 날엔 온면이 잘 어울려요. 만두도 함께 먹기 좋아요.", "추운 날엔 온면이 잘 어울려요."),  # 여러 문장 → 첫 문장
         ("대학 축제엔 나눠 먹기 좋은 국수와 만두가 잘 어울려요. 김밥과 주먹밥 같은 가벼운 메뉴도 함께 먹기 좋아요.", "대학 축제엔 나눠 먹기 좋은 국수와 만두가 잘 어울려요."),  # 60자 초과 → 첫 문장
         ("추운 날엔 국물 메뉴를 찾을 만해요.\n만두도 좋아요.", "추운 날엔 국물 메뉴를 찾을 만해요."),  # 여러 줄 → 첫 문장
-        ("추운 날엔 따뜻해요", "추운 날엔 따뜻해요"),  # 한 문장이면 마침표가 없어도 그대로
+        ("추운 날엔 따뜻해요", "추운 날엔 따뜻해요."),  # 한 문장이 '~요'로 끝나면 마침표를 붙인다
     ],
     ids=["two_sentences", "too_long", "two_lines", "one_sentence"],
 )
@@ -144,7 +144,13 @@ def test_long_or_multi_sentence_reason_keeps_its_first_sentence(reason, kept):
 @pytest.mark.parametrize("reason", ["축제엔 국수가 잘 어울려요", "추운 날 찾을 만해요", "국물이 따뜻해요"])
 def test_reasons_about_how_well_menus_fit_are_allowed(reason):
     fake = FakeClova({"menu_ids": ["2"], "reason": reason})
-    assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == reason
+    assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == reason + "."
+
+
+@pytest.mark.parametrize("reason", ["국물이 좋습니다", "만두가 어울림", "잘 어울려요!", "어울려요~"])
+def test_reason_not_ending_with_yo_is_blanked(reason):
+    fake = FakeClova({"menu_ids": ["2"], "reason": reason})
+    assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == ""
 
 def test_clova_calls_are_recorded_as_menu_candidates_for_the_store(monkeypatch):
     seen = {}

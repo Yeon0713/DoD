@@ -22,7 +22,7 @@ from app.menu_board.menu_candidates import MAX_CANDIDATES, MenuCandidates
 from app.menu_board.menu_share_lift import ShareLift
 
 DATA_PRIOR_DAYS = 5  # 데이터 비중 w = n / (n + DATA_PRIOR_DAYS)
-NO_PICK_REASON = "추천할 메뉴를 찾지 못했어요"
+NO_PICK_REASON = "추천할 메뉴를 찾지 못했어요."
 _DIGITS = 9  # 점수를 견줄 때 남기는 소수 자리. 수학적으로 같은 점수가 부동소수 오차로 동점을 깨지 않게 한다
 
 

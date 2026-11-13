@@ -75,7 +75,7 @@ def test_all_zero_scores_keep_original_order_with_no_pick_reason():
     assert result.raised == ()
     assert ids(result.order) == ["1", "2", "3", "4", "5"]
     assert result.same_as_original is True
-    assert result.reason == NO_PICK_REASON == "추천할 메뉴를 찾지 못했어요"
+    assert result.reason == NO_PICK_REASON == "추천할 메뉴를 찾지 못했어요."
 
 
 def test_menus_already_on_top_are_same_as_original():

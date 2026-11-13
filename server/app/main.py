@@ -1,5 +1,6 @@
 import datetime as dt
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -11,6 +12,7 @@ from app.core.config import settings
 from app.core.error_response import register_error_handlers
 from app.core.seoul_time import clock_shift, now_seoul, set_clock_shift
 from app.modules import load_modules
+from app.weather.auto_refresh import AutoRefresh
 
 # 서버가 켜질 때마다 새로 정해지는 값. 앱이 이 값이 바뀐 것을 보면 이 기기에 저장한 값을 지우고 처음부터 시작한다.
 # (서버의 계산 결과와 고친 설정도 서버를 다시 켜면 사라지므로, 앱도 같이 처음 상태로 맞춘다)
@@ -20,8 +22,19 @@ BOOT_ID = uuid.uuid4().hex
 DEV_DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dev"
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """서버가 켜져 있는 동안 등록한 가게 날씨를 3시간마다 새로 받는다 (기상청 키가 있을 때만)."""
+    weather = AutoRefresh() if settings.kma_api_key else None
+    if weather:
+        weather.start()
+    yield
+    if weather:
+        weather.stop()
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
     # 모든 오류를 {"error": {"code", "message"}} 모양으로 통일
     register_error_handlers(app)

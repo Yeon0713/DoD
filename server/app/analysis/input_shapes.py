@@ -91,12 +91,12 @@ class Shift(BaseModel):
 
 
 class WeatherDay(BaseModel):
-    """하루 날씨. 지난날은 관측, 앞날은 예보로 본다."""
+    """하루 날씨. 지난날은 관측, 앞날은 예보로 본다. 모르는 값은 None (기상청 결측, 중기예보에는 강수량이 없음)."""
 
     date: dt.date
-    temp_max: float
-    temp_min: float
-    rain_mm: float
+    temp_max: float | None
+    temp_min: float | None
+    rain_mm: float | None
 
 
 class AnalysisInputs(BaseModel):

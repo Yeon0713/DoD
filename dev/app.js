@@ -3,7 +3,9 @@
 // 서버 글(리뷰, 가게 이름 등)은 모두 esc() 로 감싸서 HTML 로 해석되지 않게 한다.
 
 const API = "/api/dev_tools";
-const state = { tab: "overview", storeId: null, usageDays: 30 };
+const state = { tab: "status", storeId: null, usageDays: 30 };
+// 예전 탭 주소(#overview, #system, #usage, #quality)도 합친 탭으로 연다
+const TAB_ALIAS = { overview: "status", system: "status", usage: "ai", quality: "ai" };
 const content = document.getElementById("content");
 
 // ── 도우미 ──
@@ -66,11 +68,15 @@ function table(headers, rows) {
     <tbody>${rows.map((cells) => `<tr>${cells.map((c) => `<td>${c}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
 }
 
-// ── 탭: 개요 ──
+// ── 탭: 상태 (예전 개요 + 시스템) ──
 
-async function renderOverview() {
-  const o = await api(`${API}/overview`);
-  const shift = o.clock_shift_minutes ? ` (시계 +${Math.round(o.clock_shift_minutes / 60)}시간)` : "";
+async function renderStatus() {
+  const [o, s] = await Promise.all([api(`${API}/overview`), api(`${API}/system`)]);
+  const onOff = (v) => `<span class="dot ${v ? "on" : "off"}"></span>${v ? "켜짐" : "꺼짐"}`;
+  const has = (v) => `<span class="dot ${v ? "on" : "off"}"></span>${v ? "있음" : "없음"}`;
+  // 시연 단계는 시계를 과거로도 옮긴다 (예: -37시간). 부호를 그대로 보여 준다
+  const hours = Math.round(s.clock_shift_minutes / 60);
+  const shift = s.clock_shift_minutes ? ` (시계 ${hours > 0 ? "+" : ""}${hours}시간)` : "";
   return `
     <div class="stats">
       ${stat("총 매장", num(o.stores_total), `목업 ${o.stores_mock} · 등록 ${o.registered_stores}`, true)}
@@ -79,15 +85,42 @@ async function renderOverview() {
       ${stat("이번 달 CLOVA 비용", o.price_set ? won(o.clova_month.cost_won) : "단가 미설정", o.price_set ? `이번 달 예상 ${won(o.clova_month.projected_cost_won)}` : ".env 에 CLOVA_PRICE_*_PER_1K 를 넣어 주세요")}
     </div>
     <div class="grid-2">
-      <div class="card"><h2>업종 분포</h2>${bars(o.categories.map((c) => ({ label: c.name, value: c.count })), { valueText: (r) => `${r.value}곳` })}</div>
-      <div class="card"><h2>서버 상태</h2>
+      <div class="card"><h2>서버</h2>
         ${table(["항목", "값"], [
-          ["지금 서버 시각", `<span class="mono">${esc(time(o.now))}</span>${esc(shift)}`],
+          ["지금 서버 시각", `<span class="mono">${esc(time(s.now))}</span>${esc(shift)}`],
           ["계산해 둔 가게", `${o.computed_stores} / ${o.stores_total}곳`],
-          ["이번 달 CLOVA 호출", `${num(o.clova_month.calls)}번 (실패 ${num(o.clova_month.failed)})`],
-          ["이번 달 토큰", `입력 ${num(o.clova_month.input_tokens)} · 출력 ${num(o.clova_month.output_tokens)}`],
+          ["boot_id (서버가 켜질 때마다 바뀜)", `<span class="mono small">${esc(s.boot_id)}</span>`],
+        ])}
+        <div class="control-actions" style="margin-top:12px"><button class="btn-outline small" id="health">헬스체크 실행</button><span id="health-result" class="muted small"></span></div>
+      </div>
+      <div class="card"><h2>업종 분포</h2>${bars(o.categories.map((c) => ({ label: c.name, value: c.count })), { valueText: (r) => `${r.value}곳` })}</div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h2>설정 스위치 <span class="muted">server/.env</span></h2>
+        ${table(["이름", "상태"], [
+          ...Object.entries(s.switches).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, onOff(v)]),
+          ...Object.entries(s.values).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, `<span class="mono">${esc(v)}</span>`]),
         ])}
       </div>
+      <div class="card"><h2>API 키 <span class="muted">값은 보이지 않고 들어 있는지만</span></h2>
+        ${table(["이름", "상태"], Object.entries(s.keys).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, has(v)]))}
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><h2>저장소</h2>${table(["무엇", "어디"], Object.entries(s.storage).map(([k, v]) => [esc(k), `<span class="small">${esc(v)}</span>`]))}</div>
+      <div class="card"><h2>가게별 계산 <span class="muted">분석 + 계획 + 답글 초안</span></h2>
+        ${table(["가게", "마지막 계산", "걸린 시간"], s.compute.map((c) => [
+          `<span class="mono">${esc(c.store_id)}</span>`,
+          c.computed_at ? `<span class="mono small">${esc(time(c.computed_at))}</span>` : '<span class="muted small">아직</span>',
+          c.seconds != null ? `<span class="num">${c.seconds}초</span>` : "-",
+        ]))}
+      </div>
+    </div>
+    <div class="card"><h2>테스트 네이버 계정 <span class="muted">임시 네이버 로그인 화면에서 씀 (시험용 값)</span></h2>
+      ${table(["아이디", "비밀번호", "가게", "로그인하면"], s.test_accounts.map((a) => [
+        `<span class="mono">${esc(a.login_id)}</span>`, `<span class="mono">${esc(a.password)}</span>`,
+        a.store ? `<span class="tag blue">${esc(a.store)}</span>` : '<span class="muted small">없음</span>', esc(a.scenario),
+      ]))}
     </div>`;
 }
 
@@ -153,11 +186,18 @@ function heatmap(cells) {
     <div class="legend"><span><i style="background:rgba(30,158,90,.6)"></i>바쁨 (평소보다 15%↑)</span><span><i style="background:rgba(58,111,216,.5)"></i>한산 (15%↓)</span><span><i style="background:#eaf4ee"></i>이유는 있지만 보통</span><span>칸에 마우스를 올리면 이유가 보여요</span></div>`;
 }
 
+/** 분석·알림 타임라인은 보관해 둔 계산을 보여 준다 (탭을 열 때 다시 계산하거나 CLOVA 를 부르지 않는다) */
+function keptNote(computedAt) {
+  return `<div class="card kept"><span class="muted">${esc(state.storeId)} · <span class="mono">${esc(time(computedAt))}</span> 에 계산해 둔 결과예요</span>
+    <button class="btn-outline small" data-action="recompute">다시 계산</button></div>`;
+}
+
 async function renderAnalysis() {
   const a = await api(`${API}/analysis?store_id=${state.storeId}`);
   const rs = a.review_summary;
   const busy = a.calendar.filter((c) => c.signal === "HIGH");
   return `
+    ${keptNote(a.computed_at)}
     <div class="card"><h2>35일 달력 <span class="muted">${esc(a.store.name)} · ${esc(time(a.computed_at))} 계산 · 바쁜 칸 ${busy.length}개</span></h2>${heatmap(a.calendar)}</div>
     <div class="card"><h2>지난 4주 하루 매출 <span class="muted">마감이 지난 날만 (태성 sales_daily)</span></h2>
       ${columns(a.daily_sales, {
@@ -199,6 +239,7 @@ async function renderTimeline() {
   const rules = `<div class="card"><h2>알림 규칙 ${t.slots ? `<span class="muted">알림 시각: 출근 후 ${esc(t.slots.OPENING)} · 오후 ${esc(t.slots.AFTERNOON)} · 마감 전 ${esc(t.slots.CLOSING)}</span>` : ""}</h2>
     <ul class="rules">${t.rules?.map((r) => `<li>${esc(r)}</li>`).join("") ?? ""}</ul></div>`;
   if (t.unavailable) return `${rules}<div class="note">${esc(t.unavailable)}</div>`;
+  const kept = keptNote(t.computed_at);
   const now = t.now;
   const days = t.days
     .map((d) => {
@@ -229,10 +270,15 @@ async function renderTimeline() {
         ${d.date === now.slice(0, 10) ? '<span class="tag brand">오늘</span>' : ""}</div>${batches}</div>`;
     })
     .join("");
-  return `${rules}${days || '<div class="card"><div class="empty">이 기간에는 알림이 없어요</div></div>'}`;
+  return `${kept}${rules}${days || '<div class="card"><div class="empty">이 기간에는 알림이 없어요</div></div>'}`;
 }
 
-// ── 탭: AI 비용 ──
+// ── 탭: AI (예전 AI 비용 + AI 품질) ──
+
+async function renderAi() {
+  const [usage, quality] = await Promise.all([renderUsage(), renderQuality()]);
+  return `${usage}<h3 class="section-title">품질</h3>${quality}`;
+}
 
 async function renderUsage() {
   const u = await api(`${API}/ai_usage?days=${state.usageDays}`);
@@ -278,8 +324,6 @@ async function renderUsage() {
     </div>`;
 }
 
-// ── 탭: AI 품질 ──
-
 async function renderQuality() {
   const q = await api(`${API}/ai_quality?limit=60`);
   return `
@@ -307,50 +351,6 @@ async function renderQuality() {
     </div>`;
 }
 
-// ── 탭: 시스템 ──
-
-async function renderSystem() {
-  const s = await api(`${API}/system`);
-  const onOff = (v) => `<span class="dot ${v ? "on" : "off"}"></span>${v ? "켜짐" : "꺼짐"}`;
-  const has = (v) => `<span class="dot ${v ? "on" : "off"}"></span>${v ? "있음" : "없음"}`;
-  return `
-    <div class="card"><h2>API 상태</h2>
-      <div class="control-actions"><button class="btn" id="health">헬스체크 실행</button><span id="health-result" class="muted"></span></div>
-    </div>
-    <div class="grid-2">
-      <div class="card"><h2>설정 스위치 <span class="muted">server/.env</span></h2>
-        ${table(["이름", "상태"], [
-          ...Object.entries(s.switches).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, onOff(v)]),
-          ...Object.entries(s.values).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, `<span class="mono">${esc(v)}</span>`]),
-        ])}
-      </div>
-      <div class="card"><h2>API 키 <span class="muted">값은 보이지 않고 들어 있는지만</span></h2>
-        ${table(["이름", "상태"], Object.entries(s.keys).map(([k, v]) => [`<span class="mono small">${esc(k)}</span>`, has(v)]))}
-      </div>
-    </div>
-    <div class="grid-2">
-      <div class="card"><h2>저장소</h2>${table(["무엇", "어디"], Object.entries(s.storage).map(([k, v]) => [esc(k), `<span class="small">${esc(v)}</span>`]))}</div>
-      <div class="card"><h2>가게별 계산 <span class="muted">분석 + 계획 + 답글 초안</span></h2>
-        ${table(["가게", "마지막 계산", "걸린 시간"], s.compute.map((c) => [
-          `<span class="mono">${esc(c.store_id)}</span>`,
-          c.computed_at ? `<span class="mono small">${esc(time(c.computed_at))}</span>` : '<span class="muted small">아직</span>',
-          c.seconds != null ? `<span class="num">${c.seconds}초</span>` : "-",
-        ]))}
-      </div>
-    </div>
-    <div class="card"><h2>테스트 네이버 계정 <span class="muted">임시 네이버 로그인 화면에서 씀 (시험용 값)</span></h2>
-      ${table(["아이디", "비밀번호", "시나리오", "연결된 가게"], s.test_accounts.map((a) => [
-        `<span class="mono">${esc(a.login_id)}</span>`, `<span class="mono">${esc(a.password)}</span>`, esc(a.scenario),
-        a.linked_store ? `<span class="tag blue">${esc(a.linked_store)}</span>` : '<span class="muted small">없음</span>',
-      ]))}
-    </div>
-    <div class="card"><h2>서버</h2>${table(["항목", "값"], [
-      ["boot_id (서버가 켜질 때마다 바뀜)", `<span class="mono small">${esc(s.boot_id)}</span>`],
-      ["지금 서버 시각", `<span class="mono">${esc(time(s.now))}</span>`],
-      ["시계 앞당김", `${Math.round(s.clock_shift_minutes / 60)}시간`],
-    ])}</div>`;
-}
-
 // ── 탭: 조작 ──
 
 async function renderControls() {
@@ -363,21 +363,13 @@ async function renderControls() {
       <div class="control-row"><div><b>지금 가게 다시 계산</b><div class="desc">보관해 둔 분석·계획을 버리고 바로 다시 계산해요 (10분을 기다리지 않음)</div></div>
         <div class="control-actions"><button class="btn" data-action="recompute">${esc(state.storeId)} 다시 계산</button></div></div>
     </div>
-    <div class="card"><h2>가상 시각 <span class="muted">지금 앞당김 ${Math.round(s.clock_shift_minutes / 60)}시간 · 서버 시각 ${esc(time(s.now))}</span></h2>
-      <div class="control-row"><div><b>서버 시계 앞당기기</b><div class="desc">"내일 아침이면 어떤 알림이 뜰까?"를 바로 봐요. 앱도 서버와 같은 시각을 봐요</div></div>
-        <div class="control-actions">
-          <button class="btn-outline" data-clock="60" ${clockOn ? "" : "disabled"}>+1시간</button>
-          <button class="btn-outline" data-clock="360" ${clockOn ? "" : "disabled"}>+6시간</button>
-          <button class="btn-outline" data-clock="1440" ${clockOn ? "" : "disabled"}>+1일</button>
-          <button class="btn-outline" data-clock="saturday" ${clockOn ? "" : "disabled"}>이번 토요일 10:05</button>
-          <button class="btn" data-clock="reset" ${clockOn ? "" : "disabled"}>실제 시각으로</button>
-        </div></div>
+    <div class="card"><h2>서버 시계 <span class="muted">지금 앞당김 ${Math.round(s.clock_shift_minutes / 60)}시간 · 서버 시각 ${esc(time(s.now))}</span></h2>
+      <div class="control-row"><div><b>실제 시각으로</b><div class="desc">시연 탭이 단계마다 시계를 옮겨요. 시연을 마치면 여기서 실제 시각으로 돌려요</div></div>
+        <div class="control-actions"><button class="btn" data-clock="reset" ${clockOn ? "" : "disabled"}>실제 시각으로</button></div></div>
     </div>
     <div class="card"><h2>AI</h2>
       <div class="control-row"><div><b>카드 문장 다듬기 (CLOVA)</b><div class="desc">지금 ${s.switches.SENTENCE_POLISH_ENABLED ? "켜짐" : "꺼짐"}. 서버를 다시 켜면 .env 값으로 돌아가요</div></div>
         <div class="control-actions"><button class="btn-outline" data-polish="${s.switches.SENTENCE_POLISH_ENABLED ? "off" : "on"}">${s.switches.SENTENCE_POLISH_ENABLED ? "끄기" : "켜기"}</button></div></div>
-      <div class="control-row"><div><b>CLOVA 사용 기록 지우기</b><div class="desc">AI 비용·품질 탭의 기록을 처음부터 다시 쌓아요</div></div>
-        <div class="control-actions"><button class="btn-danger" data-action="clear-log">기록 지우기</button></div></div>
     </div>
     <div class="card"><h2>처음 상태로</h2>
       <div class="control-row"><div><b>데모 초기화</b><div class="desc">등록한 가게, 불러온 리뷰, 로그인 기록, 고친 설정, 계산 결과를 지우고 시계를 실제 시각으로 돌려요. 목업 가게(s001~s003)는 그대로예요</div></div>
@@ -388,38 +380,45 @@ async function renderControls() {
 }
 
 async function moveClock(kind) {
-  const s = await api(`${API}/system`);
-  let minutes = s.clock_shift_minutes;
-  if (kind === "reset") minutes = 0;
-  else if (kind === "saturday") {
-    // 서버 시각(앞당긴 시각) 기준으로 이번 토요일 10:05 까지 남은 분만큼 더 앞당긴다. 이미 지났으면 다음 주 토요일
-    const now = new Date(s.now);
-    const today = s.now.slice(0, 10);
-    const weekday = new Date(`${today}T12:00:00+09:00`).getUTCDay(); // 0=일 ~ 6=토 (서울 날짜 기준)
-    let target = new Date(new Date(`${today}T10:05:00+09:00`).getTime() + ((6 - weekday + 7) % 7) * 86400e3);
-    if (target <= now) target = new Date(target.getTime() + 7 * 86400e3);
-    minutes += Math.round((target - now) / 60000);
-  } else minutes += Number(kind);
-  const r = await api(`/dev/clock?hours=${minutes / 60}`, { method: "POST" });
+  if (kind !== "reset") return;
+  const r = await api("/dev/clock?hours=0", { method: "POST" });
   toast(`서버 시각 ${time(r.now)}`);
 }
 
 // ── 탭: 시연 (Figma UC01~UC16) ──
-// 가게를 고르면 서버가 그 가게 시연 기간(2주)을 훑어 UC01~UC16 단계를 만든다 (/api/dev_tools/demo_steps).
+// 가게는 위 "가게" 고르기로 고른다. 서버가 그 가게 시연 기간(2주)을 훑어 UC01~UC16 단계를 만든다 (/api/dev_tools/demo_steps).
+// 서버는 켜질 때 모든 가게를 미리 훑어 두고 결과를 파일에도 남긴다. 아직이면 "n / 42" 진행을 보여 준다 (/demo_progress).
 // 단계를 누르면 서버 시계를 그 단계 시각으로 옮기고(demo_go), 오른쪽 휴대폰 틀에 앱 입구(/demo-jump)를 연다.
+// [앱 홈]은 시계를 옮기지 않고 지금 서버 시각의 앱 홈을 연다. 휴대폰 틀은 처음에도 앱 홈을 띄워 둔다.
 // 휴대폰 틀이 다시 그려지지 않도록, 이 탭의 버튼은 화면 전체를 다시 그리지 않고 필요한 곳만 바꾼다.
 
 const DEMO_APP_KEY = "dona-dev-app-url";
-const demo = { steps: {}, index: -1, appUrl: (() => { try { return localStorage.getItem(DEMO_APP_KEY) || "http://localhost:8082"; } catch { return "http://localhost:8082"; } })() };
+// 휴대폰 틀은 앱을 127.0.0.1 로 띄운다. 평소 쓰는 앱(localhost:8082)과 브라우저 저장 공간이 따로라서,
+// 시연 단계가 휴대폰 틀에 넣는 로그인·가게·카드 상태가 평소 앱에 남지 않는다 (주소가 다르면 저장 공간도 다르다).
+const DEMO_APP_DEFAULT = "http://127.0.0.1:8082";
+/** 예전에 기억한 localhost 주소는 127.0.0.1 로 바꿔 쓴다 (같은 저장 공간을 쓰지 않게) */
+const demoAppUrlOf = (url) => url.replace(/^(https?:\/\/)localhost(?=[:/]|$)/, "$1127.0.0.1");
+const DEMO_POLISH_KEY = "dona-dev-demo-polish";
+const saved = (key, fallback) => { try { return localStorage.getItem(key) ?? fallback; } catch { return fallback; } };
+const demo = {
+  steps: {},
+  index: -1,
+  appUrl: demoAppUrlOf(saved(DEMO_APP_KEY, DEMO_APP_DEFAULT)),
+  polish: saved(DEMO_POLISH_KEY, "off") === "on", // 시연 중 카드 문장 다듬기(CLOVA). 기본은 끔
+};
 
-function demoJumpUrl(step) {
+function demoJumpUrl(open) {
   const q = new URLSearchParams({ store: state.storeId, t: String(Date.now()) });
-  for (const [k, v] of Object.entries(step.open)) {
+  // 대시보드에 시연용 마우스 표시를 켰으면(?cursor=1, cursor.js) 휴대폰 틀 속 앱에도 켠다 (앱 DemoCursor)
+  if (saved("dona-dev-cursor", "") === "1") q.set("cursor", "1");
+  for (const [k, v] of Object.entries(open)) {
     if (v === true) q.set(k, "1");
     else if (v !== null && v !== undefined && v !== false && k !== "note") q.set(k, String(v));
   }
   return `${demo.appUrl.replace(/\/+$/, "")}/demo-jump?${q}`;
 }
+
+const demoHomeUrl = () => demoJumpUrl({ to: "/" });
 
 function demoStepRow(step, i) {
   const at = step.at_label ? `<span class="mono small">${esc(step.at_label)}</span>` : "";
@@ -432,10 +431,46 @@ function demoStepRow(step, i) {
     <div><div>${esc(step.title)}${note}</div><div class="muted small">${at}</div></div></button>`;
 }
 
+/** 가게마다 시연 준비 상태 한 줄 */
+function demoReadyRows(p, names) {
+  return Object.entries(p.ready)
+    .map(([sid, ready]) => {
+      const run = p.progress[sid];
+      const label = ready ? '<span class="tag ok">준비됨</span>' : run ? `<span class="tag warn">훑는 중 ${run.done} / ${run.total}</span>` : '<span class="tag">아직</span>';
+      return `<div class="demo-ready ${sid === state.storeId ? "on" : ""}"><span>${esc(names[sid] ?? sid)} <span class="muted small mono">${esc(sid)}</span></span>${label}</div>`;
+    })
+    .join("");
+}
+
+/** 시연 단계를 기다리는 동안 "n / 42" 를 보여 준다 */
+async function demoSteps(storeId) {
+  if (demo.steps[storeId]) return demo.steps[storeId];
+  let waiting = true;
+  const poll = async () => {
+    while (waiting) {
+      try {
+        const p = await api(`${API}/demo_progress`);
+        const run = p.progress[storeId];
+        const el = document.getElementById("demo-loading");
+        if (el) el.textContent = run ? `시연 기간을 훑는 중… ${run.done} / ${run.total}` : "시연 기간을 준비하는 중…";
+      } catch {}
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  };
+  poll();
+  try {
+    demo.steps[storeId] = await api(`${API}/demo_steps?store_id=${storeId}`);
+  } finally {
+    waiting = false;
+  }
+  return demo.steps[storeId];
+}
+
 async function renderDemo() {
-  const stores = await api(`${API}/stores`);
-  if (!demo.steps[state.storeId]) demo.steps[state.storeId] = await api(`${API}/demo_steps?store_id=${state.storeId}`);
-  const d = demo.steps[state.storeId];
+  const d = await demoSteps(state.storeId);
+  // 준비 상태는 없어도 시연은 된다 (예전 서버처럼 demo_progress 가 없으면 준비 줄만 빼고 그린다)
+  const [stores, p] = await Promise.all([api(`${API}/stores`), api(`${API}/demo_progress`).catch(() => null)]);
+  const names = Object.fromEntries(stores.map((s) => [s.store_id, s.name]));
   const available = d.steps.filter((s) => s.available).length;
   const groups = d.ucs
     .map((uc) => {
@@ -448,27 +483,30 @@ async function renderDemo() {
     .join("");
   return `
     <div class="demo-layout" data-demo>
-      <div class="card demo-stores"><h2>가게</h2>
-        ${stores.map((s) => `<button class="demo-store ${s.store_id === state.storeId ? "on" : ""}" data-demo-store="${esc(s.store_id)}">
-          <b>${esc(s.name)}</b><div class="muted small">${esc(s.store_id)} · ${esc(s.category)} ${s.kind === "registered" ? "· 등록" : ""}</div></button>`).join("")}
+      <div class="card demo-stores"><h2>시연 도구</h2>
+        <div class="muted small">가게는 위 "가게"에서 골라요</div>
         <div class="demo-tools">
           <label class="muted small">앱 주소<input id="demo-app-url" value="${esc(demo.appUrl)}"></label>
+          <label class="demo-check"><input type="checkbox" id="demo-polish" ${demo.polish ? "checked" : ""}> 단계마다 문장 다듬기 (CLOVA)</label>
+          <button class="btn small" data-demo-action="clock-reset">시연 끝내기 (시계를 실제 시각으로)</button>
           <button class="btn-outline small" data-demo-action="rescan">이 가게 다시 훑기</button>
-          <button class="btn-outline small" data-demo-action="clock-reset">시계 실제 시각으로</button>
+          <div class="muted small">휴대폰 틀은 앱을 127.0.0.1 로 띄워서, 평소 쓰는 앱(localhost:8082)의 로그인·가게 상태는 바뀌지 않아요. 서버 시계는 하나라서 시연을 마치면 [시연 끝내기]를 눌러 주세요.</div>
         </div>
-      </div>
-      <div class="card demo-steps"><h2>${esc(d.store.name)} <span class="muted">시연 기간 ${esc(d.demo_week.first)} ~ ${esc(d.demo_week.last)} · 열 수 있는 화면 ${available} / ${d.steps.length}</span></h2>
-        ${d.unavailable ? `<div class="note">${esc(d.unavailable)}</div>` : ""}
-        ${groups}
+        ${p ? `<div class="demo-tools"><div class="muted small">시연 준비</div>${demoReadyRows(p, names)}</div>` : ""}
       </div>
       <div class="demo-phone-col">
         <div class="demo-nav">
           <button class="btn-outline" data-demo-action="prev">◀ 이전</button>
-          <div id="demo-now" class="small muted">단계를 누르거나 다음을 눌러 시작해요</div>
+          <button class="btn-outline" data-demo-action="home">앱 홈</button>
           <button class="btn" data-demo-action="next">다음 ▶</button>
         </div>
-        <div class="demo-phone"><iframe id="demo-frame" title="도나 앱" src="about:blank"></iframe></div>
+        <div id="demo-now" class="small muted demo-now">지금 서버 시각의 앱 홈이에요. 단계를 누르거나 다음을 눌러 시작해요</div>
+        <div class="demo-phone"><iframe id="demo-frame" title="도나 앱" src="${esc(demoHomeUrl())}"></iframe></div>
         <div class="muted small">앱은 <span class="mono">cd mobile && npm run web</span> 로 켜 두세요. 서버는 DEV_CLOCK_ENABLED=true 여야 시계를 옮길 수 있어요.</div>
+      </div>
+      <div class="card demo-steps"><h2>${esc(d.store.name)} <span class="muted">시연 기간 ${esc(d.demo_week.first)} ~ ${esc(d.demo_week.last)} · 열 수 있는 화면 ${available} / ${d.steps.length}</span></h2>
+        ${d.unavailable ? `<div class="note">${esc(d.unavailable)}</div>` : ""}
+        ${groups}
       </div>
     </div>`;
 }
@@ -481,12 +519,16 @@ async function openDemoStep(i) {
   document.querySelectorAll(".demo-step.on").forEach((el) => el.classList.remove("on"));
   const row = document.getElementById(`demo-step-${i}`);
   row?.classList.add("on");
-  row?.scrollIntoView({ block: "nearest" });
+  // 단계 목록 칸 안에서만 굴린다 (페이지 전체를 굴리면 좁은 화면에서 휴대폰 틀이 화면 밖으로 밀린다)
+  const box = row?.closest(".demo-steps");
+  if (row && box) box.scrollTop += row.getBoundingClientRect().top - box.getBoundingClientRect().top - box.clientHeight / 3;
   const label = document.getElementById("demo-now");
   label.textContent = `${step.uc} · ${step.figma} 여는 중…`;
-  if (step.at) await api(`${API}/demo_go`, { method: "POST", body: JSON.stringify({ store_id: state.storeId, at: step.at }) });
-  document.getElementById("demo-frame").src = demoJumpUrl(step);
+  if (step.at) await api(`${API}/demo_go`, { method: "POST", body: JSON.stringify({ store_id: state.storeId, at: step.at, polish: demo.polish }) });
+  document.getElementById("demo-frame").src = demoJumpUrl(step.open);
   label.textContent = `${step.uc} · ${step.figma} ${step.title}${step.at_label ? ` · 서버 시각 ${step.at_label}` : ""}`;
+  // 좁은 화면(한 줄로 쌓임)에서는 휴대폰 틀이 단계 목록 위에 있어서, 바뀐 화면이 보이게 휴대폰 틀로 올린다
+  if (window.matchMedia("(max-width: 1200px)").matches) document.querySelector(".demo-phone-col")?.scrollIntoView({ block: "start", behavior: "smooth" });
   checkServer();
 }
 
@@ -497,14 +539,13 @@ function nextDemoIndex(direction) {
 }
 
 async function onDemoClick(button) {
-  const { demoStep, demoStore, demoAction } = button.dataset;
+  const { demoStep, demoAction } = button.dataset;
   if (demoStep !== undefined) return openDemoStep(Number(demoStep));
-  if (demoStore) {
-    state.storeId = demoStore;
-    demo.index = -1;
-    document.getElementById("store-select").value = demoStore;
-    try { localStorage.setItem("dona-dev-store", demoStore); } catch {}
-    return show("demo");
+  if (demoAction === "home") {
+    document.querySelectorAll(".demo-step.on").forEach((el) => el.classList.remove("on"));
+    document.getElementById("demo-frame").src = demoHomeUrl();
+    document.getElementById("demo-now").textContent = "지금 서버 시각의 앱 홈이에요";
+    return;
   }
   if (demoAction === "next" || demoAction === "prev") {
     const i = nextDemoIndex(demoAction === "next" ? 1 : -1);
@@ -512,14 +553,18 @@ async function onDemoClick(button) {
   }
   if (demoAction === "rescan") {
     button.disabled = true;
-    toast("시연 기간을 다시 훑어요 (30초쯤)");
+    toast("시연 기간을 다시 훑어요 (10초쯤)");
     demo.steps[state.storeId] = await api(`${API}/demo_rescan?store_id=${state.storeId}`, { method: "POST" });
     demo.index = -1;
     return show("demo");
   }
   if (demoAction === "clock-reset") {
     const r = await api(`${API}/demo_clock_reset?store_id=${state.storeId}`, { method: "POST" });
-    toast(`서버 시각 ${time(r.now)}`);
+    toast(`시연을 끝냈어요 · 서버 시각 ${time(r.now)}`);
+    document.querySelectorAll(".demo-step.on").forEach((el) => el.classList.remove("on"));
+    demo.index = -1;
+    document.getElementById("demo-frame").src = demoHomeUrl();
+    document.getElementById("demo-now").textContent = "시연을 끝냈어요. 실제 시각의 앱 홈이에요";
     return checkServer();
   }
 }
@@ -527,8 +572,9 @@ async function onDemoClick(button) {
 // ── 탭: 화면 글 (앱 화면의 글을 화면별로 보고 고쳐서 앱 코드에 넣기) ──
 // 서버가 mobile/scripts/ui-text/cli.mjs 를 불러 글을 뽑고(GET ui_text), 저장하고(save), 코드에 넣는다(apply).
 // [수정] 칸에 적으면 0.6초 뒤 mobile/scripts/ui-text/edits.json 에 저장된다. 넣은 수정은 edits.json 에서 빠지고 원본이 수정본으로 바뀐다.
+// 밖에서 고치기: [JSON 내려받기] 로 모든 원본 + 빈 "수정" 칸 파일을 받고, 고친 파일을 [JSON 등록] 으로 올리면 수정에 더해진다(export, import).
 
-const ut = { data: null, edits: {}, items: new Map(), current: null, q: "", saveTimer: null, result: null };
+const ut = { data: null, edits: {}, items: new Map(), current: null, q: "", saveTimer: null, result: null, imported: null };
 const UT_SECTION = { screen: "화면", shared: "여러 화면이 같이 쓰는 글", unused: "쓰는 곳을 못 찾은 글" };
 
 function utPlaceholders(text) {
@@ -632,8 +678,19 @@ function utResultHtml(r) {
     <button class="btn-outline small" data-ut="close-result">닫기</button></div>`;
 }
 
+function utImportHtml(r) {
+  const skipped = r.skipped.length
+    ? `<div class="small ut-fail">못 담은 글 ${r.skipped.length}개: 고쳐서 다시 올려 주세요</div>
+      <ul>${r.skipped.map((s) => `<li><span class="muted small">${esc(s.screen || "")}</span> <span class="mono small">${esc(s.where)}</span> <span class="ut-from">${esc(s.original)}</span> → <span class="ut-to">${esc(s.edited)}</span><div class="small ut-fail">${esc(s.reason)}</div></li>`).join("")}</ul>`
+    : "";
+  return `<div class="card ut-panel ${r.skipped.length ? "bad" : ""}"><h2>${esc(r.name)} 등록: 고친 글 ${r.asked}개 중 ${r.loaded.length}개를 담았어요</h2>
+    <div class="muted small">담은 글은 아래 화면들에 노란색으로 보여요. 확인한 뒤 [코드에 넣기]를 누르면 앱에 반영돼요.</div>
+    ${skipped}<button class="btn-outline small" data-ut="close-import">닫기</button></div>`;
+}
+
 function utMainHtml() {
   let html = ut.result ? utResultHtml(ut.result) : "";
+  if (ut.imported) html += utImportHtml(ut.imported);
   const stale = ut.data.stale || [];
   if (stale.length) {
     html += `<div class="card ut-panel bad"><h2>원본을 못 찾은 수정 ${stale.length}개</h2>
@@ -698,6 +755,9 @@ async function renderUiText() {
       <span id="ut-stat" class="muted small"></span>
       <input id="ut-q" type="search" placeholder="글 찾기 (모든 화면에서)" value="${esc(ut.q)}">
       <span id="ut-saved" class="muted small"></span>
+      <button class="btn-outline" data-ut="export" title="모든 화면의 원본 글과 빈 '수정' 칸이 든 파일. 밖에서 '수정'만 채워 다시 올리면 돼요">JSON 내려받기</button>
+      <button class="btn-outline" data-ut="import" title="밖에서 '수정'을 채운 JSON 파일 올리기">JSON 등록</button>
+      <input id="ut-file" type="file" accept=".json,application/json" hidden>
       <button class="btn-outline" data-ut="save">저장</button>
       <button class="btn" data-ut="apply">코드에 넣기</button>
     </div>
@@ -744,6 +804,18 @@ async function onUiTextClick(button) {
   if (action === "save") return utSave();
   if (action === "apply") return utConfirmApply();
   if (action === "cancel") return document.getElementById("ut-dialog").close();
+  if (action === "export") {
+    const a = document.createElement("a");
+    a.href = `${API}/ui_text/export`;
+    a.download = "";
+    a.click();
+    return toast("JSON 을 내려받는 중… '수정' 칸만 채워서 [JSON 등록]으로 올려 주세요");
+  }
+  if (action === "import") return document.getElementById("ut-file").click();
+  if (action === "close-import") {
+    ut.imported = null;
+    return utRedraw({ nav: false });
+  }
   if (action === "close-result") {
     ut.result = null;
     return utRedraw({ nav: false });
@@ -754,11 +826,33 @@ async function onUiTextClick(button) {
     clearTimeout(ut.saveTimer);
     ut.saveTimer = null;
     ut.result = await api(`${API}/ui_text/apply`, { method: "POST", body: JSON.stringify({ edits: ut.edits }) });
+    ut.imported = null;
     document.getElementById("ut-dialog").close();
     await utLoad();
     utRedraw();
     return window.scrollTo({ top: 0 });
   }
+}
+
+async function utImportFile(input) {
+  const file = input.files[0];
+  input.value = "";
+  if (!file) return;
+  let doc;
+  try {
+    doc = JSON.parse(await file.text());
+  } catch {
+    return toast(`${file.name} 을 읽지 못했어요. JSON 모양이 깨졌는지 봐 주세요 (쉼표, 따옴표)`);
+  }
+  if (ut.saveTimer) await utSave();
+  const r = await api(`${API}/ui_text/import`, { method: "POST", body: JSON.stringify(doc) });
+  ut.imported = { ...r, name: file.name };
+  ut.result = null;
+  await utLoad();
+  utRedraw();
+  window.scrollTo({ top: 0 });
+  if (r.loaded.length) utConfirmApply();
+  else toast("담은 글이 없어요. '수정' 칸을 채웠는지 봐 주세요");
 }
 
 function onUiTextInput(target) {
@@ -782,26 +876,26 @@ function onUiTextInput(target) {
 
 const RENDER = {
   demo: renderDemo,
-  overview: renderOverview,
+  status: renderStatus,
   stores: renderStores,
   analysis: renderAnalysis,
   timeline: renderTimeline,
-  usage: renderUsage,
-  quality: renderQuality,
-  system: renderSystem,
+  ai: renderAi,
   controls: renderControls,
   uitext: renderUiText,
 };
 
+/** 주소의 탭 이름 → 있는 탭 이름 (예전 이름도 받음). 모르면 null */
+const tabOf = (name) => (RENDER[name] ? name : TAB_ALIAS[name] ?? null);
+
 async function show(tab = state.tab) {
+  tab = tabOf(tab) ?? "status";
   state.tab = tab;
   try { localStorage.setItem("dona-dev-tab", tab); } catch {}
   if (location.hash !== `#${tab}`) history.replaceState(null, "", `#${tab}`);
   document.querySelectorAll("#tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
-  const loading = tab === "demo" && !demo.steps[state.storeId]
-    ? "시연 기간을 훑는 중… (가게마다 처음 한 번 30초쯤 걸려요)"
-    : "불러오는 중… (가게를 처음 계산하면 몇 초 걸려요)";
-  content.innerHTML = `<div class="card"><div class="empty">${loading}</div></div>`;
+  const loading = tab === "demo" && !demo.steps[state.storeId] ? "시연 기간을 준비하는 중…" : "불러오는 중… (가게를 처음 계산하면 몇 초 걸려요)";
+  content.innerHTML = `<div class="card"><div class="empty" id="demo-loading">${loading}</div></div>`;
   try {
     content.innerHTML = await RENDER[tab]();
     if (tab === "uitext") utRedraw();
@@ -846,6 +940,7 @@ document.getElementById("tabs").addEventListener("click", (e) => {
 document.getElementById("refresh").addEventListener("click", () => { checkServer(); show(); });
 document.getElementById("store-select").addEventListener("change", (e) => {
   state.storeId = e.target.value;
+  demo.index = -1;
   try { localStorage.setItem("dona-dev-store", state.storeId); } catch {}
   show();
 });
@@ -900,10 +995,6 @@ content.addEventListener("click", async (e) => {
       const r = await api(`${API}/recompute?store_id=${state.storeId}`, { method: "POST" });
       toast(`${r.store_id} 다시 계산 · ${r.seconds}초`);
     }
-    if (action === "clear-log" && confirm("CLOVA 사용 기록을 모두 지울까요?")) {
-      await api(`${API}/clova_log/clear`, { method: "POST" });
-      toast("CLOVA 기록을 지웠어요");
-    }
     if (action === "reset" && confirm("등록한 가게, 로그인 기록, 고친 설정, 계산 결과를 지울까요?")) {
       const r = await api("/dev/reset", { method: "POST" });
       toast(`초기화 · 지운 가게 ${r.removed_stores?.length ?? 0}곳`);
@@ -917,22 +1008,35 @@ content.addEventListener("click", async (e) => {
   }
 });
 
+// 주소 끝 #탭이름 을 바꾸면 그 탭으로 (링크로 탭을 열 수 있게)
+window.addEventListener("hashchange", () => {
+  const tab = tabOf(location.hash.slice(1));
+  if (tab && tab !== state.tab) show(tab);
+});
+
 content.addEventListener("input", (e) => {
   if (e.target.closest("[data-uitext]")) onUiTextInput(e.target);
 });
 
 content.addEventListener("change", (e) => {
+  if (e.target.id === "ut-file") return utImportFile(e.target).catch((error) => toast(error.message));
+  if (e.target.id === "demo-polish") {
+    demo.polish = e.target.checked;
+    try { localStorage.setItem(DEMO_POLISH_KEY, demo.polish ? "on" : "off"); } catch {}
+    return toast(`단계마다 문장 다듬기 ${demo.polish ? "켬" : "끔"}`);
+  }
   if (e.target.id !== "demo-app-url") return;
-  demo.appUrl = e.target.value.trim() || "http://localhost:8082";
+  demo.appUrl = demoAppUrlOf(e.target.value.trim() || DEMO_APP_DEFAULT);
+  e.target.value = demo.appUrl;
   try { localStorage.setItem(DEMO_APP_KEY, demo.appUrl); } catch {}
   toast(`앱 주소 ${demo.appUrl}`);
 });
 
 (async function start() {
   // 주소 끝의 #analysis 같은 탭 이름이 있으면 그 탭부터 연다. 없으면 지난번에 본 탭
-  const fromHash = location.hash.slice(1);
-  if (RENDER[fromHash]) state.tab = fromHash;
-  else try { state.tab = localStorage.getItem("dona-dev-tab") || state.tab; } catch {}
+  const fromHash = tabOf(location.hash.slice(1));
+  if (fromHash) state.tab = fromHash;
+  else try { state.tab = tabOf(localStorage.getItem("dona-dev-tab")) || state.tab; } catch {}
   await checkServer();
   await loadStores();
   show();

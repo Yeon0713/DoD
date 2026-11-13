@@ -17,6 +17,7 @@ import { naverLogin, sendPhoneCode, verifyPhoneCode } from "@/lib/actions";
 import { api, ApiFailure } from "@/lib/api";
 import { flashToast, prefs } from "@/lib/localStore";
 import { goToNaverLogin, naverErrorText, naverProfile, readNaverResult, useRealNaver } from "@/lib/naverDemo";
+import { onTestLogin } from "@/lib/testAccount";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import { DemoMenuBar } from "./DemoMenu";
@@ -123,11 +124,13 @@ export function NaverLoginScreen() {
       if (!real) return naverLogin();
       // 처음 돌아왔을 때만 돌아온 값을 본다. 다시 하기를 누르면 네이버 화면부터 다시 연다.
       if (tries === 0 && ticket)
-        return readNaverResult(ticket).then((value) => {
+        return readNaverResult(ticket).then(async (value) => {
           naverProfile.write({ value });
           // 이 계정의 가게로 바꾸고, 앞서 본 다른 가게 데이터는 지운다
           account.write({ storeId: value.storeId });
           qc.clear();
+          // 테스트 계정: 서버 DB 조건대로 이 기기 기록을 지우거나(reset) 되살리고(keep), 옮긴 서버 시계를 다시 읽는다
+          if (value.testAccount) await onTestLogin(value.testAccount);
         });
       if (tries === 0 && naverError) return Promise.reject(new Error(naverError));
       // 바로 네이버 로그인 화면으로 옮긴다 (개발 모드에서 효과가 두 번 돌아도 살아 있는 쪽만 옮긴다).
@@ -449,7 +452,7 @@ export function CodeScreen() {
       }
     >
       <Text className="pt-4 text-display text-ink" accessibilityRole="header">
-        {"문자로 온\n숫자 6개를 적어 주세요"}
+        {"문자로 온 숫자 6자리를 입력해주세요."}
       </Text>
       <Text className="mt-2 text-body text-ink-2">{formatPhone(phone)}로 보냈어요</Text>
       <View testID="code-boxes" className="mt-6 flex-row gap-2">

@@ -47,7 +47,7 @@ export function IntroScreen() {
       <View className="flex-1 justify-between gap-4 px-6 pb-7">
         <View className="flex-row items-center justify-center gap-2">
           <View className="h-0.5 w-5 bg-line" />
-          <Text className="text-small text-ink-3">사장님을 위한 AI 매장 비서</Text>
+          <Text className="text-small text-ink-3">사장님을 위한 AI 비서</Text>
           <View className="h-0.5 w-5 bg-line" />
         </View>
         <View className="items-center gap-1">

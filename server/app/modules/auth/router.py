@@ -25,7 +25,10 @@ from app.core.config import settings
 from app.core.error_response import ApiError
 from app.data_pipeline import registered_stores
 from app.data_pipeline.read_store_db import list_store_ids, read_store
-from app.modules.auth.test_accounts import TEST_ACCOUNTS, find_account
+from app.core.seoul_time import clock_shift, now_seoul, set_clock_shift, to_seoul
+from app.data_pipeline import store_snapshot_cache
+from app.modules.auth import test_accounts
+from app.modules.auth.test_accounts import find_account, where_it_goes
 
 router = APIRouter()
 
@@ -109,8 +112,10 @@ def naver_callback(
         return _back_with(back, error=error or "NO_CODE", detail=error_description or "")
 
     test_login_id = _mock_codes.pop(code, None)
+    account = test_accounts.by_login_id(test_login_id) if test_login_id is not None else None
     if test_login_id is not None:
-        account = next(a for a in TEST_ACCOUNTS if a["login_id"] == test_login_id)
+        if account is None:  # 로그인하는 사이에 DB 에서 계정을 지웠다
+            return _back_with(back, error="TEST_ACCOUNT_GONE")
         profile, access_token, expires_in = dict(account["profile"]), None, 3600
     else:
         try:
@@ -134,8 +139,14 @@ def naver_callback(
         if answer.get("resultcode") != "00":
             return _back_with(back, error="PROFILE_FAILED", detail=answer.get("message", ""))
         profile, expires_in = answer.get("response", {}), int(token.get("expires_in", 0) or 0)
-    # 네이버 로그인은 어느 가게 사장님인지 알려 주지 않는다. 이 계정으로 등록해 둔 가게가 있으면 그 가게로 들어온다
-    store_id = registered_stores.store_for_owner(f"naver:{profile.get('id')}")
+    # 네이버 로그인은 어느 가게 사장님인지 알려 주지 않는다. 이 계정으로 등록해 둔 가게가 있으면 그 가게로 들어온다.
+    # 테스트 계정은 DB(test_accounts.db)의 조건을 따른다: 매번 가게 찾기, 정해 둔 가게, 정해 둔 장면 시각
+    if account is not None:
+        store_id = test_accounts.login_store(account)
+        scene_at = _apply_scene(account, store_id)
+    else:
+        store_id = registered_stores.store_for_owner(f"naver:{profile.get('id')}")
+        scene_at = None
 
     ticket = secrets.token_urlsafe(24)
     _results[ticket] = {
@@ -145,8 +156,37 @@ def naver_callback(
         "token_expires_in": expires_in,
         "store_id": store_id,
         "test": test_login_id is not None,
+        "test_account": {"login_id": account["login_id"], "on_logout": account["on_logout"], "scene_at": scene_at} if account else None,
     }
     return _back_with(back, ticket=ticket)
+
+
+def _apply_scene(account: dict, store_id: str | None) -> str | None:
+    """테스트 계정에 정해 둔 장면 시각(scene_at)이 있으면 서버 시계를 그 시각으로 옮기고 그 가게를 다시 계산하게 한다.
+    서버를 DEV_CLOCK_ENABLED=true 로 켰을 때만. 옮긴 시각을 돌려준다 (앱이 같은 시각을 보게)."""
+    if not account["scene_at"] or not settings.dev_clock_enabled:
+        return None
+    at = to_seoul(dt.datetime.fromisoformat(account["scene_at"]))
+    set_clock_shift(at - (now_seoul() - clock_shift()))
+    if store_id:
+        store_snapshot_cache.forget(store_id)
+    return at.isoformat()
+
+
+@router.post("/test/logout", summary="테스트 계정 로그아웃 (DB 조건 on_logout 대로)")
+def test_logout(body: dict):
+    """앱이 테스트 계정으로 로그아웃할 때 부른다. on_logout 이 reset 이면 그 가게의 고친 설정·계산을 지우고 서버 시계를 실제 시각으로 돌린다.
+    앱은 돌려받은 on_logout 으로 이 기기 기록을 지우거나(reset) 계정별로 보관한다(keep)."""
+    account = test_accounts.by_login_id(str(body.get("login_id", "")))
+    if account is None:
+        raise ApiError(404, "TEST_ACCOUNT_NOT_FOUND", "테스트 계정이 아니에요")
+    if account["on_logout"] == "reset":
+        store_id = test_accounts.login_store(account)
+        if store_id:
+            store_snapshot_cache.reset_store(store_id)
+        if settings.dev_clock_enabled:
+            set_clock_shift(dt.timedelta(0))
+    return {"login_id": account["login_id"], "on_logout": account["on_logout"]}
 
 
 @router.get("/naver/result/{ticket}", summary="네이버에서 받은 정보")
@@ -166,6 +206,8 @@ def naver_result(ticket: str):
         # 이 네이버 계정으로 등록해 둔 가게. 없으면 앱이 가게 등록(네이버 지도에서 찾기)으로 보낸다
         "store_id": store_id,
         "store_name": read_store(store_id)["name"] if store_id else None,
+        # 테스트 계정이면 DB 조건: {"login_id", "on_logout": "reset"|"keep", "scene_at": 옮긴 서버 시각 또는 null}
+        "test_account": result.get("test_account"),
     }
 
 
@@ -202,6 +244,10 @@ async def _form(request: Request) -> dict[str, str]:
     return {key: values[0] for key, values in parse_qs(body, keep_blank_values=True).items()}
 
 
+# 개발자 대시보드를 켰으면 시연용 마우스 표시(dev/cursor.js)를 이 화면에도 붙인다. 앱·대시보드와 같이 ?cursor=1 로 켠 브라우저에서만 보인다
+_CURSOR = '<script src="/dev-dashboard/cursor.js"></script>' if settings.dev_tools_enabled else ""
+
+
 def _page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(
         f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -220,15 +266,15 @@ button{{width:100%;height:52px;border:0;border-radius:6px;font-size:17px;font-we
 details{{margin-top:18px;font-size:14px;color:#555}} summary{{cursor:pointer}}
 table{{width:100%;border-collapse:collapse;margin-top:8px;font-size:13px}} td{{padding:6px 4px;border-top:1px solid #eee;vertical-align:top}}
 .fill{{color:#03a04a;cursor:pointer;text-decoration:underline;background:none;border:0;width:auto;height:auto;font-size:13px;font-weight:600;padding:0;white-space:nowrap}}
-</style></head><body><div class="wrap">{body}</div></body></html>"""
+</style></head><body><div class="wrap">{body}</div>{_CURSOR}</body></html>"""
     )
 
 
 def _login_page(state: str, login_id: str = "", error: str = "") -> HTMLResponse:
     rows = "".join(
-        f"<tr><td><b>{html.escape(a['login_id'])}</b><br>{html.escape(a['password'])}</td><td>{html.escape(a['scenario'])}</td>"
+        f"<tr><td><b>{html.escape(a['login_id'])}</b><br>{html.escape(a['password'])}</td><td>{html.escape(where_it_goes(a)['scenario'])}</td>"
         f"<td><button type=button class=fill onclick=\"fill('{html.escape(a['login_id'])}','{html.escape(a['password'])}')\">넣기</button></td></tr>"
-        for a in TEST_ACCOUNTS
+        for a in test_accounts.all_accounts()
     )
     return _page(
         "네이버 로그인 (테스트)",

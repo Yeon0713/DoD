@@ -15,6 +15,7 @@ import { account, maskPhone } from "@/lib/account";
 import { resetCardState } from "@/lib/cardState";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { NAVER_FIELD_LABEL, naverFieldText, naverProfile } from "@/lib/naverDemo";
+import { onTestLogout } from "@/lib/testAccount";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 
@@ -46,7 +47,9 @@ export function AccountSettingsScreen() {
     flashToast("네이버 연결을 끊었어요", "메뉴 순서는 직접 바꿔 주세요");
   };
   // 계정을 지우면 아래 탭의 문(app/(tabs)/_layout.tsx)이 로그인 화면으로 보낸다. 여기서 따로 화면을 옮기지 않는다.
-  const logout = () => {
+  const logout = async () => {
+    // 테스트 계정이면 서버 DB 조건(on_logout)대로: reset 은 그 가게와 이 기기 기록을 처음으로, keep 은 계정별로 보관
+    await onTestLogout();
     naverProfile.reset();
     account.reset();
   };

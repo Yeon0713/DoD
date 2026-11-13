@@ -16,6 +16,8 @@
 import datetime as dt
 import logging
 import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
 from app.analysis.customer_cycle.order_cycle import build_customer_cycles
@@ -30,13 +32,13 @@ from app.core.error_response import ApiError
 from app.core.seoul_time import at_time, now_seoul, to_seoul
 from app.data_pipeline import registered_stores, read_store_db
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
-from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
+from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs, inputs_until
 from app.planner.data_shapes import CalendarCell, PlanResult, Review, StoreSettings
 from app.planner.priority_and_grouping import group_into_batches
 from app.planner.rule_review_reply import current_reply_week_start
 from app.planner.make_plan import make_plan
 from app.planner.notification_time_helpers import KOREAN_WEEKDAYS
-from app.review_reply_writer.write_reply_with_clova import write_drafts
+from app.review_reply_writer.write_reply_with_clova import cached_drafts, write_drafts
 from app.sentence_polish import polish_with_clova
 
 logger = logging.getLogger(__name__)
@@ -82,14 +84,19 @@ def _lock_for(store_id: str) -> threading.Lock:
         return _locks.setdefault(store_id, threading.Lock())
 
 
-def get_snapshot(store_id: str, now: dt.datetime | None = None) -> StoreSnapshot:
-    """보관한 결과가 없거나 오래됐으면 다시 계산해서 돌려준다. now 는 테스트에서 시각을 고정할 때만 넣는다."""
+def get_snapshot(store_id: str, now: dt.datetime | None = None, *, wait_for_drafts: bool = True, polish: bool = True) -> StoreSnapshot:
+    """보관한 결과가 없거나 오래됐으면 다시 계산해서 돌려준다. now 는 테스트에서 시각을 고정할 때만 넣는다.
+
+    wait_for_drafts=False: CLOVA 답글 초안을 기다리지 않는다. 이미 써 둔 초안만 넣어 바로 돌려주고, 나머지는 뒤에서 써서 채운다.
+    polish=False: 이번 계산에서는 카드 문장 다듬기(CLOVA)를 맡기지 않는다 (이미 다듬은 문장은 그대로 쓰인다).
+    둘 다 개발자 대시보드 시연 단계(demo_go)가 단계를 바로 열고 CLOVA 비용을 줄이려고 쓴다.
+    """
     now = to_seoul(now) if now else now_seoul()
     refresh = dt.timedelta(minutes=app_settings.snapshot_refresh_minutes)
     with _lock_for(store_id):
         snapshot = _snapshots.get(store_id)
         if snapshot is None or now < snapshot.computed_at or now - snapshot.computed_at >= refresh:
-            snapshot = _compute(store_id, now, previous=snapshot)
+            snapshot = _compute(store_id, now, previous=snapshot, wait_for_drafts=wait_for_drafts, polish=polish)
             _snapshots[store_id] = snapshot
         return snapshot
 
@@ -135,6 +142,13 @@ def forget(store_id: str) -> None:
         _snapshots.pop(store_id, None)
 
 
+def reset_store(store_id: str) -> None:
+    """그 가게를 처음 상태로: 사장님이 고친 설정과 보관한 결과를 지운다 (테스트 계정 로그아웃, app/modules/auth/test_accounts.py)."""
+    with _lock_for(store_id):
+        _settings_changes.pop(store_id, None)
+        _snapshots.pop(store_id, None)
+
+
 def clear_all() -> None:
     """보관한 결과와 고친 설정을 모두 지운다 (테스트용)."""
     _snapshots.clear()
@@ -142,7 +156,9 @@ def clear_all() -> None:
     _yesterday_cells.clear()
 
 
-def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) -> StoreSnapshot:
+def _compute(
+    store_id: str, now: dt.datetime, previous: StoreSnapshot | None, *, wait_for_drafts: bool = True, polish: bool = True
+) -> StoreSnapshot:
     started = now_seoul()
     store = read_store_db.read_store(store_id)
     inputs = build_analysis_inputs(store_id, now)
@@ -155,7 +171,7 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
     settings, plan, unavailable = parts.settings, parts.plan, parts.unavailable
 
     # 답글 초안: 이번 한 주 답글과 가까운 재주문 인사만 (같은 리뷰는 한 번만 CLOVA 를 부른다)
-    draft_texts = {}
+    draft_texts, later = {}, None
     if plan is not None:
         today = now.date()
         first, last = today - dt.timedelta(days=POLISH_DAYS_BEFORE), today + dt.timedelta(days=POLISH_DAYS_AFTER)
@@ -165,9 +181,13 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
             if item.task_type == "REVISIT_REPLY"
             or (item.task_type == "REORDER_NUDGE" and first <= item.approval_request_at.date() <= last)
         ]
-        draft_texts = write_drafts(
-            reply_items, {review.review_id: review for review in reviews}, store, [menu.name for menu in inputs.menus]
-        )
+        by_id = {review.review_id: review for review in reviews}
+        menus = [menu.name for menu in inputs.menus]
+        if wait_for_drafts:
+            draft_texts = write_drafts(reply_items, by_id, store, menus)
+        else:
+            draft_texts = cached_drafts(reply_items, by_id, store)
+            later = (reply_items, by_id, store, menus)
 
     snapshot = StoreSnapshot(
         store_id=store_id,
@@ -185,11 +205,25 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
         ordered_at_by_order={order.order_id: order.ordered_at for order in inputs.orders},
         draft_texts=draft_texts,
     )
-    _request_polish(snapshot)
+    if polish:
+        _request_polish(snapshot)
+    if later:
+        _draft_executor.submit(_fill_drafts, snapshot, later)
     seconds = (now_seoul() - started).total_seconds()
     _compute_seconds[store_id] = round(seconds, 2)
     logger.info("%s 가게 분석과 계획을 %.1f초 만에 다시 계산했다", store_id, seconds)
     return snapshot
+
+
+_draft_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="late-drafts")
+
+
+def _fill_drafts(snapshot: StoreSnapshot, job: tuple) -> None:
+    """기다리지 않고 넘긴 답글 초안을 뒤에서 쓰고, 보관한 결과에 채운다 (앱이 다시 불러오면 보인다)."""
+    try:
+        snapshot.draft_texts.update(write_drafts(*job))
+    except Exception:  # 초안이 없어도 앱은 기본 문장으로 동작한다
+        logger.exception("%s 답글 초안을 뒤에서 쓰지 못했다", snapshot.store_id)
 
 
 @dataclass
@@ -244,6 +278,29 @@ def plan_only(store_id: str, now: dt.datetime) -> tuple[StoreSettings | None, Pl
     store = read_store_db.read_store(store_id)
     parts = _analyze_and_plan(store_id, store, build_analysis_inputs(store_id, now), now, previous=None)
     return parts.settings, parts.plan, parts.unavailable
+
+
+def plan_at_times(
+    store_id: str, moments: list[dt.datetime], on_step: Callable[[int], None] | None = None
+) -> list[tuple[StoreSettings | None, PlanResult | None, ApiError | None]]:
+    """plan_only 를 여러 시각에. 결과는 시각마다 plan_only(store_id, 그 시각)와 같다.
+
+    DB 는 가장 늦은 시각까지 한 번만 읽고, 시각마다 그때까지 생긴 행만 남겨 쓴다 (inputs_until).
+    시연 훑기(42개 시각)가 시각마다 DB 전체를 다시 읽던 시간(가게 하나에 20초 넘게)을 줄인다.
+    on_step: 시각 하나를 마칠 때마다 마친 수를 받는다 (대시보드 진행 표시).
+    """
+    if not moments:
+        return []
+    moments = [to_seoul(moment) for moment in moments]
+    store = read_store_db.read_store(store_id)
+    full = build_analysis_inputs(store_id, max(moments))
+    results = []
+    for now in moments:
+        parts = _analyze_and_plan(store_id, store, inputs_until(full, now), now, previous=None)
+        results.append((parts.settings, parts.plan, parts.unavailable))
+        if on_step:
+            on_step(len(results))
+    return results
 
 
 def first_known_at(day: dt.date) -> dt.datetime:

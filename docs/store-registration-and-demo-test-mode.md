@@ -149,7 +149,7 @@ npm run web              # http://localhost:8082
 
 ## 9. 그 밖에 바뀐 것
 
-- 테스트 계정(`server/app/modules/auth/test_accounts.py`)에 가게를 정해 두지 않습니다.
+- 테스트 계정은 2026-11-13부터 계정마다 시험할 장면(가게, 시각, 로그아웃 때 남길지)을 DB(`server/db/test_accounts.db`)에 정해 둡니다. [docs/test-accounts.md](test-accounts.md)
 - 앞서 있던 `POST /api/naver/choose`(검색한 가게 이름만 덮어쓰기)는 매장 등록으로 바뀌어 없앴습니다.
 - "네이버 플레이스 연결" 단계(06-2n)는 없애고 가게 확인 다음 바로 가게 정보 확인으로 갑니다. 메뉴·메뉴 사진 "고치기"는 네이버 스마트플레이스를 엽니다.
 - 자정을 넘겨 여는 가게는 지금 서버가 알림 계획을 만들지 못해 "아직 준비 중이에요"로 막습니다 (저장 전에 안내).

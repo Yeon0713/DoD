@@ -1,5 +1,6 @@
 import datetime as dt
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -20,8 +21,19 @@ BOOT_ID = uuid.uuid4().hex
 DEV_DASHBOARD_DIR = Path(__file__).resolve().parents[2] / "dev"
 
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """서버가 켜질 때 한 번. 개발자 대시보드를 켰으면 모든 가게 시연 기간을 뒤에서 미리 훑어 둔다
+    (대시보드 시연 탭에서 가게를 고르면 바로 열리게. modules/dev_tools/demo_week_scan.py)."""
+    if settings.dev_tools_enabled:
+        from app.modules.dev_tools import demo_week_scan
+
+        demo_week_scan.prewarm()
+    yield
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
     # 모든 오류를 {"error": {"code", "message"}} 모양으로 통일
     register_error_handlers(app)
@@ -64,8 +76,12 @@ def create_app() -> FastAPI:
             from app.modules.auth import router as auth_router
             from app.modules.stores import router as stores_router
 
+            from app.modules.dev_tools import demo_week_scan
+
             removed = registered_stores.reset_all()
             store_snapshot_cache.clear_all()
+            for store_id in removed:  # 지운 가게의 시연 훑기 결과도 지운다
+                demo_week_scan.forget(store_id)
             for state in (auth_router._pending, auth_router._results, auth_router._mock_codes, stores_router._previews):
                 state.clear()
             set_clock_shift(dt.timedelta(0))

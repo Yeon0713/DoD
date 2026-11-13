@@ -190,14 +190,17 @@ tr:last-child td { border-bottom: none; }
   .tabs button { white-space: nowrap; }
 }
 
-/* ── 시연 탭: 가게 | UC 단계 | 휴대폰 틀 ── */
+/* ── 시연 탭: 시연 도구 | UC 단계 | 휴대폰 틀 (좁은 화면은 휴대폰 틀이 맨 위) ── */
 .content:has(.demo-layout) { max-width: 1480px; }
-.demo-layout { display: grid; grid-template-columns: 210px minmax(0, 1fr) 400px; gap: 18px; align-items: start; }
+.demo-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr) 400px; gap: 18px; align-items: start; }
 .demo-stores { display: grid; gap: 8px; position: sticky; top: 12px; }
-.demo-store {
-  text-align: left; border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; background: var(--surface); cursor: pointer;
-}
-.demo-store.on { border-color: var(--brand); background: var(--brand-soft); }
+.demo-stores { grid-column: 1; grid-row: 1; }
+.demo-steps { grid-column: 2; grid-row: 1; }
+.demo-phone-col { grid-column: 3; grid-row: 1; }
+.demo-ready { display: flex; justify-content: space-between; align-items: center; gap: 6px; font-size: 12px; padding: 4px 6px; border-radius: 8px; }
+.demo-ready.on { background: var(--brand-soft); }
+.demo-check { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink-2); }
+.demo-tools .demo-check input { width: auto; margin: 0; flex: none; }
 .demo-tools { display: grid; gap: 8px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .demo-tools input { width: 100%; margin-top: 4px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; font-family: var(--mono); font-size: 12px; }
 .demo-steps { max-height: calc(100vh - 40px); overflow-y: auto; }
@@ -214,7 +217,7 @@ tr:last-child td { border-bottom: none; }
 .demo-figma { font-size: 12px; color: var(--ink-2); padding-top: 1px; }
 .demo-phone-col { display: grid; gap: 10px; position: sticky; top: 12px; }
 .demo-nav { display: grid; grid-template-columns: auto 1fr auto; gap: 8px; align-items: center; }
-.demo-nav #demo-now { text-align: center; }
+.demo-now { text-align: center; min-height: 18px; }
 .demo-phone {
   width: 391px; height: 828px; border: 8px solid #1d1d1f; border-radius: 36px; overflow: hidden; background: #fbf7f2;
 }
@@ -222,7 +225,15 @@ tr:last-child td { border-bottom: none; }
 @media (max-width: 1200px) {
   .demo-layout { grid-template-columns: 1fr; }
   .demo-stores, .demo-phone-col { position: static; }
+  .demo-stores, .demo-steps, .demo-phone-col { grid-column: 1; grid-row: auto; }
+  .demo-phone-col { order: -1; justify-items: center; }
+  .demo-nav { width: 391px; }
+  .demo-steps { max-height: 70vh; }
 }
+
+/* ── 분석·알림 타임라인: 보관해 둔 계산 줄, AI 탭의 품질 머리 ── */
+.card.kept { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 18px; }
+.section-title { margin: 8px 0 0; font-size: 15px; color: var(--ink-2); }
 
 /* ── 화면 글 탭 ── */
 .ut { display: grid; gap: 14px; }

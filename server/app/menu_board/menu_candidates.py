@@ -13,6 +13,7 @@
 
 뒤에서 부르기(candidates_in_background): 스냅샷 계산이 CLOVA 를 기다리지 않게, 기억한 결과가 없으면 뒤에서 묻도록 맡기고
 바로 빈 후보를 돌려준다. 같은 키는 '진행 중'이면 다시 맡기지 않는다. 결과는 다음 계산 때 쓰인다. 키가 없으면 맡기지 않는다.
+실패한 키는 RETRY_AFTER_FAILURE_SECONDS(1시간) 동안 다시 맡기지 않는다(스냅샷을 다시 계산할 때마다 같은 실패를 부르지 않게).
 
 프롬프트 파일: prompts/menu_candidates_prompt.txt. {가게이름}, {업종}, {개수} 를 채운다. 부를 때마다 읽는다.
 """
@@ -21,6 +22,7 @@ import json
 import logging
 import re
 import threading
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,10 +77,13 @@ class MenuCandidates:
 EMPTY = MenuCandidates()
 
 BACKGROUND_WORKERS = 2  # 동시에 CLOVA 를 부르는 수. 너무 많으면 요청 한도(429)에 걸린다
+RETRY_AFTER_FAILURE_SECONDS = 60 * 60  # 실패한 키를 다시 맡기기까지 기다리는 시간
 
 _Key = tuple[str, str, frozenset[str]]  # (매장, 세부 종류, 메뉴 id 묶음)
 _results: dict[_Key, MenuCandidates] = {}
 _in_progress: dict[_Key, Future] = {}
+_failed_at: dict[_Key, float] = {}  # 뒤에서 물었다가 실패한 시각
+_now = time.monotonic  # 테스트에서 시계를 바꿀 수 있게
 _guard = threading.Lock()
 _executor = ThreadPoolExecutor(max_workers=BACKGROUND_WORKERS, thread_name_prefix="menu-candidates")
 
@@ -113,17 +118,24 @@ def candidates_in_background(store: dict, menus: list[Menu], kind: MenuBoardKind
     with _guard:
         if key in _results:
             return _results[key]
-        if settings.clova_studio_api_key and key not in _in_progress:
+        failed_at = _failed_at.get(key)
+        waiting = failed_at is not None and _now() - failed_at < RETRY_AFTER_FAILURE_SECONDS
+        if settings.clova_studio_api_key and key not in _in_progress and not waiting:
             _in_progress[key] = _executor.submit(_ask_in_background, store, menus, kind, key, post)
     return EMPTY
 
 
 def _ask_in_background(store: dict, menus: list[Menu], kind: MenuBoardKind, key: "_Key", post: Post) -> None:
+    result = EMPTY
     try:
-        menu_candidates(store, menus, kind, post=post)  # 성공하면 기억한다. 실패는 기억하지 않아 다음 계산 때 다시 맡긴다
+        result = menu_candidates(store, menus, kind, post=post)  # 성공하면 기억한다
     finally:
         with _guard:
             _in_progress.pop(key, None)
+            if result.menu_ids:
+                _failed_at.pop(key, None)
+            else:
+                _failed_at[key] = _now()  # 실패는 1시간 뒤에 다시 맡긴다
 
 
 def wait_for_background(timeout: float = 10) -> None:
@@ -203,3 +215,4 @@ def forget_all() -> None:
     with _guard:
         _results.clear()
         _in_progress.clear()
+        _failed_at.clear()

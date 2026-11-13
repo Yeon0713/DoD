@@ -65,15 +65,33 @@ def test_same_key_is_not_asked_twice_while_in_progress():
     assert other.calls == 1
 
 
-def test_failure_is_asked_again_on_the_next_call():
+def test_failed_key_is_not_asked_again_for_an_hour(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(module, "_now", lambda: clock[0])
     failing = FakeClova("", status=500)
     candidates_in_background(STORE, MENUS, "WINTER", post=failing)
     module.wait_for_background()
     good = FakeClova({"menu_ids": ["2"], "reason": "잘 어울려요"})
-    assert candidates_in_background(STORE, MENUS, "WINTER", post=good) == EMPTY  # 실패는 기억하지 않아 다시 맡긴다
+    clock[0] += 59 * 60  # 59분 뒤: 아직 다시 묻지 않는다
+    assert candidates_in_background(STORE, MENUS, "WINTER", post=good) == EMPTY
+    module.wait_for_background()
+    assert good.calls == 0
+    clock[0] += module.RETRY_AFTER_FAILURE_SECONDS - 59 * 60  # 실패 뒤 1시간: 다시 맡긴다
+    assert candidates_in_background(STORE, MENUS, "WINTER", post=good) == EMPTY
     module.wait_for_background()
     assert good.calls == 1
     assert candidates_in_background(STORE, MENUS, "WINTER", post=good).menu_ids == ("2",)
+    assert module.RETRY_AFTER_FAILURE_SECONDS == 60 * 60
+
+
+def test_failure_of_one_key_does_not_hold_back_other_keys(monkeypatch):
+    monkeypatch.setattr(module, "_now", lambda: 1000.0)
+    candidates_in_background(STORE, MENUS, "WINTER", post=FakeClova("", status=500))
+    module.wait_for_background()
+    other = FakeClova({"menu_ids": ["3"], "reason": "잘 어울려요"})
+    candidates_in_background(STORE, MENUS, "LOCAL_FESTIVAL", post=other)
+    module.wait_for_background()
+    assert other.calls == 1
 
 
 def test_without_key_nothing_is_asked(monkeypatch):

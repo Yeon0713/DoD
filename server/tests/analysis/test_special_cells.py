@@ -4,15 +4,15 @@
 """
 
 import datetime as dt
-
-import pytest
+from pathlib import Path
 
 from app.analysis.input_shapes import AnalysisInputs, StoreInfo, WeatherDay
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.special_cells import cell_keys, find_special_cells
 from app.core.seoul_time import SEOUL
 from app.planner.data_shapes import Event, Game
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
 DAY = dt.date(2026, 11, 2)  # 월요일
 
@@ -134,7 +134,6 @@ MOCK_SPECIAL_BY_HAND = {
 }
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_special_cells_match_hand_picked_cells():
-    found = find_special_cells(read_mock_csv(), dt.date(2026, 9, 23), dt.date(2026, 11, 17))
+    found = find_special_cells(read_mock_csv(FIXTURE_DIR), dt.date(2026, 9, 23), dt.date(2026, 11, 17))
     assert cell_keys(found) == MOCK_SPECIAL_BY_HAND

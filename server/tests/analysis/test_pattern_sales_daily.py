@@ -1,15 +1,17 @@
 """시간대 판정과 하루 × 시간대 매출 (app/analysis/pattern/daypart_time.py, sales_daily.py)."""
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
 from app.analysis.input_shapes import AnalysisInputs, DaypartRange, Menu, Order, OrderItem, Shift, StoreInfo
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.pattern.daypart_time import daypart_at, dayparts_of
 from app.analysis.pattern.sales_daily import build_sales_daily
 from app.core.seoul_time import SEOUL
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
 DAY = dt.date(2026, 11, 2)  # 월요일
 
@@ -145,9 +147,8 @@ def test_no_rows_after_the_last_order_day():
     assert {row.date for row in result.rows} == {DAY}
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_sales_daily_covers_all_orders_until_now():
-    inputs = read_mock_csv()
+    inputs = read_mock_csv(FIXTURE_DIR)
     now = dt.datetime(2026, 11, 15, 22, 30, tzinfo=SEOUL)
     result = build_sales_daily(inputs, now)
     days = {row.date for row in result.rows}

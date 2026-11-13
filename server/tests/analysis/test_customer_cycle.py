@@ -1,15 +1,15 @@
 """손님 주문 주기 (app/analysis/customer_cycle/order_cycle.py)."""
 
 import datetime as dt
-
-import pytest
+from pathlib import Path
 
 from app.analysis.customer_cycle.order_cycle import build_customer_cycles
 from app.analysis.input_shapes import AnalysisInputs, Order, StoreInfo
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.result_shapes import load_fixture
 from app.core.seoul_time import SEOUL
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
 NOW = dt.datetime(2026, 11, 15, 22, 30, tzinfo=SEOUL)
 
@@ -84,9 +84,8 @@ def test_morning_visits_give_morning_daypart():
     assert (row.cycle, row.expected_daypart) == ("WEEKLY", "MORNING")
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_orders_give_one_row_per_customer():
-    inputs = read_mock_csv()
+    inputs = read_mock_csv(FIXTURE_DIR)
     rows = build_customer_cycles(inputs, NOW)
     keys = {o.customer_key for o in inputs.orders if o.customer_key and o.ordered_at <= NOW}
     assert {row.customer_key for row in rows} == keys

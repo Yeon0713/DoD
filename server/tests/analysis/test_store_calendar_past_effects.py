@@ -5,17 +5,19 @@
 """
 
 import datetime as dt
+from pathlib import Path
 
 import pytest
 
 from app.analysis.input_shapes import AnalysisInputs, StoreInfo
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.pattern.sales_daily import build_sales_daily
 from app.analysis.result_shapes import SalesDailyRow
 from app.analysis.store_calendar.past_effects import PastEffect, build_past_effects, tagged_effect
 from app.core.seoul_time import SEOUL
 from app.planner.data_shapes import Event, Game
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
 MON = dt.date(2026, 11, 2)  # 월요일. 과거 사례가 생기는 날
 DAYPARTS = ("MORNING", "LUNCH", "DINNER")
@@ -147,9 +149,8 @@ def test_only_effects_of_10_percent_or_more_get_a_tag():
 # ── 목업 데이터 (원본 CSV 손 계산과 비교. 효과값은 정확한 숫자로 고정하지 않는다) ──
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_past_effects_match_hand_calculation_in_tags():
-    inputs = read_mock_csv()
+    inputs = read_mock_csv(FIXTURE_DIR)
     now = dt.datetime(2026, 11, 17, 22, 30, tzinfo=SEOUL)
     effects = build_past_effects(inputs, build_sales_daily(inputs, now).rows, now)
 

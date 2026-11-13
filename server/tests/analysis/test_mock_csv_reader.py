@@ -1,21 +1,22 @@
 """목업 CSV 읽기 (app/analysis/mock_csv_reader.py)."""
 
 import csv
+from pathlib import Path
 
 import pytest
 
-from app.analysis.mock_csv_reader import MOCK_DIR, game_kind, read_mock_csv
+from app.analysis.mock_csv_reader import game_kind, read_mock_csv
 
-pytestmark = pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 
 
 @pytest.fixture(scope="module")
 def inputs():
-    return read_mock_csv()
+    return read_mock_csv(FIXTURE_DIR)
 
 
 def csv_count(table: str) -> int:
-    with (MOCK_DIR / f"{table}.csv").open(encoding="utf-8") as f:
+    with (FIXTURE_DIR / f"{table}.csv").open(encoding="utf-8") as f:
         return sum(1 for _ in csv.DictReader(f))
 
 
@@ -57,7 +58,7 @@ def test_game_kinds():
 
 def copy_mock_with(tmp_path, table: str, column: str, row_index: int, value: str):
     """목업 CSV 를 tmp_path 로 복사하고 한 칸만 바꾼다."""
-    for src in MOCK_DIR.glob("*.csv"):
+    for src in FIXTURE_DIR.glob("*.csv"):
         (tmp_path / src.name).write_bytes(src.read_bytes())
     path = tmp_path / f"{table}.csv"
     with path.open(encoding="utf-8") as f:

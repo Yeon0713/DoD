@@ -1,16 +1,16 @@
 """기준선: 특별한 칸을 뺀 최근 8주 같은 요일·시간대 칸 매출의 중앙값 (app/analysis/pattern/baseline.py)."""
 
 import datetime as dt
+from pathlib import Path
 
-import pytest
-
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.pattern.baseline import baseline_for, build_baselines
 from app.analysis.pattern.sales_daily import build_sales_daily
 from app.analysis.result_shapes import SalesDailyRow
 from app.analysis.special_cells import cell_keys, find_special_cells
 from app.core.seoul_time import SEOUL
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 MON = dt.date(2026, 11, 16)  # 월요일. 기준선을 구할 날
 DAYPARTS = ["MORNING", "LUNCH", "DINNER"]
 
@@ -82,10 +82,9 @@ def test_build_baselines_gives_every_weekday_and_daypart():
 # ── 목업 데이터: N2 완료 기준 (21칸 모두 나오고, 손으로 계산한 3칸과 같다) ──
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_baselines_cover_21_cells_and_match_hand_calculation():
     now = dt.datetime(2026, 11, 17, 22, 30, tzinfo=SEOUL)
-    inputs = read_mock_csv()
+    inputs = read_mock_csv(FIXTURE_DIR)
     rows = build_sales_daily(inputs, now).rows
     excluded = cell_keys(find_special_cells(inputs, rows[0].date, now.date()))
 

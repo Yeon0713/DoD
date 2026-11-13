@@ -7,15 +7,14 @@ import datetime as dt
 import json
 from pathlib import Path
 
-import pytest
-
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.result_shapes import ReviewLabelRow, RiskSignalRow, load_fixture
 from app.analysis.review.label_reviews import label_reviews
 from app.analysis.review.risk_signals import update_risk_signals
 from app.core.seoul_time import SEOUL
 from app.planner.data_shapes import Review
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 PLANNER_INPUTS = Path(__file__).parents[1] / "planner" / "sample_inputs" / "demo_week_inputs.example.json"
 DEMO_REVIEWS = [Review.model_validate({**r, "label": None}) for r in json.loads(PLANNER_INPUTS.read_text(encoding="utf-8"))["reviews"]]
 DEMO_LABELS = load_fixture("review_label")
@@ -108,10 +107,9 @@ def test_reviews_older_than_seven_days_do_not_open():
     assert update_risk_signals(reviews, labels, [], at("2026-11-09 13:50")) == []
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "reviews.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_history_opens_each_burst_once():
     """목업 리뷰를 재계산 시각마다 키워드 규칙으로 분류하고 위험 신호를 이어 가도, 한 리뷰가 두 신호에 들어가지 않는다."""
-    reviews = read_mock_csv().reviews
+    reviews = read_mock_csv(FIXTURE_DIR).reviews
     labels, signals = [], []
     for now in recompute_times(dt.date(2026, 8, 17), dt.date(2026, 11, 15)):
         labeled = {row.review_id for row in labels}

@@ -1,0 +1,2 @@
+store_id,name,category,address,lat,lng,open_time,close_time,closed_weekdays,slots
+s005,초옹장,한식,경기 화성시 만세구 남양읍 역골중앙로41번길 39 1층 101호,37.2065963,126.8272701,10:30:00,20:30:00,[],"[""10:00"", ""15:00"", ""20:00""]"

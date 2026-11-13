@@ -43,6 +43,7 @@ def _season_changes(weather: list[WeatherDay]) -> list[tuple[dt.date, Season | N
     같은 날짜가 여러 번 오면 입력에서 나중에 온 값만 쓴다.
     """
     latest = {w.date: w.temp_max for w in weather}  # 같은 날짜는 나중 값이 남는다
+    latest = {d: t for d, t in latest.items() if t is not None}  # 최고기온을 모르는 날은 빠진 날로 본다
     dates = sorted(latest)
     changes: list[tuple[dt.date, Season | None]] = []
     season: Season | None = None

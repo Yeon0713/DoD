@@ -198,8 +198,6 @@ def weather(store_id: str):
 @router.post("/{store_id}/weather/refresh", summary="가게 지역 날씨를 기상청에서 다시 받기")
 def refresh_weather(store_id: str):
     _registered(store_id)
-    if registered_stores.is_mock_store(store_id):
-        raise ApiError(400, "NOT_REGISTERED_STORE", "목업 가게는 목업 날씨를 써요")
     if not store_weather.can_fetch(store_id):
         raise ApiError(503, "WEATHER_KEY_MISSING", "기상청 인증키(KMA_API_KEY)가 server/.env 에 없어요")
     try:

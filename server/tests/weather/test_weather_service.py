@@ -13,6 +13,7 @@ from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
 from app.main import create_app
 from app.modules.stores import router as stores_router
 from app.weather import store_weather
+from app.core.naver_place import PlaceInfo
 from app.weather.client import KmaAuthError
 from app.weather.service import get_weather
 from db import models, session
@@ -175,7 +176,37 @@ def test_only_registered_stores_with_key_are_refreshed(monkeypatch):
     monkeypatch.setattr(settings, "kma_api_key", "test-key")
     assert store_weather.can_fetch("s101") and store_weather.can_fetch("s150")
     assert not store_weather.can_fetch("s001")  # 목업 가게
-    assert not store_weather.can_fetch("s004")  # 목업 가게로 이은 피플스클럽
+    assert not store_weather.can_fetch("s004")  # 목업 가게로 이은 피플스클럽도 사장님이 등록하기 전에는 받지 않는다
+
+
+@pytest.mark.parametrize("place_id, store_id", [("1909851296", "s004"), ("2004174048", "s005")])  # 피플스클럽, 초옹장
+def test_registered_mock_store_gets_its_region_weather_without_touching_mock_file(place_id, store_id, tmp_path, monkeypatch):
+    """목업 가게로 이은 실제 가게도 등록하면 그 지역 날씨를 받는다. 목업 파일은 그대로, 날씨는 db/app_data/weather 에 둔다."""
+    from app.weather import auto_refresh
+
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    monkeypatch.setattr(settings, "kma_api_key", "test-key")
+    mock_file = registered_stores.DATA_DIR / f"{store_id}.db"
+    before = mock_file.read_bytes()
+    assert not store_weather.can_fetch(store_id) and store_id not in auto_refresh.stores_due(NOW)  # 등록 전
+
+    store = read_store_db.read_store(store_id)
+    info = PlaceInfo(place_id=place_id, name=store["name"], category="", road_address="", address="", lat=store["lat"], lng=store["lng"],
+                     weekly_hours={}, break_time=None)
+    assert registered_stores.register(info) == store_id
+    assert store_weather.can_fetch(store_id) and store_id in auto_refresh.stores_due(NOW)  # 등록하면 받을 때가 된다
+
+    summary = store_weather.update_store_weather(store_id, client=FakeKma(), now=NOW)
+    assert summary["observed_days"] == 30 and summary["forecast_days"] == 4
+    assert (tmp_path / "weather" / f"{store_id}.db").exists() and mock_file.read_bytes() == before  # 목업 파일은 그대로
+    assert store_id not in auto_refresh.stores_due(NOW + dt.timedelta(hours=2)) and store_id in auto_refresh.stores_due(NOW + dt.timedelta(hours=3))
+
+    common, rows = read_store_db.read_weather(), read_store_db.read_weather(store_id)
+    got = {r["date"] for r in read_store_db.read_store_weather(store_id)}
+    assert [r["date"] for r in rows] == sorted({r["date"] for r in common} | got)  # 1년치 그대로, 받은 날만 바뀐다
+    assert next(r for r in rows if r["date"] == dt.date(2026, 11, 7))["kind"] == "observed"
+    assert next(r for r in rows if r["date"] == dt.date(2026, 3, 1)) == next(r for r in common if r["date"] == dt.date(2026, 3, 1))
+
 
 
 def test_store_is_due_three_hours_after_last_fetch(store_s150, monkeypatch):

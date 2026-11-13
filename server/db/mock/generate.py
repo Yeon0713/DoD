@@ -1,4 +1,4 @@
-"""목업 생성기: 춘천 대학가 가게 3곳(모두 가상)의 2026년 1년치 데이터.
+"""목업 생성기: 가게 5곳의 2026년 1년치 데이터 (s001~s003 은 춘천 대학가 가상 가게, s004·s005 는 실제 가게 정보에 가상 주문).
 
 server/ 폴더에서 실행:
     python -m db.mock.generate            # 기본 시드
@@ -9,9 +9,11 @@ server/ 폴더에서 실행:
 - 매장 전용 테이블 → db/data/<매장>.db (s001.orders ...), db/mock/out/<매장>/<테이블>.csv
 - 공통 테이블(events, games, weather_daily) → db/data/common.db, db/mock/out/common/<테이블>.csv
 
-- 매장: s001 한림국수, s002 두리맥주(17시~다음 날 3시), s003 석사돈가스. 메뉴·영업시간·주문 패턴·알바·리뷰 문구가 매장마다 다르다.
+- 매장: s001 한림국수, s002 두리맥주(17시~다음 날 3시), s003 석사돈가스, s004 피플스클럽(돈가스·라멘, 주말은 점심만),
+  s005 초옹장(화성 남양읍 옹심이·국수, 매일 영업).
+  메뉴·영업시간·주문 패턴·알바·리뷰 문구가 매장마다 다르다.
 - 매출·근무·날씨: 2026-01-01 ~ 12-31. 계절, 방학, 행사, 국가대표 경기, 비 효과를 넣었다.
-- 리뷰: 11/10 까지. 데모 주간 사건(11/16~22 행사·경기, 손님 c_w01·c_m01, 불만 리뷰, 매출 이상)은 v2(D4)에서 심는다.
+- 리뷰: 11/10 까지 (s004·s005 는 11/13 까지 덧붙인다). 데모 주간 사건(11/16~22 행사·경기, 손님 c_w01·c_m01, 불만 리뷰, 매출 이상)은 v2(D4)에서 심는다.
 """
 
 import argparse
@@ -326,7 +328,218 @@ STORES = [
             "{menu} 괜찮았어요. 다만 양배추가 좀 적어서 아쉬워요.",
         ],
     },
+    {
+        # 실제 가게. 주소·좌표·영업시간·메인 메뉴(이름·가격)는 네이버 지도 가게 화면(2026-11-13)을 따랐다.
+        # 토핑(side)·음료(drink)는 네이버에 없어 넣은 가상 메뉴다. 주문·리뷰·알바는 모두 가상.
+        "store": {
+            "store_id": "s004",
+            "name": "피플스클럽",
+            "category": "돈가스",
+            "address": "강원특별자치도 춘천시 우석로67번길 12 1층",
+            "lat": 37.8653181,
+            "lng": 127.7516618,
+            "open_time": time(11, 0),  # 평일 11:00~20:30, 브레이크 14:30~17:00. 주말은 11:30~14:30 점심만
+            "close_time": time(20, 30),
+            "closed_weekdays": [],  # 휴무일은 네이버 소식·인스타로 따로 알린다
+            "slots": ["10:30", "15:00", "20:00"],
+        },
+        "menu": [
+            ("로스카츠", "main", 12500),
+            ("히레카츠", "main", 14000),
+            ("특로스카츠", "main", 17000),
+            ("히레+치즈", "main", 14000),
+            ("난축로스", "main", 15000),
+            ("난축특로스카츠", "main", 18000),
+            ("돈코츠라멘", "main", 11000),
+            ("미소라멘", "main", 11000),
+            ("마제멘", "main", 12000),
+            ("돈코츠set", "main", 16000),
+            ("미소 set", "main", 16000),
+            ("마제 set", "main", 17000),
+            ("아지타마고 추가", "side", 2000),
+            ("차슈 추가", "side", 3000),
+            ("콜라", "drink", 2000),
+            ("사이다", "drink", 2000),
+            ("제로콜라", "drink", 2000),
+        ],
+        "main_weight": {"로스카츠": 25, "히레카츠": 15, "특로스카츠": 8, "히레+치즈": 10, "난축로스": 6,
+                        "난축특로스카츠": 4, "돈코츠set": 6, "미소 set": 4, "마제 set": 4},
+        "seasonal": {
+            "돈코츠라멘": [14, 13, 11, 9, 7, 5, 4, 4, 6, 9, 12, 14],  # 추울수록 국물 라멘
+            "미소라멘": [10, 9, 8, 6, 4, 3, 2, 2, 4, 6, 8, 10],
+            "마제멘": [5, 5, 6, 7, 9, 11, 12, 12, 9, 7, 6, 5],  # 국물 없는 라멘은 여름에 조금 더
+        },
+        "side_p": {"hall": 0.15, "delivery": 0.1},
+        "drink_p": {"hall": 0.3, "delivery": 0.25},
+        "base_orders": 55,
+        "hall_share": 0.7,
+        # 주말은 점심(3시간)만 여는데 점심 손님이 평일보다 40% 안팎 많다
+        "weekday_factor": [0.95, 0.95, 1.0, 1.0, 1.1, 1.5, 1.45],
+        # 11:00~20:30, 19칸. 14:30~17:00 브레이크타임(주문 없음).
+        "hall_slot_weight": [1.5, 3.0, 4.5, 4.5, 3.0, 1.8, 0.8, 0.0, 0.0, 0.0, 0.0, 0.0,
+                             1.2, 2.5, 3.5, 3.2, 2.2, 1.2, 0.4],
+        "delivery_slot_weight": [0.8, 1.5, 2.2, 2.2, 1.6, 1.0, 0.5, 0.0, 0.0, 0.0, 0.0, 0.0,
+                                 1.0, 1.8, 2.4, 2.4, 2.0, 1.4, 0.6],
+        "open_slots_by_weekday": {5: (1, 7), 6: (1, 7)},  # 토·일은 11:30~14:30 칸만
+        "customer_pool": 600,
+        "staff": [("한도현", 10320), ("윤채원", 10320), ("임시우", 10320), ("강민서", 10320), ("조은우", 10320)],
+        # 평일은 점심조·저녁조, 주말은 점심 3명.
+        "shift_slots": {
+            "open1": ((10, 30), (15, 0)),
+            "open2": ((11, 0), (14, 30)),
+            "close1": ((16, 30), (21, 0)),
+            "close2": ((17, 0), (20, 30)),
+            "weekend1": ((11, 0), (15, 0)),
+            "weekend2": ((11, 30), (14, 30)),
+            "weekend_help": ((11, 30), (14, 30)),  # 보조
+        },
+        # 1인 주 5일 (조은우만 주 6일).
+        "shift_template": {
+            0: {"open1": 1, "open2": 2, "close1": 3, "close2": 4},  # 조은우 휴무
+            1: {"open1": 2, "open2": 3, "close1": 4, "close2": 5},  # 한도현 휴무
+            2: {"open1": 3, "open2": 4, "close1": 5, "close2": 1},  # 윤채원 휴무
+            3: {"open1": 4, "open2": 5, "close1": 1, "close2": 2},  # 임시우 휴무
+            4: {"open1": 5, "open2": 1, "close1": 2, "close2": 3},  # 강민서 휴무
+            5: {"weekend1": 1, "weekend2": 4, "weekend_help": 5},
+            6: {"weekend1": 2, "weekend2": 3, "weekend_help": 5},
+        },
+        "reviews": {"linked": 50, "linked_twice": 20, "unlinked": 160},
+        "late_reviews": {"until": date(2026, 11, 13), "linked": 2, "unlinked": 4},  # 11/11~13 에 덧붙이는 리뷰 (하루 2건꼴)
+        "positive": [
+            "{menu} 튀김옷이 얇고 바삭해요. 고기도 부드러워요.",
+            "{menu} 육즙이 살아 있어요. 또 올게요!",
+            "라멘이랑 돈가스 둘 다 맛있는 집 찾기 힘든데 여기 최고예요.",
+            "{menu} 처음 먹어봤는데 기대 이상이었어요.",
+            "줄 서서 먹을 만해요. {menu} 추천합니다.",
+            "가게가 깔끔하고 사장님이 친절하세요.",
+            "주말 점심에 왔는데 웨이팅 있어도 금방 들어갔어요.",
+            "{menu} 가격이 좀 있지만 그 값 해요.",
+            "배달인데도 튀김이 눅눅하지 않았어요.",
+            "국물이 진하고 차슈가 두툼해요.",
+            "추운 날 라멘 한 그릇 하니까 몸이 녹네요.",
+            "석사동에서 돈가스는 여기가 제일이에요.",
+        ],
+        "taste": [
+            "{menu} 고기가 질기고 맛이 별로예요.",
+            "{menu} 기름 냄새가 심했어요.",
+            "라멘 국물이 너무 짜요.",
+            "{menu} 속이 덜 익은 것 같았어요.",
+            "면이 퍼져서 식감이 별로였어요.",
+            "예전보다 튀김옷이 두꺼워진 것 같아요.",
+        ],
+        "mixed": [
+            "{menu} 맛있는데 배달이라 조금 눅눅했어요.",
+            "맛은 좋지만 라멘 국물이 조금 짰어요.",
+            "{menu} 괜찮았어요. 다만 주말 웨이팅이 길어서 아쉬워요.",
+        ],
+    },
+    {
+        # 실제 가게. 주소·좌표·영업시간·메뉴(이름·가격)는 네이버 지도 가게 화면(2026-11-13, 가게 id 2004174048)을 따랐다.
+        # 강릉초당두부는 네이버에 가격이 없어 가상 가격을 넣었다. 주문·리뷰·알바는 모두 가상.
+        # 가게는 경기 화성시에 있지만 행사·경기·날씨는 다른 목업 가게와 같은 공통 데이터를 쓴다.
+        "store": {
+            "store_id": "s005",
+            "name": "초옹장",
+            "category": "한식",
+            "address": "경기 화성시 만세구 남양읍 역골중앙로41번길 39 1층 101호",
+            "lat": 37.2065963,
+            "lng": 126.8272701,
+            "open_time": time(10, 30),  # 매일 10:30~20:30 (라스트오더 20:20), 브레이크 없음
+            "close_time": time(20, 30),
+            "closed_weekdays": [],
+            "slots": ["10:00", "15:00", "20:00"],
+        },
+        "menu": [
+            ("초계국수(물)", "main", 11000),
+            ("초계국수(비빔)", "main", 11000),
+            ("들깨옹심이", "main", 12000),
+            ("멸치옹심이", "main", 12000),
+            ("들깨옹심이메밀칼국수", "main", 10000),
+            ("멸치옹심이메밀칼국수", "main", 10000),
+            ("새뱅이 장칼국수", "main", 9000),
+            ("수도감세트(수육,도토리전병,감자전)", "main", 18000),
+            ("수육(대)", "main", 28000),
+            ("수육(소)", "main", 15000),
+            ("강릉초당두부", "side", 8000),  # 네이버에 가격 없음 (가상)
+            ("도토리전병", "side", 12000),
+            ("감자전", "side", 7000),
+            ("소주", "drink", 4000),
+            ("맥주", "drink", 4000),
+            ("양조장막걸리(한병)", "drink", 8000),
+            ("양조장막걸리(한잔)", "drink", 3000),
+            ("음료", "drink", 2000),
+        ],
+        "main_weight": {"들깨옹심이메밀칼국수": 18, "멸치옹심이메밀칼국수": 12, "새뱅이 장칼국수": 10,
+                        "수도감세트(수육,도토리전병,감자전)": 5, "수육(대)": 2, "수육(소)": 4},
+        "seasonal": {
+            "초계국수(물)": [1, 1, 2, 4, 9, 15, 20, 19, 10, 3, 1, 1],  # 여름 메뉴
+            "초계국수(비빔)": [2, 2, 3, 5, 7, 10, 12, 12, 7, 4, 2, 2],
+            "들깨옹심이": [14, 13, 10, 8, 5, 3, 2, 2, 4, 8, 11, 14],  # 추울수록 따뜻한 옹심이
+            "멸치옹심이": [10, 9, 8, 6, 4, 3, 2, 2, 3, 6, 8, 10],
+        },
+        "side_p": {"hall": 0.3, "delivery": 0.2},
+        "drink_p": {"hall": 0.25, "delivery": 0.1},
+        "base_orders": 60,
+        "hall_share": 0.75,
+        "weekday_factor": [0.9, 0.9, 0.95, 0.95, 1.05, 1.3, 1.25],  # 주말 가족 손님
+        # 10:30~20:30, 20칸. 브레이크 없음. 점심이 저녁보다 많은 국수집.
+        "hall_slot_weight": [0.6, 1.5, 3.5, 4.5, 4.0, 2.5, 1.5, 1.0, 0.8, 0.6,
+                             0.6, 0.8, 1.5, 2.5, 3.0, 2.8, 2.0, 1.2, 0.6, 0.2],
+        "delivery_slot_weight": [0.3, 0.8, 2.0, 2.5, 2.2, 1.5, 1.0, 0.8, 0.6, 0.6,
+                                 0.6, 0.8, 1.2, 2.0, 2.4, 2.2, 1.8, 1.2, 0.6, 0.2],
+        "customer_pool": 650,
+        "staff": [("배수아", 10320), ("남궁현", 10320), ("문하린", 10320), ("양지성", 10320), ("백서윤", 10320)],
+        # 매일 영업. 평일은 오픈·마감·점심 보조 3명, 주말은 4명.
+        "shift_slots": {
+            "open1": ((10, 0), (15, 0)),
+            "open2": ((10, 30), (14, 30)),
+            "close1": ((15, 0), (21, 0)),
+            "close2": ((16, 30), (20, 30)),
+            "lunch": ((11, 30), (14, 0)),  # 보조
+        },
+        # 1인 주 4~5일.
+        "shift_template": {
+            0: {"open1": 1, "close1": 2, "lunch": 3},
+            1: {"open1": 2, "close1": 3, "lunch": 4},
+            2: {"open1": 3, "close1": 4, "lunch": 5},
+            3: {"open1": 4, "close1": 5, "lunch": 1},
+            4: {"open1": 5, "close1": 1, "lunch": 2},
+            5: {"open1": 1, "open2": 2, "close1": 3, "close2": 4},
+            6: {"open1": 5, "open2": 1, "close1": 2, "close2": 3},
+        },
+        "reviews": {"linked": 50, "linked_twice": 20, "unlinked": 180},
+        "late_reviews": {"until": date(2026, 11, 13), "linked": 2, "unlinked": 4},  # 11/11~13 에 덧붙이는 리뷰 (하루 2건꼴)
+        "positive": [
+            "{menu} 국물이 진하고 고소해요.",
+            "옹심이가 쫀득쫀득해요. 또 올게요!",
+            "{menu} 처음 먹어봤는데 기대 이상이었어요.",
+            "메밀면이 부드럽고 들깨 국물이 정말 고소해요.",
+            "수육이 야들야들하고 잡내가 없어요.",
+            "{side} 바삭하고 맛있어요. 막걸리랑 잘 어울려요.",
+            "가게가 깔끔하고 사장님이 친절하세요.",
+            "더운 날 초계국수 시원하게 잘 먹었어요.",
+            "부모님 모시고 왔는데 다들 만족하셨어요.",
+            "양이 넉넉하고 가격도 괜찮아요.",
+            "추운 날 옹심이 한 그릇 하니까 몸이 녹네요.",
+            "{menu} 추천합니다. 남양읍 맛집이에요.",
+        ],
+        "taste": [
+            "{menu} 국물이 너무 싱거웠어요.",
+            "{menu} 간이 너무 세요.",
+            "옹심이가 퍼져서 식감이 별로였어요.",
+            "면이 불어서 왔어요.",
+            "{side} 기름이 너무 많았어요.",
+            "예전보다 들깨 국물이 묽어진 것 같아요.",
+        ],
+        "mixed": [
+            "{menu} 맛있는데 배달이라 면이 조금 불었어요.",
+            "맛은 좋지만 국물이 조금 짰어요.",
+            "{menu} 괜찮았어요. 다만 점심엔 웨이팅이 길어서 아쉬워요.",
+        ],
+    },
 ]
+# 처음 세 매장은 난수 하나를 같이 쓴다. 뒤에 더한 매장은 매장마다 따로 난수를 써서 앞 매장 데이터가 바뀌지 않게 한다.
+SHARED_RNG_STORES = {"s001", "s002", "s003"}
 
 # 매장 공통 불만 리뷰 문구
 DELAY = [
@@ -493,8 +706,9 @@ def gen_store_orders(rng: random.Random, cfg: dict, weather: dict[date, dict]) -
         festival = rng.uniform(*FESTIVAL_LIFT) if d in FESTIVAL_DATES else 1.0
         rainy = weather[d]["precip_mm"] >= RAIN_MM
         game = d in NATIONAL_GAME_DATES
+        first, last = cfg.get("open_slots_by_weekday", {}).get(d.weekday(), (0, len(hall_w)))
 
-        for slot in range(len(hall_w)):
+        for slot in range(first, last):
             evening = base_min + slot * 30 >= GAME_FROM_HOUR * 60  # 자정 넘은 새벽도 포함
             for channel, share, w in (("hall", cfg["hall_share"], hall_w), ("delivery", 1 - cfg["hall_share"], deliv_w)):
                 lam = total * share * w[slot]
@@ -564,6 +778,36 @@ def gen_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]
         at = kst(d, rng.randint(11, 23), rng.randint(0, 59), rng.randint(0, 59))
         drafts.append({"order": None, "customer_key": None, "written_at": at, "delivery": rng.random() < 0.5})
 
+    rows = review_rows(rng, cfg, drafts)
+    rows.sort(key=lambda r: r["written_at"])
+    for rid, r in enumerate(rows, start=1):
+        r["review_id"] = rid
+    return rows
+
+
+def gen_late_reviews(rng: random.Random, cfg: dict, orders: list[dict], first_id: int) -> list[dict]:
+    """REVIEW_END 다음 날부터 late_reviews["until"] 까지 덧붙이는 리뷰. 앞 리뷰는 그대로 두고 id 는 first_id 부터."""
+    late = cfg["late_reviews"]
+    start, end = REVIEW_END + timedelta(days=1), late["until"]
+    end_at = kst(end, 23, 59, 59)
+    deliveries = [o for o in orders if o["customer_key"] and kst(start, 0) <= o["ordered_at"] < kst(end, 12)]
+    drafts = []
+    for o in rng.sample(deliveries, late["linked"]):
+        at = min(o["ordered_at"] + timedelta(minutes=rng.randint(40, 600)), end_at)
+        drafts.append({"order": o, "customer_key": o["customer_key"], "written_at": at, "delivery": True})
+    for i in range(late["unlinked"]):
+        d = start + timedelta(days=i % ((end - start).days + 1))  # 날마다 돌아가며 넣어 마지막 날에도 리뷰가 있게 한다
+        at = kst(d, rng.randint(11, 23), rng.randint(0, 59), rng.randint(0, 59))
+        drafts.append({"order": None, "customer_key": None, "written_at": at, "delivery": rng.random() < 0.5})
+    rows = review_rows(rng, cfg, drafts)
+    rows.sort(key=lambda r: r["written_at"])
+    for rid, r in enumerate(rows, start=first_id):
+        r["review_id"] = rid
+    return rows
+
+
+def review_rows(rng: random.Random, cfg: dict, drafts: list[dict]) -> list[dict]:
+    """리뷰 초안(주문, 손님, 쓴 때, 배달 여부)에 종류·별점·글을 붙인다."""
     kinds_c, kinds_w = list(COMPLAINT_KIND_WEIGHT), list(COMPLAINT_KIND_WEIGHT.values())
     rows = []
     for r in drafts:
@@ -581,9 +825,6 @@ def gen_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]
                      "customer_key": r["customer_key"], "written_at": r["written_at"],
                      "rating": rng.choices(ratings, rw)[0], "content": review_text(rng, cfg, kind),
                      "complaint_type": None})
-    rows.sort(key=lambda r: r["written_at"])
-    for rid, r in enumerate(rows, start=1):
-        r["review_id"] = rid
     return rows
 
 
@@ -617,10 +858,12 @@ def build(seed: int) -> dict[str, dict[str, list[dict]]]:
             "weather_daily": weather,
         },
     }
+    rngs = {cfg["store"]["store_id"]: rng if cfg["store"]["store_id"] in SHARED_RNG_STORES
+            else random.Random(f"{seed}:{cfg['store']['store_id']}") for cfg in STORES}
     raw_orders = {}
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
-        orders, items, raw_orders[sid] = gen_orders(rng, cfg, by_date)
+        orders, items, raw_orders[sid] = gen_orders(rngs[sid], cfg, by_date)
         data[sid] = {
             "store": [cfg["store"]],
             "menu": [{"menu_id": i, "name": n, "category": c, "price": p}
@@ -631,10 +874,13 @@ def build(seed: int) -> dict[str, dict[str, list[dict]]]:
         }
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
-        data[sid]["reviews"] = gen_reviews(rng, cfg, raw_orders[sid])
+        data[sid]["reviews"] = gen_reviews(rngs[sid], cfg, raw_orders[sid])
+        if "late_reviews" in cfg:  # 따로 난수를 써서 앞 리뷰와 근무 데이터는 바뀌지 않는다
+            late_rng = random.Random(f"{seed}:{sid}:late_reviews")
+            data[sid]["reviews"] += gen_late_reviews(late_rng, cfg, raw_orders[sid], len(data[sid]["reviews"]) + 1)
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
-        data[sid]["shifts"] = gen_shifts(rng, cfg)
+        data[sid]["shifts"] = gen_shifts(rngs[sid], cfg)
     return data
 
 

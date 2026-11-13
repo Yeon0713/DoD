@@ -20,6 +20,7 @@ venv/
 server/check_apis.py
 
 jh/
+.DS_Store
 # SQLite 임시 파일
 *.db-journal
 

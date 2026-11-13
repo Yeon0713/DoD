@@ -46,7 +46,7 @@ def fill(store_id: str, weekly_hours: dict, break_time: dict | None) -> dict:
         return {"orders": 0, "skipped": True}
     rng = random.Random(f"demo:{store_id}")
     menus = read_store_db.read_menus(store_id) or [{"menu_id": None, "name": "대표 메뉴", "price": 12000}]
-    weather = {row["date"]: float(row["temp_max"]) for row in read_store_db.read_weather()}
+    weather = {row["date"]: float(row["temp_max"]) for row in read_store_db.read_weather(store_id) if row["temp_max"] is not None}
     today = now_seoul().date()
 
     weekly_regulars = [(f"c_w{i:02d}", rng.randrange(7), rng.choice(["lunch", "dinner"])) for i in range(1, 7)]

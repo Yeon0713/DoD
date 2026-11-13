@@ -211,3 +211,22 @@ def build_analysis_inputs(store_id: str, now: dt.datetime) -> AnalysisInputs:
         weather=[to_weather(row) for row in read_store_db.read_weather(store_id)],
         reviews=[to_review(row) for row in read_store_db.read_reviews(store_id, now)],
     )
+
+
+def inputs_until(full: AnalysisInputs, now: dt.datetime) -> AnalysisInputs:
+    """build_analysis_inputs(store_id, 늦은 시각) 로 한 번 읽어 둔 입력에서 now 까지 생긴 것만 남긴다.
+
+    build_analysis_inputs(store_id, now) 와 같은 결과다 (주문·근무는 시작 시각, 리뷰는 쓴 시각, 주문 메뉴는 그 주문의 시각으로 자른다).
+    여러 시각을 차례로 계산할 때(개발자 대시보드 시연 훑기) DB 를 시각마다 다시 읽지 않으려고 쓴다.
+    """
+    orders = [order for order in full.orders if order.ordered_at <= now]
+    kept = {order.order_id for order in orders}
+    return full.model_copy(
+        update={
+            "orders": orders,
+            "order_items": [item for item in full.order_items if item.order_id in kept],
+            "shifts": [shift for shift in full.shifts if shift.starts_at <= now],
+            "reviews": [review for review in full.reviews if review.written_at <= now],
+        }
+    )
+

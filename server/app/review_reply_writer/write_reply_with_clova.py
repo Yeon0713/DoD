@@ -192,8 +192,28 @@ def write_one(item: PlanItem, review: Review, store: dict, menus: list[str], *, 
     return None
 
 
+def cached_drafts(items: list[PlanItem], reviews: dict[str, Review], store: dict) -> dict[str, str]:
+    """write_drafts 와 같지만 CLOVA 를 부르지 않고 이미 써 둔 초안만 돌려준다 (개발자 대시보드 시연 단계를 바로 열 때)."""
+    return _split(items, reviews, store)[1]
+
+
 def write_drafts(items: list[PlanItem], reviews: dict[str, Review], store: dict, menus: list[str]) -> dict[str, str]:
     """답글·재주문 인사 할 일들의 초안을 쓴다. 이미 쓴 리뷰는 다시 부르지 않는다. {할 일 id: 초안}"""
+    todo, result = _split(items, reviews, store)
+
+    if todo and is_enabled():
+        with ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="reply-writer") as pool:
+            written = list(pool.map(lambda job: _safe_write(job[0], job[1], store, menus), todo))
+        for (item, _, key), text in zip(todo, written):
+            with _guard:
+                _drafts[key] = text
+            if text:
+                result[item.plan_id] = text
+    return result
+
+
+def _split(items: list[PlanItem], reviews: dict[str, Review], store: dict) -> tuple[list, dict[str, str]]:
+    """초안이 필요한 할 일을 (아직 안 쓴 것, 이미 쓴 초안) 으로 나눈다."""
     todo, result = [], {}
     for item in items:
         if item.task_type not in ("REVISIT_REPLY", "REORDER_NUDGE"):
@@ -208,16 +228,7 @@ def write_drafts(items: list[PlanItem], reviews: dict[str, Review], store: dict,
                     result[item.plan_id] = _drafts[key]
                 continue
         todo.append((item, review, key))
-
-    if todo and is_enabled():
-        with ThreadPoolExecutor(max_workers=WORKERS, thread_name_prefix="reply-writer") as pool:
-            written = list(pool.map(lambda job: _safe_write(job[0], job[1], store, menus), todo))
-        for (item, _, key), text in zip(todo, written):
-            with _guard:
-                _drafts[key] = text
-            if text:
-                result[item.plan_id] = text
-    return result
+    return todo, result
 
 
 def _safe_write(item: PlanItem, review: Review, store: dict, menus: list[str]) -> str | None:

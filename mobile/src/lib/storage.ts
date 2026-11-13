@@ -25,6 +25,13 @@ export function serverClockShiftMs(): number {
   return clockShiftMinutes * 60 * 1000;
 }
 
+/** 서버 시계 앞당김을 다시 읽는다. 테스트 계정 로그인·로그아웃처럼 서버가 시계를 옮긴 뒤 앱도 같은 시각을 보게 (lib/testAccount.ts) */
+export async function refreshServerClock(): Promise<void> {
+  if (!USE_SERVER) return;
+  const health = await serverHealth(2000);
+  if (health) clockShiftMinutes = health.clock_shift_minutes ?? 0;
+}
+
 async function serverBootId(): Promise<string | null> {
   const health = await serverHealth(2000);
   if (!health) return null; // 서버가 꺼져 있으면 지우지 않는다

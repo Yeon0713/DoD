@@ -12,6 +12,7 @@ class PolishSwitch(BaseModel):
 class DemoGo(BaseModel):
     store_id: str
     at: dt.datetime  # 서버 시계를 둘 시각 (시연 단계의 at)
+    polish: bool = False  # 이 단계에서 카드 문장 다듬기(CLOVA)를 맡길지. 기본은 끔 (시연 중 CLOVA 비용을 줄인다)
 
 
 class UiTextEdit(BaseModel):

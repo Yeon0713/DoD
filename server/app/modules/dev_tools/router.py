@@ -11,23 +11,26 @@ GET  /api/dev_tools/ai_quality?limit=50     CLOVA 통과·버림, 최근 호출
 GET  /api/dev_tools/system                  설정 스위치, 키 유무, 계산 시간, 테스트 계정
 POST /api/dev_tools/recompute?store_id=     그 가게 다시 계산
 POST /api/dev_tools/polish                  문장 다듬기 켜기/끄기 {"enabled": true}
-POST /api/dev_tools/clova_log/clear         CLOVA 사용 기록 지우기
 GET  /api/dev_tools/demo_steps?store_id=    시연: Figma UC01~UC16 단계 (그 가게 시연 기간에서 찾은 시각과 앱 화면)
 POST /api/dev_tools/demo_go                 시연: 서버 시계를 그 단계 시각으로 맞추고 가게를 다시 계산 {"store_id", "at"}
 POST /api/dev_tools/demo_clock_reset        시연: 서버 시계를 실제 시각으로
 POST /api/dev_tools/demo_rescan?store_id=   시연: 기억한 시연 기간 훑기 결과를 지우고 다시 훑기
+GET  /api/dev_tools/demo_progress           시연: 가게마다 훑기가 끝났는지, 훑는 중이면 몇 개 시각까지 했는지
 GET  /api/dev_tools/ui_text                 화면 글: 화면별 앱 글과 저장해 둔 수정
 POST /api/dev_tools/ui_text/save            화면 글: 수정을 mobile/scripts/ui-text/edits.json 에 저장 {"edits"}
 POST /api/dev_tools/ui_text/apply           화면 글: 저장하고 앱 코드에 넣은 뒤 타입 검사 {"edits"}
+GET  /api/dev_tools/ui_text/export          화면 글: 밖에서 고치는 JSON 내려받기 (모든 원본 + 빈 "수정" 칸)
+POST /api/dev_tools/ui_text/import          화면 글: 밖에서 고친 JSON 을 올려 수정에 더하기 (그 JSON 그대로)
 시연의 시계 옮기기는 DEV_CLOCK_ENABLED=true 도 필요하다.
 시계 앞당기기와 초기화는 팀원이 만든 /dev/clock, /dev/reset 을 쓴다 (DEV_CLOCK_ENABLED=true 필요).
 """
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
+from fastapi.responses import JSONResponse
 
-from app.core import clova_usage_log
 from app.core.config import settings
 from app.core.error_response import ApiError
+from app.data_pipeline import read_store_db
 from app.data_pipeline.store_selection import resolve_store_id
 from app.modules.dev_tools import data_provider, demo_scenario, demo_week_scan, ui_text
 from app.modules.dev_tools.response_format import DemoGo, PolishSwitch, UiTextEdits
@@ -90,12 +93,6 @@ def polish(body: PolishSwitch):
     return data_provider.set_polish(body.enabled)
 
 
-@router.post("/clova_log/clear", summary="CLOVA 사용 기록 지우기")
-def clear_clova_log():
-    clova_usage_log.clear()
-    return {"cleared": True}
-
-
 @router.get("/demo_steps", summary="시연: Figma UC01~UC16 단계")
 def demo_steps(store_id: str | None = STORE):
     return demo_scenario.build_steps(resolve_store_id(store_id))
@@ -103,12 +100,20 @@ def demo_steps(store_id: str | None = STORE):
 
 @router.post("/demo_go", summary="시연: 서버 시계를 그 단계 시각으로")
 def demo_go(body: DemoGo):
-    return data_provider.demo_go(resolve_store_id(body.store_id), body.at)
+    return data_provider.demo_go(resolve_store_id(body.store_id), body.at, polish=body.polish)
 
 
 @router.post("/demo_clock_reset", summary="시연: 서버 시계를 실제 시각으로")
 def demo_clock_reset(store_id: str | None = STORE):
     return data_provider.demo_clock_reset(resolve_store_id(store_id) if store_id else None)
+
+
+@router.get("/demo_progress", summary="시연: 훑기 준비 상태")
+def demo_progress():
+    return {
+        "ready": {sid: demo_week_scan.is_ready(sid) for sid in read_store_db.list_store_ids()},
+        "progress": demo_week_scan.progress(),
+    }
 
 
 @router.post("/demo_rescan", summary="시연: 시연 기간 다시 훑기")
@@ -131,3 +136,17 @@ def ui_text_save(body: UiTextEdits):
 @router.post("/ui_text/apply", summary="화면 글: 앱 코드에 넣고 타입 검사")
 def ui_text_apply(body: UiTextEdits):
     return ui_text.run("apply", body.model_dump())
+
+
+@router.get("/ui_text/export", summary="화면 글: 밖에서 고치는 JSON 내려받기")
+def ui_text_export():
+    doc = ui_text.run("export")
+    name = f"ui-text-{doc.get('뽑은 날', 'export')}.json"
+    return JSONResponse(doc, headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+@router.post("/ui_text/import", summary="화면 글: 밖에서 고친 JSON 등록")
+def ui_text_import(doc: dict = Body(...)):
+    if not isinstance(doc.get("화면"), list):
+        raise ApiError(422, "UI_TEXT_BAD_FILE", "화면 글 JSON 이 아니에요. 대시보드에서 내려받은 파일의 '수정' 칸만 고쳐서 올려 주세요.")
+    return ui_text.run("import", {"doc": doc})

@@ -42,6 +42,7 @@ MAX_REASON_LENGTH = 60
 TEMPERATURE = 0.2  # 결과를 기억해 다시 쓰므로 답이 흔들리지 않게 낮게
 MAX_TOKENS = 200
 TIMEOUT_SECONDS = 15
+CLOVA_FEATURE = "menu_candidates"  # CLOVA 사용 기록(개발자 대시보드 'AI 비용')의 기능 이름
 DIGIT_OR_PERCENT_RE = re.compile(r"[\d%％]")  # 전각 숫자도 \d 에 든다
 # 판매 데이터를 보지 않은 LLM 의 판매 주장 차단. 상황과 메뉴의 어울림(어울려요, 찾을 만해요, 따뜻해요)은 막지 않는다
 BANNED_REASON_WORDS = ("인기", "잘 팔", "많이 팔", "매출", "순위", "베스트", "대박")
@@ -157,6 +158,8 @@ def _ask(store: dict, menus: list[Menu], kind: str, post: Post) -> MenuCandidate
         temperature=TEMPERATURE,
         timeout=TIMEOUT_SECONDS,
         post=post,
+        feature=CLOVA_FEATURE,
+        store_id=store["store_id"],
     )
     return _parse(answer, [menu.menu_id for menu in menus], count) if answer else EMPTY
 

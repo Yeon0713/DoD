@@ -146,6 +146,18 @@ def test_reasons_about_how_well_menus_fit_are_allowed(reason):
     fake = FakeClova({"menu_ids": ["2"], "reason": reason})
     assert menu_candidates(STORE, MENUS, "WINTER", post=fake).reason == reason
 
+def test_clova_calls_are_recorded_as_menu_candidates_for_the_store(monkeypatch):
+    seen = {}
+
+    def spy(system, user, **kwargs):
+        seen.update(kwargs)
+        return json.dumps({"menu_ids": ["2"], "reason": "잘 어울려요"}, ensure_ascii=False)
+
+    monkeypatch.setattr(module.clova, "ask", spy)
+    menu_candidates(STORE, MENUS, "WINTER")
+    assert seen["feature"] == "menu_candidates"  # 개발자 대시보드 비용 기록에 따로 잡힌다
+    assert seen["store_id"] == "s_test"
+
 def test_no_api_key_returns_empty_candidates(monkeypatch):
     monkeypatch.setattr(settings, "clova_studio_api_key", "")
     fake = FakeClova({"menu_ids": ["2"], "reason": "잘 어울려요"})

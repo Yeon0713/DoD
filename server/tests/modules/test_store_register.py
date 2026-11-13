@@ -126,8 +126,12 @@ def test_mock_place_links_to_mock_store_and_marks_existing_reviews(client, tmp_p
 
     reviews = read_store_db.read_reviews("s004", until=now_seoul())
     linked = sum(r["order_id"] is not None for r in reviews)
+    coupang = sum(r.get("platform") == "COUPANG" for r in reviews)
+    assert 0 < coupang < linked  # 배달 리뷰 일부가 쿠팡이츠
     imported = {p: client.post("/api/stores/s004/reviews/import", json={"platform": p}).json()["imported"] for p in ("BAEMIN", "NAVER", "COUPANG")}
-    assert imported == {"BAEMIN": linked, "NAVER": len(reviews) - linked, "COUPANG": 0}
+    assert imported == {"BAEMIN": linked - coupang, "NAVER": len(reviews) - linked, "COUPANG": coupang}
+    platforms = {r["review_id"]: r["platform"] for r in read_store_db.read_reviews("s004", until=now_seoul())}
+    assert sum(p == "COUPANG" for p in platforms.values()) == coupang and None not in platforms.values()  # 불러온 뒤에도 같은 나눔
     assert client.post("/api/stores/s004/reviews/import", json={"platform": "BAEMIN"}).json()["already"] is True
     assert len(read_store_db.read_reviews("s004", until=now_seoul())) == len(reviews)  # 새 리뷰를 넣지 않는다
 

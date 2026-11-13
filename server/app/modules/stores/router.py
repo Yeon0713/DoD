@@ -6,6 +6,8 @@ POST /api/stores/register                  그 가게를 등록한다 (DB 에 �
 POST /api/stores/{store_id}/refresh        네이버 지도에서 가게 정보를 다시 읽어 DB 를 고친다 (사장님이 원할 때만)
 GET  /api/stores/{store_id}/reviews        플랫폼별로 불러온 리뷰 수
 POST /api/stores/{store_id}/reviews/import 한 플랫폼(배민, 네이버, 쿠팡이츠) 리뷰를 불러온다. 지금은 목업 리뷰를 넣는다
+GET  /api/stores/{store_id}/weather        기상청에서 받아 둔 그 가게 지역 날씨 (등록할 때 받고, 그 뒤 3시간마다 새로 받는다)
+POST /api/stores/{store_id}/weather/refresh 그 가게 지역 날씨를 기상청에서 다시 받는다
 
 가게 검색은 GET /api/naver/search (네이버 지역 검색) 를 쓴다.
 """
@@ -13,7 +15,7 @@ POST /api/stores/{store_id}/reviews/import 한 플랫폼(배민, 네이버, 쿠�
 import datetime as dt
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, BackgroundTasks, Query
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -28,6 +30,8 @@ from app.data_pipeline.read_store_db import list_store_ids
 from app.data_pipeline.store_snapshot_cache import save_settings_changes
 from app.modules.stores import demo_data
 from app.modules.stores.review_import import PLATFORMS, make_reviews
+from app.weather import auto_refresh, store_weather
+from app.weather.client import KmaError
 
 router = APIRouter()
 
@@ -106,7 +110,7 @@ def preview(body: PreviewRequest):
 
 
 @router.post("/register", summary="가게 등록 (DB 에 저장)")
-def register(body: RegisterRequest):
+def register(body: RegisterRequest, background: BackgroundTasks):
     cached = _previews.get(body.place_id)
     fresh = cached and dt.datetime.now(dt.timezone.utc) - cached[1] < PREVIEW_KEEP
     try:
@@ -123,6 +127,10 @@ def register(body: RegisterRequest):
     # 요일별 영업시간과 브레이크 타임은 DB(등록 기록)에 있어 가게 설정의 기본이 된다 (store_snapshot_cache._registered_base).
     # 새로 등록한 가게라 지난 계산 결과는 지운다
     save_settings_changes(store_id, {})
+    # 가게 좌표로 그 지역 기상청 날씨를 받는다. API 를 수십 번 불러 시간이 걸리므로 등록 응답을 보낸 뒤에 한다
+    if store_weather.can_fetch(store_id):
+        # 실패해도 등록은 그대로 두고(공통 목업 날씨를 쓴다) 기록만 남긴다. 그 뒤로는 3시간마다 새로 받는다 (app/weather/auto_refresh.py)
+        background.add_task(auto_refresh.refresh_store, store_id)
     return {"store_id": store_id, "place": _place_payload(info)}
 
 
@@ -168,9 +176,9 @@ def import_reviews(store_id: str, body: ImportRequest):
     if counts.get(body.platform):
         return {"platform": body.platform, "imported": counts[body.platform], "already": True}
     if registered_stores.is_mock_store(store_id):
-        # 목업 가게는 리뷰가 이미 있다. 새로 만들지 않고, 있는 리뷰 중 이 플랫폼 것(배달 주문 리뷰는 배민, 나머지는 네이버)만 표시한다
+        # 목업 가게는 리뷰가 이미 있다. 새로 만들지 않고, 있는 리뷰 중 이 플랫폼 것(배달 주문 리뷰는 배민·쿠팡이츠, 나머지는 네이버)만 표시한다
         reviews = read_store_db.read_reviews(store_id, until=now_seoul())
-        ids = [r["review_id"] for r in reviews if review_platform(r["order_channel"]) == body.platform]
+        ids = [r["review_id"] for r in reviews if (r.get("platform") or review_platform(r["order_channel"])) == body.platform]
         return {"platform": body.platform, "imported": registered_stores.mark_platform(store_id, body.platform, ids), "already": False}
     store = read_store_db.read_store(store_id)
     rows = make_reviews(store_id, body.platform, [m.name for m in info.menus], store["open_time"].hour, store["close_time"].hour, regulars=_regular_keys(store_id))
@@ -178,3 +186,25 @@ def import_reviews(store_id: str, body: ImportRequest):
     # 새 리뷰로 할 일을 다시 계산하게 한다 (설정을 바꾸지 않고 계산 결과만 지운다)
     save_settings_changes(store_id, {})
     return {"platform": body.platform, "imported": added, "already": False}
+
+
+@router.get("/{store_id}/weather", summary="기상청에서 받아 둔 가게 지역 날씨")
+def weather(store_id: str):
+    if store_id not in list_store_ids():
+        raise ApiError(404, "STORE_NOT_FOUND", "등록한 가게가 아니에요")
+    return store_weather.saved_weather(store_id)
+
+
+@router.post("/{store_id}/weather/refresh", summary="가게 지역 날씨를 기상청에서 다시 받기")
+def refresh_weather(store_id: str):
+    _registered(store_id)
+    if registered_stores.is_mock_store(store_id):
+        raise ApiError(400, "NOT_REGISTERED_STORE", "목업 가게는 목업 날씨를 써요")
+    if not store_weather.can_fetch(store_id):
+        raise ApiError(503, "WEATHER_KEY_MISSING", "기상청 인증키(KMA_API_KEY)가 server/.env 에 없어요")
+    try:
+        summary = store_weather.update_store_weather(store_id)
+    except KmaError as error:
+        raise ApiError(502, "WEATHER_NOT_READ", f"기상청 날씨를 받지 못했어요. {error}")
+    save_settings_changes(store_id, {})
+    return summary

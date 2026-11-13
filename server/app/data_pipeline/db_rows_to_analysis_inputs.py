@@ -179,12 +179,17 @@ def to_games(rows: list[dict]) -> list[Game]:
     return games
 
 
+def _float_or_none(value) -> float | None:
+    return None if value is None else float(value)
+
+
 def to_weather(row: dict) -> WeatherDay:
+    """기상청에서 받은 가게 날씨는 모르는 값이 None 이다 (0 으로 바꾸지 않는다)."""
     return WeatherDay(
         date=row["date"],
-        temp_max=float(row["temp_max"]),
-        temp_min=float(row["temp_min"]),
-        rain_mm=float(row["precip_mm"]),
+        temp_max=_float_or_none(row["temp_max"]),
+        temp_min=_float_or_none(row["temp_min"]),
+        rain_mm=_float_or_none(row["precip_mm"]),
     )
 
 
@@ -203,6 +208,6 @@ def build_analysis_inputs(store_id: str, now: dt.datetime) -> AnalysisInputs:
         shifts=[to_shift(row, wages[row["staff_id"]]) for row in read_store_db.read_shifts(store_id, now)],
         events=[to_event(row, store) for row in read_store_db.read_events()],
         games=to_games(read_store_db.read_games()),
-        weather=[to_weather(row) for row in read_store_db.read_weather()],
+        weather=[to_weather(row) for row in read_store_db.read_weather(store_id)],
         reviews=[to_review(row) for row in read_store_db.read_reviews(store_id, now)],
     )

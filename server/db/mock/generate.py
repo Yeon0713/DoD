@@ -12,7 +12,7 @@ server/ 폴더에서 실행:
 - 매장: s001 한림국수, s002 두리맥주(17시~다음 날 3시), s003 석사돈가스, s004 피플스클럽(돈가스·라멘, 주말은 점심만).
   메뉴·영업시간·주문 패턴·알바·리뷰 문구가 매장마다 다르다.
 - 매출·근무·날씨: 2026-01-01 ~ 12-31. 계절, 방학, 행사, 국가대표 경기, 비 효과를 넣었다.
-- 리뷰: 11/10 까지. 데모 주간 사건(11/16~22 행사·경기, 손님 c_w01·c_m01, 불만 리뷰, 매출 이상)은 v2(D4)에서 심는다.
+- 리뷰: 11/10 까지 (s004 는 11/13 까지 덧붙인다). 데모 주간 사건(11/16~22 행사·경기, 손님 c_w01·c_m01, 불만 리뷰, 매출 이상)은 v2(D4)에서 심는다.
 """
 
 import argparse
@@ -403,6 +403,7 @@ STORES = [
             6: {"weekend1": 2, "weekend2": 3, "weekend_help": 5},
         },
         "reviews": {"linked": 50, "linked_twice": 20, "unlinked": 160},
+        "late_reviews": {"until": date(2026, 11, 13), "linked": 2, "unlinked": 4},  # 11/11~13 에 덧붙이는 리뷰 (하루 2건꼴)
         "positive": [
             "{menu} 튀김옷이 얇고 바삭해요. 고기도 부드러워요.",
             "{menu} 육즙이 살아 있어요. 또 올게요!",
@@ -672,6 +673,36 @@ def gen_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]
         at = kst(d, rng.randint(11, 23), rng.randint(0, 59), rng.randint(0, 59))
         drafts.append({"order": None, "customer_key": None, "written_at": at, "delivery": rng.random() < 0.5})
 
+    rows = review_rows(rng, cfg, drafts)
+    rows.sort(key=lambda r: r["written_at"])
+    for rid, r in enumerate(rows, start=1):
+        r["review_id"] = rid
+    return rows
+
+
+def gen_late_reviews(rng: random.Random, cfg: dict, orders: list[dict], first_id: int) -> list[dict]:
+    """REVIEW_END 다음 날부터 late_reviews["until"] 까지 덧붙이는 리뷰. 앞 리뷰는 그대로 두고 id 는 first_id 부터."""
+    late = cfg["late_reviews"]
+    start, end = REVIEW_END + timedelta(days=1), late["until"]
+    end_at = kst(end, 23, 59, 59)
+    deliveries = [o for o in orders if o["customer_key"] and kst(start, 0) <= o["ordered_at"] < kst(end, 12)]
+    drafts = []
+    for o in rng.sample(deliveries, late["linked"]):
+        at = min(o["ordered_at"] + timedelta(minutes=rng.randint(40, 600)), end_at)
+        drafts.append({"order": o, "customer_key": o["customer_key"], "written_at": at, "delivery": True})
+    for i in range(late["unlinked"]):
+        d = start + timedelta(days=i % ((end - start).days + 1))  # 날마다 돌아가며 넣어 마지막 날에도 리뷰가 있게 한다
+        at = kst(d, rng.randint(11, 23), rng.randint(0, 59), rng.randint(0, 59))
+        drafts.append({"order": None, "customer_key": None, "written_at": at, "delivery": rng.random() < 0.5})
+    rows = review_rows(rng, cfg, drafts)
+    rows.sort(key=lambda r: r["written_at"])
+    for rid, r in enumerate(rows, start=first_id):
+        r["review_id"] = rid
+    return rows
+
+
+def review_rows(rng: random.Random, cfg: dict, drafts: list[dict]) -> list[dict]:
+    """리뷰 초안(주문, 손님, 쓴 때, 배달 여부)에 종류·별점·글을 붙인다."""
     kinds_c, kinds_w = list(COMPLAINT_KIND_WEIGHT), list(COMPLAINT_KIND_WEIGHT.values())
     rows = []
     for r in drafts:
@@ -689,9 +720,6 @@ def gen_reviews(rng: random.Random, cfg: dict, orders: list[dict]) -> list[dict]
                      "customer_key": r["customer_key"], "written_at": r["written_at"],
                      "rating": rng.choices(ratings, rw)[0], "content": review_text(rng, cfg, kind),
                      "complaint_type": None})
-    rows.sort(key=lambda r: r["written_at"])
-    for rid, r in enumerate(rows, start=1):
-        r["review_id"] = rid
     return rows
 
 
@@ -742,6 +770,9 @@ def build(seed: int) -> dict[str, dict[str, list[dict]]]:
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
         data[sid]["reviews"] = gen_reviews(rngs[sid], cfg, raw_orders[sid])
+        if "late_reviews" in cfg:  # 따로 난수를 써서 앞 리뷰와 근무 데이터는 바뀌지 않는다
+            late_rng = random.Random(f"{seed}:{sid}:late_reviews")
+            data[sid]["reviews"] += gen_late_reviews(late_rng, cfg, raw_orders[sid], len(data[sid]["reviews"]) + 1)
     for cfg in STORES:
         sid = cfg["store"]["store_id"]
         data[sid]["shifts"] = gen_shifts(rngs[sid], cfg)

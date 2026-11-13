@@ -7,6 +7,7 @@
      리뷰 답글은 지금 한 주(지난 토요일 11:00 ~ 이번 토요일 11:00) 몫만 남긴다  (keep_this_week_replies)
   4. 이번 한 주 리뷰 답글과 재주문 인사 초안을 CLOVA X 로 쓴다         (review_reply_writer)
   5. 화면에 보일 문장을 CLOVA X 로 다듬도록 뒤에서 맡긴다            (sentence_polish)
+  6. 메뉴판 카드마다 배치안을 붙인다(CLOVA 는 뒤에서, 실패해도 나머지는 그대로)  (menu_board.for_snapshot)
 
 분석에 가게 하나당 몇 초가 걸리므로, 결과를 보관해 두고 SNAPSHOT_REFRESH_MINUTES(기본 10분)가 지나면 다시 계산한다.
 사장님이 설정을 고치면 그 가게 결과를 지워 다음 요청에서 바로 다시 계산한다.
@@ -31,6 +32,7 @@ from app.core.seoul_time import at_time, now_seoul, to_seoul
 from app.data_pipeline import registered_stores, read_store_db
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
+from app.menu_board.for_snapshot import MenuBoardCard, snapshot_menu_boards
 from app.planner.data_shapes import CalendarCell, PlanResult, Review, StoreSettings
 from app.planner.priority_and_grouping import group_into_batches
 from app.planner.rule_review_reply import current_reply_week_start
@@ -62,6 +64,7 @@ class StoreSnapshot:
     plan_unavailable: ApiError | None = None  # plan 이 None 인 까닭
     ordered_at_by_order: dict[str, dt.datetime] = field(default_factory=dict)
     draft_texts: dict[str, str] = field(default_factory=dict)  # 할 일 id → CLOVA X 답글·재주문 인사 초안
+    menu_boards: dict[str, MenuBoardCard] = field(default_factory=dict)  # 메뉴판 카드 id → 배치안
 
     def require_plan(self) -> PlanResult:
         if self.plan is None:
@@ -169,6 +172,8 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
             reply_items, {review.review_id: review for review in reviews}, store, [menu.name for menu in inputs.menus]
         )
 
+    menu_boards = snapshot_menu_boards(store_id, store, inputs, settings, plan, parts.planner_calendar)
+
     snapshot = StoreSnapshot(
         store_id=store_id,
         computed_at=now,
@@ -184,6 +189,7 @@ def _compute(store_id: str, now: dt.datetime, previous: StoreSnapshot | None) ->
         plan_unavailable=unavailable,
         ordered_at_by_order={order.order_id: order.ordered_at for order in inputs.orders},
         draft_texts=draft_texts,
+        menu_boards=menu_boards,
     )
     _request_polish(snapshot)
     seconds = (now_seoul() - started).total_seconds()
@@ -203,6 +209,7 @@ class _PlanParts:
     settings: StoreSettings | None
     plan: PlanResult | None
     unavailable: ApiError | None
+    planner_calendar: list[CalendarCell]  # 계획 엔진에 넣은 달력 (메뉴판 배치안도 쓴다)
 
 
 def _analyze_and_plan(
@@ -215,14 +222,15 @@ def _analyze_and_plan(
     reviews = attach_labels(inputs.reviews, labels)
     risk_signals = update_risk_signals(inputs.reviews, labels, previous.risk_signals if previous else [], now)
 
-    settings, plan, unavailable = None, None, None
+    settings, plan, unavailable, planner_calendar = None, None, None, []
     try:
         settings = build_store_settings(store, get_settings_changes(store_id))
+        planner_calendar = calendar_for_planner(store_id, inputs, calendar_cells, now)
         plan_inputs = build_plan_inputs(
             settings,
             reviews,
             customer_cycles,
-            calendar_for_planner(store_id, inputs, calendar_cells, now),
+            planner_calendar,
             risk_signals,
             inputs.events,
             inputs.games,
@@ -231,7 +239,7 @@ def _analyze_and_plan(
         plan = keep_this_week_replies(plan, now, settings)
     except ApiError as error:
         unavailable = error
-    return _PlanParts(calendar_cells, customer_cycles, reviews, risk_signals, settings, plan, unavailable)
+    return _PlanParts(calendar_cells, customer_cycles, reviews, risk_signals, settings, plan, unavailable, planner_calendar)
 
 
 def plan_only(store_id: str, now: dt.datetime) -> tuple[StoreSettings | None, PlanResult | None, ApiError | None]:

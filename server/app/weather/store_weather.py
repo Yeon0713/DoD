@@ -6,7 +6,9 @@
     store_weather_daily  날짜마다 한 줄. 지난날은 관측, 오늘부터는 예보. 분석(태성)이 읽는다 (read_store_db.read_weather)
     store_weather_fetch  마지막으로 받은 전체 결과(시간별 예보, 위치·관측소 정보). 한 줄
 
-목업 가게(s001~s005)는 생성기가 만든 파일을 고치지 않고 공통 목업 날씨를 쓴다.
+목업 가게(s001~s003)는 공통 목업 날씨를 쓴다. 목업 가게로 이은 실제 가게(s004 피플스클럽, s005 초옹장)는 사장님이 등록하면
+등록한 가게처럼 받는다. 다만 git 에 올라간 목업 파일을 고치지 않게 db/app_data/weather/<가게>.db 에 저장하고,
+분석은 받은 날만 기상청 날씨로 바꾼다 (read_store_db.read_weather).
 """
 
 import datetime as dt
@@ -19,7 +21,6 @@ from app.weather.client import KmaClient, KmaError
 from app.weather.schemas import WeatherResult
 from app.weather.service import get_weather
 from db import models
-from db.session import store_engine
 
 PAST_DAYS = 30
 DAILY = models.StoreWeatherDaily.__table__
@@ -27,9 +28,12 @@ FETCH = models.StoreWeatherFetch.__table__
 
 
 def can_fetch(store_id: str) -> bool:
-    """인증키가 있고, 사장님이 등록한 가게(s101 부터, 목업 가게로 이은 s004·s005 는 빼고)인지."""
-    registered = store_id[1:].isdigit() and int(store_id[1:]) >= registered_stores.FIRST_NUMBER
-    return bool(settings.kma_api_key) and registered and not registered_stores.is_mock_store(store_id)
+    """인증키가 있고, 사장님이 등록한 가게(s101 부터, 또는 사장님이 등록한 목업 가게로 이은 s004·s005)인지."""
+    if registered_stores.is_mock_store(store_id):
+        registered = registered_stores.place_info(store_id) is not None
+    else:
+        registered = store_id[1:].isdigit() and int(store_id[1:]) >= registered_stores.FIRST_NUMBER
+    return bool(settings.kma_api_key) and registered
 
 
 def update_store_weather(store_id: str, client: KmaClient | None = None, now: dt.datetime | None = None) -> dict:
@@ -74,7 +78,7 @@ def save(store_id: str, result: WeatherResult) -> dict:
     fetched_at = result.metadata.requested_at
     today = fetched_at.date()
     rows = _daily_rows(result, fetched_at)
-    with store_engine(store_id).begin() as conn:
+    with read_store_db.weather_engine(store_id).begin() as conn:
         DAILY.create(conn, checkfirst=True)
         FETCH.create(conn, checkfirst=True)
         conn.execute(delete(DAILY).where(DAILY.c.kind == "forecast", DAILY.c.date < today))

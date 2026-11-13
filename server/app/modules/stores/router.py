@@ -23,6 +23,7 @@ from app.core.error_response import ApiError
 from app.core.naver_place import PlaceCrawlError, PlaceInfo, crawl_place, find_place_id
 from app.core.seoul_time import now_seoul
 from app.data_pipeline import read_store_db, registered_stores
+from app.data_pipeline.db_rows_to_analysis_inputs import review_platform
 from app.data_pipeline.read_store_db import list_store_ids
 from app.data_pipeline.store_snapshot_cache import save_settings_changes
 from app.modules.stores import demo_data
@@ -166,6 +167,11 @@ def import_reviews(store_id: str, body: ImportRequest):
     counts = registered_stores.imported_counts(store_id)
     if counts.get(body.platform):
         return {"platform": body.platform, "imported": counts[body.platform], "already": True}
+    if registered_stores.is_mock_store(store_id):
+        # 목업 가게는 리뷰가 이미 있다. 새로 만들지 않고, 있는 리뷰 중 이 플랫폼 것(배달 주문 리뷰는 배민, 나머지는 네이버)만 표시한다
+        reviews = read_store_db.read_reviews(store_id, until=now_seoul())
+        ids = [r["review_id"] for r in reviews if review_platform(r["order_channel"]) == body.platform]
+        return {"platform": body.platform, "imported": registered_stores.mark_platform(store_id, body.platform, ids), "already": False}
     store = read_store_db.read_store(store_id)
     rows = make_reviews(store_id, body.platform, [m.name for m in info.menus], store["open_time"].hour, store["close_time"].hour, regulars=_regular_keys(store_id))
     added = registered_stores.add_reviews(store_id, body.platform, rows)

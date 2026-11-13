@@ -1,0 +1,2 @@
+store_id,name,category,address,lat,lng,open_time,close_time,closed_weekdays,slots
+s004,피플스클럽,돈가스,강원특별자치도 춘천시 우석로67번길 12 1층,37.8653181,127.7516618,11:00:00,20:30:00,[],"[""10:30"", ""15:00"", ""20:00""]"

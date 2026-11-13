@@ -29,6 +29,13 @@ from db.session import DATA_DIR, engine, store_engine
 
 REGISTRY_PATH = Path(__file__).resolve().parents[2] / "db" / "app_data" / "registry.db"
 FIRST_NUMBER = 101  # s001~s099 는 목업 가게 자리
+# 목업 생성기가 1년치 데이터를 만들어 둔 실제 가게: 네이버 가게 id → 목업 가게 id.
+# 이 가게를 등록하면 새 파일을 만들지 않고 목업 가게로 잇는다 (목업 파일은 고치지 않고 등록 기록만 남긴다).
+MOCK_PLACES = {"1909851296": "s004"}  # 피플스클럽
+
+
+def is_mock_store(store_id: str) -> bool:
+    return store_id in MOCK_PLACES.values()
 
 
 def _db() -> sqlite3.Connection:
@@ -141,6 +148,10 @@ def _create_store_file(store_id: str) -> None:
 def register(info: PlaceInfo) -> str:
     """가게를 등록한다. 이미 등록한 가게(같은 네이버 가게 id)면 정보만 새로 고치고 같은 가게 id 를 돌려준다."""
     now = now_seoul().isoformat()
+    mock = MOCK_PLACES.get(info.place_id)
+    if mock and (DATA_DIR / f"{mock}.db").exists():
+        _save_place(mock, info, now)
+        return mock
     existing = store_for_place(info.place_id)
     if existing and (DATA_DIR / f"{existing}.db").exists():
         refresh(existing, info)
@@ -157,19 +168,27 @@ def register(info: PlaceInfo) -> str:
         engine.dispose()
         (DATA_DIR / f"{store_id}.db").unlink(missing_ok=True)
         raise
+    _save_place(store_id, info, now)
+    return store_id
+
+
+def _save_place(store_id: str, info: PlaceInfo, now: str) -> None:
     with _db() as conn:
         conn.execute(
             "INSERT INTO stores VALUES (?, ?, ?, ?, ?) ON CONFLICT(store_id) DO UPDATE SET info_json = excluded.info_json, crawled_at = excluded.crawled_at",
             (store_id, info.place_id, json.dumps(info.to_dict(), ensure_ascii=False), now, now),
         )
-    return store_id
 
 
 def refresh(store_id: str, info: PlaceInfo) -> None:
     """네이버 지도에서 다시 읽은 정보로 가게와 메뉴를 고친다.
 
     메뉴는 지우지 않는다 (주문 기록이 메뉴를 가리킨다). 이름이 같은 메뉴는 가격만 고치고, 새 메뉴만 더한다.
+    목업 가게(MOCK_PLACES)는 생성기가 만든 파일을 고치지 않고 등록 기록만 새로 고친다.
     """
+    if is_mock_store(store_id):
+        _save_place(store_id, info, now_seoul().isoformat())
+        return
     row = store_row(store_id, info)
     with store_engine(store_id).begin() as conn:
         conn.execute(update(models.Store).where(models.Store.store_id == store_id).values(**{k: v for k, v in row.items() if k != "store_id"}))
@@ -206,10 +225,15 @@ def add_reviews(store_id: str, platform: str, rows: list[dict]) -> int:
         start = (last or 0) + 1
         values = [{"review_id": start + i, "order_id": None, "customer_key": row.get("customer_key"), **{k: v for k, v in row.items() if k != "customer_key"}} for i, row in enumerate(rows)]
         conn.execute(insert(models.Review), values)
+    return mark_platform(store_id, platform, [v["review_id"] for v in values])
+
+
+def mark_platform(store_id: str, platform: str, review_ids: list[int]) -> int:
+    """가게 파일에 이미 있는 리뷰가 어느 플랫폼 것인지 기록한다. 기록한 수를 돌려준다."""
     imported_at = now_seoul().isoformat()
     with _db() as conn:
-        conn.executemany("INSERT INTO review_platforms VALUES (?, ?, ?, ?)", [(store_id, v["review_id"], platform, imported_at) for v in values])
-    return len(values)
+        conn.executemany("INSERT INTO review_platforms VALUES (?, ?, ?, ?)", [(store_id, review_id, platform, imported_at) for review_id in review_ids])
+    return len(review_ids)
 
 
 def reset_all() -> list[str]:

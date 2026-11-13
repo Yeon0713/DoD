@@ -1,5 +1,6 @@
 """매장 등록: 네이버 지도 가게 화면 읽기, 가게 표 한 줄 만들기, 목업 리뷰, 등록 API (네이버는 가짜 응답)."""
 
+import dataclasses
 import datetime as dt
 import json
 
@@ -8,7 +9,8 @@ from fastapi.testclient import TestClient
 
 from app.core import naver_place
 from app.core.naver_place import PlaceInfo, PlaceMenu, parse_place
-from app.data_pipeline import registered_stores
+from app.core.seoul_time import now_seoul
+from app.data_pipeline import read_store_db, registered_stores
 from app.main import create_app
 from app.modules.stores import router as stores_router
 from app.modules.stores.review_import import make_reviews
@@ -108,6 +110,29 @@ def test_preview_explains_when_naver_cannot_be_read(client, monkeypatch):
 
 def test_import_rejects_unknown_platform_and_mock_store(client):
     assert client.post("/api/stores/s001/reviews/import", json={"platform": "BAEMIN"}).json()["error"]["code"] == "NOT_REGISTERED_STORE"
+
+
+def test_mock_place_links_to_mock_store_and_marks_existing_reviews(client, tmp_path, monkeypatch):
+    """피플스클럽(네이버 가게 id 1909851296)을 등록하면 새 파일 없이 s004 로 잇고, 리뷰 불러오기는 있는 리뷰만 표시한다."""
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    monkeypatch.setattr(stores_router, "save_settings_changes", lambda sid, ch: None)
+    info = dataclasses.replace(parse_place("123456", HTML), place_id="1909851296")
+    monkeypatch.setattr(stores_router, "crawl_place", lambda place_id: info)
+    s004 = registered_stores.DATA_DIR / "s004.db"
+    files_before, s004_before = sorted(registered_stores.DATA_DIR.glob("*.db")), s004.read_bytes()
+
+    body = client.post("/api/stores/register", json={"place_id": "1909851296", "owner_key": "naver:abc"}).json()
+    assert body["store_id"] == "s004" and registered_stores.store_for_owner("naver:abc") == "s004"
+
+    reviews = read_store_db.read_reviews("s004", until=now_seoul())
+    linked = sum(r["order_id"] is not None for r in reviews)
+    imported = {p: client.post("/api/stores/s004/reviews/import", json={"platform": p}).json()["imported"] for p in ("BAEMIN", "NAVER", "COUPANG")}
+    assert imported == {"BAEMIN": linked, "NAVER": len(reviews) - linked, "COUPANG": 0}
+    assert client.post("/api/stores/s004/reviews/import", json={"platform": "BAEMIN"}).json()["already"] is True
+    assert len(read_store_db.read_reviews("s004", until=now_seoul())) == len(reviews)  # 새 리뷰를 넣지 않는다
+
+    client.post("/api/stores/s004/refresh")
+    assert sorted(registered_stores.DATA_DIR.glob("*.db")) == files_before and s004.read_bytes() == s004_before  # 목업 파일은 그대로
 
 
 def test_reset_all_removes_only_registered_store_files(tmp_path, monkeypatch):

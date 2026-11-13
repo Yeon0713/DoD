@@ -6,7 +6,7 @@
     store_weather_daily  날짜마다 한 줄. 지난날은 관측, 오늘부터는 예보. 분석(태성)이 읽는다 (read_store_db.read_weather)
     store_weather_fetch  마지막으로 받은 전체 결과(시간별 예보, 위치·관측소 정보). 한 줄
 
-목업 가게(s001~s004)는 생성기가 만든 파일을 고치지 않고 공통 목업 날씨를 쓴다.
+목업 가게(s001~s005)는 생성기가 만든 파일을 고치지 않고 공통 목업 날씨를 쓴다.
 """
 
 import datetime as dt
@@ -27,7 +27,7 @@ FETCH = models.StoreWeatherFetch.__table__
 
 
 def can_fetch(store_id: str) -> bool:
-    """인증키가 있고, 사장님이 등록한 가게(s101 부터, 목업 가게로 이은 s004 는 빼고)인지."""
+    """인증키가 있고, 사장님이 등록한 가게(s101 부터, 목업 가게로 이은 s004·s005 는 빼고)인지."""
     registered = store_id[1:].isdigit() and int(store_id[1:]) >= registered_stores.FIRST_NUMBER
     return bool(settings.kma_api_key) and registered and not registered_stores.is_mock_store(store_id)
 

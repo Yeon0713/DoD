@@ -19,7 +19,7 @@ from db.session import engine, store_db_files, store_engine
 
 
 # 배달 주문과 이어진 리뷰 중 주문 번호 끝자리 0~2(약 30%)를 쿠팡이츠 리뷰로 보는 목업 가게
-COUPANG_SPLIT_STORES = {"s004"}
+COUPANG_SPLIT_STORES = {"s004", "s005"}
 
 
 def list_store_ids() -> list[str]:

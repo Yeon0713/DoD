@@ -31,7 +31,7 @@ REGISTRY_PATH = Path(__file__).resolve().parents[2] / "db" / "app_data" / "regis
 FIRST_NUMBER = 101  # s001~s099 는 목업 가게 자리
 # 목업 생성기가 1년치 데이터를 만들어 둔 실제 가게: 네이버 가게 id → 목업 가게 id.
 # 이 가게를 등록하면 새 파일을 만들지 않고 목업 가게로 잇는다 (목업 파일은 고치지 않고 등록 기록만 남긴다).
-MOCK_PLACES = {"1909851296": "s004"}  # 피플스클럽
+MOCK_PLACES = {"1909851296": "s004", "2004174048": "s005"}  # 피플스클럽, 초옹장
 
 
 def is_mock_store(store_id: str) -> bool:

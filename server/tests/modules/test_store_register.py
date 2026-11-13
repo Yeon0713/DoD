@@ -112,31 +112,32 @@ def test_import_rejects_unknown_platform_and_mock_store(client):
     assert client.post("/api/stores/s001/reviews/import", json={"platform": "BAEMIN"}).json()["error"]["code"] == "NOT_REGISTERED_STORE"
 
 
-def test_mock_place_links_to_mock_store_and_marks_existing_reviews(client, tmp_path, monkeypatch):
-    """피플스클럽(네이버 가게 id 1909851296)을 등록하면 새 파일 없이 s004 로 잇고, 리뷰 불러오기는 있는 리뷰만 표시한다."""
+@pytest.mark.parametrize("place_id, store_id", [("1909851296", "s004"), ("2004174048", "s005")])  # 피플스클럽, 초옹장
+def test_mock_place_links_to_mock_store_and_marks_existing_reviews(client, tmp_path, monkeypatch, place_id, store_id):
+    """목업 가게로 이은 실제 가게(네이버 가게 id)를 등록하면 새 파일 없이 목업 가게로 잇고, 리뷰 불러오기는 있는 리뷰만 표시한다."""
     monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
     monkeypatch.setattr(stores_router, "save_settings_changes", lambda sid, ch: None)
-    info = dataclasses.replace(parse_place("123456", HTML), place_id="1909851296")
+    info = dataclasses.replace(parse_place("123456", HTML), place_id=place_id)
     monkeypatch.setattr(stores_router, "crawl_place", lambda place_id: info)
-    s004 = registered_stores.DATA_DIR / "s004.db"
-    files_before, s004_before = sorted(registered_stores.DATA_DIR.glob("*.db")), s004.read_bytes()
+    mock_file = registered_stores.DATA_DIR / f"{store_id}.db"
+    files_before, mock_before = sorted(registered_stores.DATA_DIR.glob("*.db")), mock_file.read_bytes()
 
-    body = client.post("/api/stores/register", json={"place_id": "1909851296", "owner_key": "naver:abc"}).json()
-    assert body["store_id"] == "s004" and registered_stores.store_for_owner("naver:abc") == "s004"
+    body = client.post("/api/stores/register", json={"place_id": place_id, "owner_key": "naver:abc"}).json()
+    assert body["store_id"] == store_id and registered_stores.store_for_owner("naver:abc") == store_id
 
-    reviews = read_store_db.read_reviews("s004", until=now_seoul())
+    reviews = read_store_db.read_reviews(store_id, until=now_seoul())
     linked = sum(r["order_id"] is not None for r in reviews)
     coupang = sum(r.get("platform") == "COUPANG" for r in reviews)
     assert 0 < coupang < linked  # 배달 리뷰 일부가 쿠팡이츠
-    imported = {p: client.post("/api/stores/s004/reviews/import", json={"platform": p}).json()["imported"] for p in ("BAEMIN", "NAVER", "COUPANG")}
+    imported = {p: client.post(f"/api/stores/{store_id}/reviews/import", json={"platform": p}).json()["imported"] for p in ("BAEMIN", "NAVER", "COUPANG")}
     assert imported == {"BAEMIN": linked - coupang, "NAVER": len(reviews) - linked, "COUPANG": coupang}
-    platforms = {r["review_id"]: r["platform"] for r in read_store_db.read_reviews("s004", until=now_seoul())}
+    platforms = {r["review_id"]: r["platform"] for r in read_store_db.read_reviews(store_id, until=now_seoul())}
     assert sum(p == "COUPANG" for p in platforms.values()) == coupang and None not in platforms.values()  # 불러온 뒤에도 같은 나눔
-    assert client.post("/api/stores/s004/reviews/import", json={"platform": "BAEMIN"}).json()["already"] is True
-    assert len(read_store_db.read_reviews("s004", until=now_seoul())) == len(reviews)  # 새 리뷰를 넣지 않는다
+    assert client.post(f"/api/stores/{store_id}/reviews/import", json={"platform": "BAEMIN"}).json()["already"] is True
+    assert len(read_store_db.read_reviews(store_id, until=now_seoul())) == len(reviews)  # 새 리뷰를 넣지 않는다
 
-    client.post("/api/stores/s004/refresh")
-    assert sorted(registered_stores.DATA_DIR.glob("*.db")) == files_before and s004.read_bytes() == s004_before  # 목업 파일은 그대로
+    client.post(f"/api/stores/{store_id}/refresh")
+    assert sorted(registered_stores.DATA_DIR.glob("*.db")) == files_before and mock_file.read_bytes() == mock_before  # 목업 파일은 그대로
 
 
 def test_reset_all_removes_only_registered_store_files(tmp_path, monkeypatch):

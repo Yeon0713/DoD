@@ -13,7 +13,7 @@ import pytest
 
 from app.core.config import settings
 from app.core.seoul_time import SEOUL
-from app.data_pipeline import store_snapshot_cache
+from app.data_pipeline import read_store_db, registered_stores, store_snapshot_cache
 from app.menu_board import for_snapshot
 from app.menu_board import menu_candidates as candidates_module
 
@@ -42,6 +42,24 @@ def test_snapshot_has_a_menu_board_for_every_menu_order_card():
     board = snapshot.menu_boards["MENU_ORDER:2026-11-18:2026-11-18"]
     assert board.basis == "season_winter"
     assert board.reason  # LLM 이 없어도 이유 문구가 있다
+
+
+def test_missing_kma_weather_keeps_menu_boards_and_all_menus(tmp_path, monkeypatch):
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    weather = [
+        {"date": NOW.date() + dt.timedelta(days=offset), "temp_max": None, "temp_min": None, "precip_mm": None}
+        for offset in range(-30, 5)
+    ]
+    monkeypatch.setattr(read_store_db, "read_weather", lambda store_id: weather)
+    snapshot = store_snapshot_cache.get_snapshot("s001", NOW)
+
+    assert snapshot.inputs.weather and all(w.temp_max is None for w in snapshot.inputs.weather)
+    assert snapshot.menu_boards and set(snapshot.menu_boards) == menu_order_ids(snapshot)
+    bases = {board.basis for board in snapshot.menu_boards.values()}
+    assert bases & {event.event_id for event in snapshot.inputs.events}
+    assert all(board.basis != "season_winter" for board in snapshot.menu_boards.values())
+    menu_ids = {menu.menu_id for menu in snapshot.inputs.menus}
+    assert all({menu.menu_id for menu in board.arrangement.order} == menu_ids for board in snapshot.menu_boards.values())
 
 
 def test_assembly_error_leaves_the_rest_of_the_snapshot_unchanged(monkeypatch, caplog):

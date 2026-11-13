@@ -3,7 +3,11 @@
 import datetime as dt
 import logging
 
+import pytest
+
+from app.core.naver_place import PlaceInfo, PlaceMenu
 from app.core.seoul_time import SEOUL
+from app.data_pipeline import registered_stores
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs
 from app.data_pipeline.menu_original_order import original_menu_order, original_order
 
@@ -76,3 +80,34 @@ def test_mock_store_order_uses_the_same_ids_as_analysis_inputs():
     analysis_ids = [menu.menu_id for menu in build_analysis_inputs("s001", NOW).menus]
     assert ids(menus) == sorted(analysis_ids, key=int)
     assert all(isinstance(menu_id, str) for menu_id in ids(menus))
+
+
+def test_registered_store_still_uses_naver_menu_order(monkeypatch):
+    info = PlaceInfo(
+        place_id="123456", name="등록 가게", category="음식점", road_address="", address="",
+        lat=37.86, lng=127.75, weekly_hours={}, break_time=None,
+        menus=[PlaceMenu("만두", 10000, None), PlaceMenu("국수", 10000, None)],
+    )
+    monkeypatch.setattr(registered_stores, "place_info", lambda store_id: info)
+    monkeypatch.setattr("app.data_pipeline.read_store_db.read_menus", lambda store_id: [row(1, "국수"), row(2, "만두"), row(3, "콜라")])
+    assert ids(original_menu_order("s101")) == ["2", "1"]
+
+
+@pytest.mark.parametrize("place_id, store_id", [("1909851296", "s004"), ("2004174048", "s005")])
+def test_linked_mock_store_keeps_all_original_menus_after_register_and_refresh(tmp_path, monkeypatch, place_id, store_id):
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    original = original_menu_order(store_id)
+    assert len(original) > 2
+    info = PlaceInfo(
+        place_id=place_id, name="테스트 가게", category="음식점", road_address="", address="",
+        lat=37.86, lng=127.75, weekly_hours={}, break_time=None,
+        menus=[PlaceMenu(menu.name, menu.price, None) for menu in reversed(original[:2])],
+    )
+
+    assert registered_stores.register(info) == store_id
+    assert registered_stores.place_info(store_id) is not None  # 목업 매장에도 등록 정보가 생긴다
+    assert original_menu_order(store_id) == original  # 화면에 없는 토핑·음료도 원래 순서에 남는다
+
+    info.menus = [PlaceMenu(original[-1].name, original[-1].price, None)]
+    registered_stores.refresh(store_id, info)
+    assert original_menu_order(store_id) == original

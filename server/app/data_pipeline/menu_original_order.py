@@ -1,7 +1,7 @@
 """메뉴판 원래 순서: 사장님이 정해 둔 메뉴 목록 순서. 메뉴판을 바꿀 때 맨 위 몇 자리만 바꾸고 나머지는 이 순서를 지킨다.
 
 - 등록한 가게: 네이버 지도에서 읽어 둔 메뉴 화면 순서(registered_stores.place_info 의 menus)
-- 목업 가게: menu_id 순서
+- 목업 가게(네이버 가게와 연결해 등록한 목업 포함): menu_id 순서
 돌려주는 메뉴는 분석 입력(AnalysisInputs.menus)과 같은 모양이다. menu_id 도 같은 문자열이다.
 """
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 def original_menu_order(store_id: str) -> list[Menu]:
     """그 가게의 원래 메뉴 순서."""
-    info = registered_stores.place_info(store_id)
+    info = None if registered_stores.is_mock_store(store_id) else registered_stores.place_info(store_id)
     names = None if info is None else [menu.name for menu in info.menus]
     return original_order(read_store_db.read_menus(store_id), names, store_id=store_id)
 

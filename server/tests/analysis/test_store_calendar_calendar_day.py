@@ -4,15 +4,15 @@
 """
 
 import datetime as dt
-
-import pytest
+from pathlib import Path
 
 from app.analysis.input_shapes import AnalysisInputs, Order, StoreInfo, WeatherDay
-from app.analysis.mock_csv_reader import MOCK_DIR, read_mock_csv
+from app.analysis.mock_csv_reader import read_mock_csv
 from app.analysis.store_calendar.calendar_day import build_calendar_days
 from app.core.seoul_time import SEOUL
 from app.planner.data_shapes import CalendarReason, Event, Game
 
+FIXTURE_DIR = Path(__file__).parent / "fixtures" / "mock_v1"  # 손계산 기대값을 계산한 목업 v1 (고정)
 STORE = StoreInfo(store_id="s1", name="테스트", lat=0, lng=0, open_time=dt.time(10), close_time=dt.time(22))
 TODAY = dt.date(2026, 11, 16)  # 월요일
 NOW = dt.datetime(2026, 11, 16, 22, 30, tzinfo=SEOUL)
@@ -211,9 +211,8 @@ def nov(day: int, hour: int = 0, minute: int = 0) -> dt.datetime:
     return dt.datetime(2026, 11, day, hour, minute, tzinfo=SEOUL)
 
 
-@pytest.mark.skipif(not (MOCK_DIR / "orders.csv").exists(), reason="목업 CSV 가 없다")
 def test_mock_demo_week_calendar():
-    inputs = read_mock_csv()
+    inputs = read_mock_csv(FIXTURE_DIR)
     inputs = inputs.model_copy(update={
         "games": [
             *inputs.games,

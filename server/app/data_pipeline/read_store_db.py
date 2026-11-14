@@ -182,3 +182,20 @@ def read_store_weather_fetch(store_id: str) -> dict | None:
     """마지막으로 받은 기상청 날씨 전체. 칸: fetch_id, fetched_at, payload"""
     rows = _weather_rows(store_id, models.StoreWeatherFetch)
     return rows[0] if rows else None
+
+
+def read_store_weather_forecast_history(store_id: str) -> list[dict]:
+    """받을 때마다 쌓은 예보 하루 요약 (대상 날짜, 발표 시각 순). 받은 적 없으면 빈 목록.
+    칸: date, issued_at, source, temp_max, temp_min, sky, precip_type, precip_mm, pop_max, hours, fetched_at"""
+    # 더한 이유: store_weather_daily 는 날짜마다 가장 최근 예보(또는 관측)만 남아, 지난 시점의 예보를 다시 볼 수 없다
+    return _weather_rows(store_id, models.StoreWeatherForecastHistory)
+
+
+def forecast_as_of(store_id: str, as_of: dt.datetime) -> list[dict]:
+    """as_of(시간대가 붙은 시각) 때 알 수 있던 예보: 대상 날짜마다 issued_at ≤ as_of 인 것 중 가장 늦은 발표. 날짜 순.
+    칸은 read_store_weather_forecast_history 와 같다. 대상 날짜는 거르지 않는다 (백테스트가 고른다)."""
+    latest: dict[dt.date, dict] = {}
+    for row in read_store_weather_forecast_history(store_id):  # 날짜·발표 시각 순이라 뒤에 오는 발표가 덮는다
+        if row["issued_at"] <= as_of:
+            latest[row["date"]] = row
+    return list(latest.values())

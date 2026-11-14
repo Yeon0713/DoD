@@ -5,6 +5,9 @@
 
     store_weather_daily  날짜마다 한 줄. 지난날은 관측, 오늘부터는 예보. 분석(태성)이 읽는다 (read_store_db.read_weather)
     store_weather_fetch  마지막으로 받은 전체 결과(시간별 예보, 위치·관측소 정보). 한 줄
+    store_weather_forecast_history  받을 때마다 받은 예보의 하루 요약. (대상 날짜, 발표 시각) 한 줄, 지우지 않는다.
+                         위 두 표는 지난 예보를 남기지 않아서, 그때 있던 예보로 얼마나 맞혔는지 나중에 잴 수 있게 더했다
+                         (read_store_db.forecast_as_of)
 
 목업 가게(s001~s003)는 공통 목업 날씨를 쓴다. 목업 가게로 이은 실제 가게(s004 피플스클럽, s005 초옹장)는 사장님이 등록하면
 등록한 가게처럼 받는다. 다만 git 에 올라간 목업 파일을 고치지 않게 db/app_data/weather/<가게>.db 에 저장하고,
@@ -25,6 +28,7 @@ from db import models
 PAST_DAYS = 30
 DAILY = models.StoreWeatherDaily.__table__
 FETCH = models.StoreWeatherFetch.__table__
+HISTORY = models.StoreWeatherForecastHistory.__table__
 
 
 def can_fetch(store_id: str) -> bool:
@@ -73,14 +77,38 @@ def _daily_rows(result: WeatherResult, fetched_at: dt.datetime) -> list[dict]:
     return rows
 
 
+def _history_rows(result: WeatherResult, fetched_at: dt.datetime) -> list[dict]:
+    """예보 이력 표 줄: 받은 예보의 하루 요약 모두. 값은 _daily_rows 의 예보 줄과 같고 hours 를 더한다."""
+    return [
+        {
+            "date": f.date, "issued_at": f.issued_at, "source": f.source,
+            "temp_max": f.temperature_max, "temp_min": f.temperature_min,
+            "sky": f.sky, "precip_type": f.precipitation_type, "precip_mm": f.precipitation_mm_min,
+            "pop_max": round(f.precipitation_probability_max) if f.precipitation_probability_max is not None else None,
+            "hours": f.hours, "fetched_at": fetched_at,
+        }
+        for f in result.forecasts.daily
+    ]
+
+
 def save(store_id: str, result: WeatherResult) -> dict:
-    """관측은 같은 날 예보를 대신한다. 예보는 관측이 있는 날과 지난날에는 넣지 않고, 지난날 예보는 지운다."""
+    """관측은 같은 날 예보를 대신한다. 예보는 관측이 있는 날과 지난날에는 넣지 않고, 지난날 예보는 지운다.
+
+    받은 예보의 하루 요약은 예보 이력 표에도 쌓는다. 같은 (날짜, 발표 시각)는 덮어쓰고 지우지 않는다.
+    """
     fetched_at = result.metadata.requested_at
     today = fetched_at.date()
     rows = _daily_rows(result, fetched_at)
     with read_store_db.weather_engine(store_id).begin() as conn:
         DAILY.create(conn, checkfirst=True)
         FETCH.create(conn, checkfirst=True)
+        # 예보 이력: store_weather_daily 아래 동작(관측이 예보 대신, 지난날 예보 삭제)은 그대로 두고, 지난 예보는 이 표에만 남긴다
+        HISTORY.create(conn, checkfirst=True)
+        history = _history_rows(result, fetched_at)
+        for h in history:
+            conn.execute(delete(HISTORY).where(HISTORY.c.date == h["date"], HISTORY.c.issued_at == h["issued_at"]))
+        if history:
+            conn.execute(insert(HISTORY), history)
         conn.execute(delete(DAILY).where(DAILY.c.kind == "forecast", DAILY.c.date < today))
         observed = {r.date for r in conn.execute(select(DAILY.c.date).where(DAILY.c.kind == "observed"))}
         observed |= {r["date"] for r in rows if r["kind"] == "observed"}

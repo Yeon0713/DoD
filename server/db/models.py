@@ -225,6 +225,37 @@ class StoreWeatherFetch(Base):
     payload: Mapped[dict] = mapped_column(JSON)
 
 
+class StoreWeatherForecastHistory(Base):
+    """받을 때마다 받은 단기예보의 하루 요약을 (대상 날짜, 발표 시각) 한 줄로 쌓는다 (app/weather/store_weather.py).
+
+    더한 이유: store_weather_daily 는 관측이 같은 날 예보를 대신하고 지난날 예보를 지우고, store_weather_fetch 는 한 줄만 남아서
+    "그 시점에 있던 예보로 얼마나 맞혔는지"를 나중에 잴 수 없다. 이 표는 같은 (date, issued_at)를 다시 받으면 덮어쓰고, 지우지 않는다.
+    값은 store_weather_daily 의 예보 칸과 같다 (temp_avg 는 예보에서 늘 비어 있어 뺐다). 읽기: read_store_db.forecast_as_of
+    """
+
+    __tablename__ = "store_weather_forecast_history"
+    __table_args__ = (
+        CheckConstraint("source IN ('short_term')"),
+        CheckConstraint("sky IN ('맑음','구름많음','흐림')"),
+        CheckConstraint("precip_type IN ('없음','비','비/눈','눈','소나기')"),
+        {"schema": STORE_SCHEMA},
+    )
+
+    date: Mapped[dt.date] = mapped_column(Date, primary_key=True)  # 예보 대상 날짜
+    issued_at: Mapped[dt.datetime] = mapped_column(TZ, primary_key=True)  # 예보 발표 시각
+    source: Mapped[str] = mapped_column(Text)
+    temp_max: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    temp_min: Mapped[float | None] = mapped_column(Numeric(4, 1))
+    sky: Mapped[str | None] = mapped_column(Text)
+    precip_type: Mapped[str | None] = mapped_column(Text)
+    precip_mm: Mapped[float | None] = mapped_column(Numeric(5, 1))
+    pop_max: Mapped[int | None] = mapped_column(SmallInteger)
+    # 그날 시간별 예보 개수. store_weather_daily 에는 없는 칸이다. 이른 발표의 오늘 요약(예: 08시 발표 → 09~23시)처럼
+    # 하루 일부만 본 예보를 백테스트에서 가려낼 수 있게 둔다
+    hours: Mapped[int] = mapped_column(SmallInteger)
+    fetched_at: Mapped[dt.datetime] = mapped_column(TZ)  # 이 발표를 마지막으로 받은 시각
+
+
 class WeatherDaily(Base):
     __tablename__ = "weather_daily"
 

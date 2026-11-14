@@ -156,6 +156,10 @@ GET https://apihub.kma.go.kr/api/typ02/openApi/VilageFcstInfoService_2.0/getVila
 (`kind` observed/forecast, `source`, `temp_avg/max/min`, `sky`, `precip_type`, `precip_mm`, `pop_max`, `issued_at`, `fetched_at`).
 다시 받으면 관측이 같은 날 예보를 대신하고, 지난날 예보는 지우고, 이번에 받지 못한 관측일은 예전 값을 지우지 않습니다.
 
+그래서 지난 예보는 **`store_weather_forecast_history`** 에 따로 쌓습니다. 받을 때마다 받은 예보의 하루 요약을 (대상 날짜, 발표 시각 `issued_at`) 한 줄로 넣고
+(값은 위 예보 칸과 같고, 그날 시간별 예보 개수 `hours` 를 더함), 같은 발표를 다시 받으면 덮어쓰고, 지우지 않습니다.
+`read_store_db.forecast_as_of(store_id, as_of)` 는 날짜마다 `issued_at ≤ as_of` 인 것 중 가장 늦은 예보를 돌려줍니다 (그때 있던 예보로 얼마나 맞혔는지 잴 때).
+
 ## 5. 알아 둘 것
 
 - **3시간마다 새로 받기** (`auto_refresh.py`): 서버가 켜져 있는 동안 10분마다 등록한 가게를 훑어, 마지막으로 받은 지 3시간이 지난 가게만 다시 받습니다.

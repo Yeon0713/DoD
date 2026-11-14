@@ -5,7 +5,8 @@
   r 은 원래 순서에 없는 id 와 겹친 id 를 걸러 낸 뒤의 후보 안 순위(1부터)다. 후보 밖은 0.
 - 데이터 점수 = max(비중 변화 %p, 0) / 매장 최댓값. 최댓값은 원래 순서의 메뉴만 보고, 0 이하면 모두 0.
   비중 변화가 없는 메뉴는 0.
-- 합산 = (1 − w) · LLM + w · 데이터, w = n / (n + DATA_PRIOR_DAYS). n 은 데이터 점수에 쓴 과거 날 수.
+- 합산 = (1 − w) · LLM + w · 데이터, w = n_eff / (n_eff + DATA_PRIOR_DAYS).
+  n_eff 는 데이터 점수에 쓴 과거 날의 유효 날 수(ShareLift.n_eff). 작은 날은 하루보다 적게 세어, 작은 표본만 있으면 LLM 쪽을 더 믿는다.
   합산은 소수 9자리로 반올림해 견준다. 그보다 작은 점수는 0으로 본다.
 고르기
 - 합산 점수가 0보다 큰 메뉴를 점수 순서로 최대 K개 올린다. 동점이면 원래 순서에서 앞선 메뉴.
@@ -21,7 +22,7 @@ from app.analysis.input_shapes import Menu
 from app.menu_board.menu_candidates import MAX_CANDIDATES, MenuCandidates
 from app.menu_board.menu_share_lift import ShareLift
 
-DATA_PRIOR_DAYS = 5  # 데이터 비중 w = n / (n + DATA_PRIOR_DAYS)
+DATA_PRIOR_DAYS = 5  # 데이터 비중 w = n_eff / (n_eff + DATA_PRIOR_DAYS)
 NO_PICK_REASON = "추천할 메뉴를 찾지 못했어요."
 _DIGITS = 9  # 점수를 견줄 때 남기는 소수 자리. 수학적으로 같은 점수가 부동소수 오차로 동점을 깨지 않게 한다
 
@@ -71,7 +72,7 @@ def _combined_scores(original: list[Menu], lift: ShareLift, candidates: MenuCand
     llm = {menu_id: (m - rank + 1) / m for rank, menu_id in enumerate(ranked_ids[:m], start=1)}
     gains = {menu_id: max(lift.lift_pp.get(menu_id, 0.0), 0.0) for menu_id in menu_ids}
     max_gain = max(gains.values(), default=0.0)
-    w = lift.n / (lift.n + DATA_PRIOR_DAYS)
+    w = lift.n_eff / (lift.n_eff + DATA_PRIOR_DAYS)
     return {
         menu_id: round((1 - w) * llm.get(menu_id, 0.0) + w * (gains[menu_id] / max_gain if max_gain > 0 else 0.0), _DIGITS)
         for menu_id in menu_ids

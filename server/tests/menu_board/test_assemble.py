@@ -365,7 +365,7 @@ def test_mock_store_day_after_closed_monday_is_compared_with_sunday(no_clova, mo
     from app.menu_board import assemble as module
 
     # 데이터 점수 0, LLM 후보 없음 → 12/6(동네 행사)과 12/8(겨울) 모두 원래 순서. 일요일과 견주어야만 '바뀌는 것 없음'이다
-    monkeypatch.setattr(module, "menu_share_lift", lambda inputs, tag, kind, as_of: module.ShareLift(0, {}))
+    monkeypatch.setattr(module, "menu_share_lift", lambda inputs, tag, kind, as_of: module.ShareLift(0, 0.0, {}))
     snapshot = store_snapshot_cache.get_snapshot("s003", S003_NOW)
     calendar = store_snapshot_cache.calendar_for_planner("s003", snapshot.inputs, snapshot.calendar_cells, S003_NOW)
     cards = [item for item in snapshot.plan.plan_items if item.task_type == "MENU_ORDER"]

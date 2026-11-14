@@ -44,12 +44,12 @@ export function isOffline(): boolean {
 
 const OFFLINE = () => new ApiFailure("OFFLINE", "인터넷이 잠시 끊겼어요.", true);
 
-async function request<T>(method: "GET" | "PATCH" | "POST", module: string, query: Record<string, string | undefined> = {}, body?: unknown): Promise<T> {
+async function request<T>(method: "GET" | "PATCH" | "POST" | "DELETE", module: string, query: Record<string, string | undefined> = {}, body?: unknown): Promise<T> {
   if (USE_MOCK) {
-    if (method === "POST") throw new ApiFailure("UNKNOWN", "목업에는 없는 요청이에요.");
+    if (method === "POST" || method === "DELETE") throw new ApiFailure("UNKNOWN", "목업에는 없는 요청이에요.");
     await new Promise((r) => setTimeout(r, devFlags.read().offline ? 300 : mockDelay()));
     if (isOffline()) throw OFFLINE();
-    const res = handleMock(method, module, query, body);
+    const res = handleMock(method as "GET" | "PATCH", module, query, body);
     const json = res.body as T | ApiError;
     if (res.status >= 400 || (json && typeof json === "object" && "error" in json)) {
       const err = (json as ApiError).error ?? { code: "UNKNOWN", message: "잠시 뒤 다시 해 주세요." };
@@ -116,6 +116,38 @@ export interface NaverPlace {
   photo_count: number;
   review_count: number;
   rating: number;
+  /** 사장님이 네이버 플레이스에 올린 매장 사진 (대표 사진이 맨 앞). 포스터에 쓴다 */
+  store_photos?: string[];
+  profile_photo?: string | null;
+  /** 로고 (바탕을 지운 PNG, 서버 주소 "/api/stores/.../logo"): 사장님이 앱에서 올린 로고 → 네이버 소식에서 찾은 로고. 없으면 null */
+  logo?: string | null;
+  /** 로고가 어디서 왔나: OWNER(앱에서 올림), NAVER(네이버 소식 사진에서 찾음) */
+  logo_source?: "OWNER" | "NAVER" | null;
+  /** 편의 시설. 예) "단체 이용 가능", "예약" */
+  facilities?: string[];
+  /** 네이버 플레이스 소식 카드 (사장님이 올린 알림·이벤트, 최근 것이 앞) */
+  news?: PlaceNews[];
+}
+
+export interface PlaceNews {
+  news_id: string;
+  title: string;
+  body: string;
+  /** "알림", "EVENT" 같은 네이버 분류 */
+  category: string;
+  /** 적힌 기간. 예) "2026.10.01. ~ 2026.10.09." */
+  period?: string | null;
+  /** 올린 날 "2026-10-01" */
+  created?: string | null;
+  photos: string[];
+}
+
+/** 네이버 플레이스 사진(pstatic.net)은 서버를 거쳐 받는다 (포스터 그림에 그대로 그릴 수 있게). 서버 안 주소(/api/...)는 서버 주소를 붙인다 */
+export function placeImage(url: string | null | undefined): string | undefined {
+  if (!url) return undefined;
+  if (url.startsWith("/")) return `${BASE_URL}${url}`;
+  if (/^https:\/\/([a-z0-9-]+\.)*pstatic\.net\//.test(url)) return `${BASE_URL}/api/stores/image?url=${encodeURIComponent(url)}`;
+  return url;
 }
 
 /** 우리 가게 찾기: 네이버 지역 검색 결과 하나. 상호, 업종, 주소, 좌표만 온다 (메뉴, 영업시간, 리뷰는 오지 않는다). GET /api/naver/search */
@@ -157,6 +189,33 @@ export function storeMapUrl(o: { lat: number; lng: number; level?: number; marke
   return `${BASE_URL}/api/stores/map?${q}`;
 }
 
+/** 사장님 확인에 쓰는 값. opened_on 은 YYYY-MM-DD, document 는 올린 사업자등록증 사진 이름 */
+export type OwnerCheckInput = { business_no: string; owner_name: string; opened_on: string; document: string | null };
+export type OwnerCheckResult = {
+  check_id: string;
+  store_id: string;
+  status: "reviewing" | "approved" | "held";
+  reason_code: string | null;
+  reason_title: string | null;
+  reason_sub: string | null;
+  business_no: string;
+  seconds_left: number;
+};
+
+/** 예약·단체 주문 (네이버 예약 동기화 + 사장님이 직접 적은 것). GET /api/reservations */
+export type Reservation = {
+  reservation_id: number;
+  source: "NAVER" | "OWNER";
+  source_label: string;
+  kind: "RESERVATION" | "GROUP_ORDER";
+  at: string;
+  people: number;
+  name: string;
+  memo: string;
+  /** REQUESTED: 예약 문의(받을지 정해야 함), CONFIRMED: 확정, DECLINED: 어렵다고 답함 */
+  status: "REQUESTED" | "CONFIRMED" | "DECLINED" | "CANCELED";
+};
+
 export const api = {
   today: () => get<TodayResponse>("today"),
   plan: (from?: string, to?: string) => get<PlanResponse>("plan", { from, to }),
@@ -171,12 +230,79 @@ export const api = {
   storePreview: (p: SearchedPlace) => request<{ place: StorePlace; registered_store_id: string | null }>("POST", "stores/preview", {}, { name: p.name, address: p.address, lat: p.lat, lng: p.lng }),
   /** 매장 등록: 그 가게를 등록한다 (DB 에 저장). 다음 로그인부터 이 계정은 이 가게로 들어온다. POST /api/stores/register */
   storeRegister: (placeId: string, ownerKey?: string) => request<{ store_id: string; place: StorePlace }>("POST", "stores/register", {}, { place_id: placeId, owner_key: ownerKey ?? null }),
+  /** 예약·단체 주문 목록 (네이버 예약에서 새로 들어온 것을 먼저 가져온다) */
+  /** AI 포스터: 그날 상황 + CLOVA 멘트 3개 + 포스터 모양. GET /api/poster_ai/suggest */
+  posterSuggest: (planId: string) => request<PosterSuggest>("GET", "poster_ai/suggest", { plan_id: planId }),
+  /** AI 포스터 그림 만들기 시작 (30초~2분). POST /api/poster_ai/jobs */
+  startPoster: (body: NewPoster) => request<PosterJob>("POST", "poster_ai/jobs", {}, body),
+  /** 다 됐는지. GET /api/poster_ai/jobs/{id} */
+  posterJob: (jobId: string) => request<PosterJob>("GET", `poster_ai/jobs/${jobId}`),
+  reservations: (from?: string, to?: string) => request<{ reservations: Reservation[] }>("GET", "reservations", { from, to }),
+  /** 사장님이 직접 적기 (바로 확정) */
+  addReservation: (body: { at: string; people: number; kind: Reservation["kind"]; name?: string; memo?: string }) => request<Reservation>("POST", "reservations", {}, body),
+  confirmReservation: (id: number) => request<Reservation>("POST", `reservations/${id}/confirm`),
+  declineReservation: (id: number) => request<Reservation>("POST", `reservations/${id}/decline`),
+  removeReservation: (id: number) => request<Reservation>("DELETE", `reservations/${id}`),
+  /** 가게 로고 올리기 (data:image/...;base64). 서버가 바탕을 지우고 여백을 잘라 둔다. POST /api/stores/{id}/logo */
+  uploadLogo: (storeId: string, dataUrl: string) => request<{ logo: string; logo_source: "OWNER" }>("POST", `stores/${storeId}/logo`, {}, { data_url: dataUrl }),
   /** 플랫폼별로 불러온 리뷰 수. GET /api/stores/{id}/reviews */
   importedReviews: (storeId: string) => request<{ imported: Record<ReviewSource, number> }>("GET", `stores/${storeId}/reviews`),
   /** 한 플랫폼 리뷰 불러오기 (지금은 목업). POST /api/stores/{id}/reviews/import */
   importReviews: (storeId: string, platform: ReviewSource) =>
     request<{ platform: ReviewSource; imported: number; already: boolean }>("POST", `stores/${storeId}/reviews/import`, {}, { platform }),
+  /** 사장님 확인 심사 신청 (목업 국세청). 승인되면 서버가 계정과 가게를 잇는다. POST /api/owner_check */
+  ownerCheckSubmit: (body: OwnerCheckInput & { store_id: string; owner_key: string }) => request<OwnerCheckResult>("POST", "owner_check", {}, body),
+  /** 사장님 확인 심사 결과 (reviewing → approved / held). GET /api/owner_check/{id} */
+  ownerCheckResult: (checkId: string) => request<OwnerCheckResult>("GET", `owner_check/${checkId}`),
+  /** 시험용 값: 그 가게로 통과하는 목업 사업자 정보. GET /api/owner_check/sample */
+  ownerCheckSample: (storeId: string) => request<OwnerCheckInput & { trade_name: string }>("GET", "owner_check/sample", { store_id: storeId }),
   /** 답글 다시 쓰기 (더 짧게 / 더 정중하게). 서버가 CLOVA X로 다시 쓴다. POST /api/replies/rewrite */
   rewriteReply: (text: string, style: "short" | "polite", planId?: string) =>
     request<{ text: string }>("POST", "replies/rewrite", {}, { text, style, plan_id: planId }),
 };
+
+/** AI 포스터 멘트 하나 (CLOVA 추천). kind: EVENT 행사, GAME 경기 응원, WEATHER 날씨 메뉴, MENU 대표 메뉴 */
+export interface PosterMent {
+  kind: "EVENT" | "GAME" | "WEATHER" | "MENU";
+  label: string;
+  headline: string;
+  line: string;
+  menu: string;
+}
+
+export interface PosterSuggest {
+  situation: { date: string; kind: "EVENT" | "GAME" | "WEEKEND"; title: string; lines: string[]; weather_tags: string[] };
+  ments: PosterMent[];
+  /** CLOVA: CLOVA 가 쓴 멘트, BASIC: CLOVA 를 못 써서 정해 둔 문장 */
+  ment_source: "CLOVA" | "BASIC";
+  styles: { key: string; label: string }[];
+  has_logo: boolean;
+  engine: { engine: string; ready: boolean; note: string };
+}
+
+export interface NewPoster {
+  plan_id: string;
+  /** 네이버 사진 주소(pstatic.net) 또는 휴대폰 사진 data:image/...;base64. 1~3장 */
+  photos: { label: string; url: string }[];
+  use_logo: boolean;
+  headline: string;
+  line: string;
+  extra: string;
+  style: string;
+  menu: string;
+}
+
+export interface PosterJob {
+  job_id: string;
+  status: "RUNNING" | "DONE" | "FAILED";
+  /** FAILED 일 때 이유 (응답에 "error" 칸이 있으면 request 가 실패로 보므로 이름이 다르다) */
+  fail_reason: string | null;
+  seconds: number;
+  /** 다 만든 그림 (서버 주소 "/api/poster_ai/jobs/.../image", 1080 × 1920) */
+  image: string | null;
+  headline: string;
+  line: string;
+  extra: string;
+  style: string;
+  engine: string;
+}

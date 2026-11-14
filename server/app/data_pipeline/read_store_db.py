@@ -8,6 +8,7 @@
 - until 을 받는 함수는 그 시각까지 생긴 행만 돌려준다. 목업 DB 에는 12/31 까지 주문이 들어 있어서
   미래 데이터를 꺼내지 않도록 여기서 막는다.
 - 돌려주는 값은 DB 칸 이름 그대로의 dict 목록이다. 분석이나 화면 모양으로 바꾸는 일은 다른 파일이 한다.
+- 시험 주간 데이터(db/test_scenarios/<가게>.json)가 있는 가게는 그 날씨·행사·주문·리뷰를 여기서 더한다 (test_scenario.py).
 """
 
 import datetime as dt
@@ -15,7 +16,7 @@ import datetime as dt
 from sqlalchemy import func, inspect, select
 
 from db import models
-from app.data_pipeline import registered_stores
+from app.data_pipeline import registered_stores, test_scenario
 from app.data_pipeline.registered_stores import review_platforms
 from db.session import engine, store_db_files, store_engine
 
@@ -58,7 +59,9 @@ def read_orders(store_id: str, until: dt.datetime, since: dt.datetime | None = N
     statement = select(order.__table__).where(order.ordered_at <= until)
     if since is not None:
         statement = statement.where(order.ordered_at >= since)
-    return _store_rows(store_id, statement.order_by(order.ordered_at))
+    rows = _store_rows(store_id, statement.order_by(order.ordered_at))
+    extra = test_scenario.orders(store_id, until, since)
+    return sorted(rows + extra, key=lambda r: r["ordered_at"]) if extra else rows
 
 
 def read_order_items(store_id: str, until: dt.datetime, since: dt.datetime | None = None) -> list[dict]:
@@ -67,7 +70,14 @@ def read_order_items(store_id: str, until: dt.datetime, since: dt.datetime | Non
     statement = select(item.__table__).join(order, order.order_id == item.order_id).where(order.ordered_at <= until)
     if since is not None:
         statement = statement.where(order.ordered_at >= since)
-    return _store_rows(store_id, statement)
+    return _store_rows(store_id, statement) + test_scenario.order_items(store_id, until, since)
+
+
+def _order_info(store_id: str, order_ids: set[int]) -> dict[int, tuple[str, dt.datetime]]:
+    """주문 번호 → (주문 방식, 주문 시각). 시험 리뷰를 가게 파일의 주문과 이을 때 쓴다."""
+    order = models.Order
+    rows = _store_rows(store_id, select(order.order_id, order.channel, order.ordered_at).where(order.order_id.in_(order_ids)))
+    return {r["order_id"]: (r["channel"], r["ordered_at"]) for r in rows}
 
 
 def read_reviews(store_id: str, until: dt.datetime) -> list[dict]:
@@ -88,6 +98,9 @@ def read_reviews(store_id: str, until: dt.datetime) -> list[dict]:
         .order_by(review.written_at)
     )
     rows = _store_rows(store_id, statement)
+    extra = test_scenario.reviews(store_id, until, lambda ids: _order_info(store_id, ids))
+    if extra:
+        rows = sorted(rows + extra, key=lambda r: r["written_at"])
     # 사장님이 등록한 가게는 리뷰 불러오기 때 기록한 플랫폼(배민, 네이버, 쿠팡이츠)을 붙인다
     platforms = review_platforms(store_id)
     if platforms:
@@ -106,8 +119,9 @@ def count_rows(store_id: str, until: dt.datetime) -> dict[str, int]:
     order, review = models.Order, models.Review
     with store_engine(store_id).connect() as conn:
         return {
-            "orders": conn.execute(select(func.count()).select_from(order).where(order.ordered_at <= until)).scalar(),
-            "reviews": conn.execute(select(func.count()).select_from(review).where(review.written_at <= until)).scalar(),
+            "orders": conn.execute(select(func.count()).select_from(order).where(order.ordered_at <= until)).scalar() + len(test_scenario.orders(store_id, until)),
+            "reviews": conn.execute(select(func.count()).select_from(review).where(review.written_at <= until)).scalar()
+            + len(test_scenario.reviews(store_id, until, lambda ids: {})),
             "menus": conn.execute(select(func.count()).select_from(models.Menu)).scalar(),
             "staff": conn.execute(select(func.count()).select_from(models.Staff)).scalar(),
         }
@@ -130,10 +144,13 @@ def read_shifts(store_id: str, until: dt.datetime, since: dt.datetime | None = N
 # ── 모든 가게 공통 ──
 
 
-def read_events() -> list[dict]:
+def read_events(store_id: str | None = None) -> list[dict]:
     """행사. 앞으로 열릴 행사도 미리 알 수 있으므로 기간을 자르지 않는다.
+    store_id 를 주면 그 가게 시험 주간 데이터의 행사도 더한다.
     칸: event_id, name, kind, starts_at, ends_at, lat, lng, distance_km"""
-    return _common_rows(select(models.Event.__table__).order_by(models.Event.starts_at))
+    rows = _common_rows(select(models.Event.__table__).order_by(models.Event.starts_at))
+    extra = test_scenario.events(store_id)
+    return sorted(rows + extra, key=lambda r: r["starts_at"]) if extra else rows
 
 
 def read_games() -> list[dict]:
@@ -154,8 +171,9 @@ def read_weather(store_id: str | None = None) -> list[dict]:
     rows = read_store_weather(store_id)
     if rows and registered_stores.is_mock_store(store_id):
         got = {r["date"] for r in rows}
-        return sorted([r for r in common if r["date"] not in got] + rows, key=lambda r: r["date"])
-    return rows or common
+        rows = sorted([r for r in common if r["date"] not in got] + rows, key=lambda r: r["date"])
+    # 시험 주간 날씨가 있으면 그날은 시험 값을 쓴다
+    return test_scenario.weather(store_id, rows or common)
 
 
 def weather_engine(store_id: str):

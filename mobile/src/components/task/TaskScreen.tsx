@@ -22,6 +22,7 @@ import { useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Slot, StoreSettings } from "@/types/contract";
 import { Checking, Loading, NEXT_ICON, NotifyOffBanner, Offline, Scroll, useWaitStage } from "./states";
+import { PosterGuide } from "./PosterGuide";
 import { TaskCard } from "./TaskCard";
 
 const C = tokens.colors;
@@ -41,7 +42,7 @@ function Header({ total, done, checking }: { total: number; done: number; checki
           <Icon name="chevL" size={26} />
         </Pressable>
         <Text className="flex-1 text-title text-ink" accessibilityRole="header">
-          지금 할 일
+          먼저 봐 주세요
         </Text>
         {checking ? <Checking /> : null}
       </View>
@@ -166,7 +167,7 @@ function TaskBody() {
       <View className="flex-1">
         <Header total={Math.max(view?.total ?? 0, 1)} done={view?.done ?? 0} />
         <View className="flex-1 items-center justify-center">
-          <Text className="text-center text-title text-ink">{"지금 할 일이\n없어요"}</Text>
+          <Text className="text-center text-title text-ink">지금은 확인할 게 없어요</Text>
         </View>
         <PrimaryButton onPress={() => back("/")}>홈으로</PrimaryButton>
       </View>
@@ -229,7 +230,7 @@ function TaskBody() {
       <Scroll>
         {p.notifyOff ? <NotifyOffBanner /> : null}
         <Header total={view.total} done={view.done + 1} checking={isFetching} />
-        <View accessibilityLiveRegion="polite">
+        <View accessibilityLiveRegion="polite" className="flex-1">
           <TaskCard key={card.id} card={card} />
           <View className="h-5" />
           {card.draft ? (
@@ -242,7 +243,14 @@ function TaskBody() {
               </DonnaSays>
             </View>
           )}
-          <View className="h-3" />
+          {card.guide === "poster" ? (
+            // 남은 빈 곳의 세로 가운데: 도나 한마디와의 간격 = "포스터 만들기" 버튼과의 간격 (아래 버튼 줄의 pt-3 만큼 위에도 pt-3)
+            <View className="flex-1 justify-center pt-3">
+              <PosterGuide />
+            </View>
+          ) : (
+            <View className="h-3" />
+          )}
         </View>
       </Scroll>
       <View className="gap-1 pt-3">

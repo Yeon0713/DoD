@@ -17,6 +17,7 @@ import { naverLogin, sendPhoneCode, verifyPhoneCode } from "@/lib/actions";
 import { api, ApiFailure } from "@/lib/api";
 import { flashToast, prefs } from "@/lib/localStore";
 import { goToNaverLogin, naverErrorText, naverProfile, readNaverResult, useRealNaver } from "@/lib/naverDemo";
+import { ownerCheck } from "@/lib/ownerCheck";
 import { onTestLogin } from "@/lib/testAccount";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
@@ -65,7 +66,7 @@ export function AskLink({ ask, label, onPress, testID }: { ask: string; label: s
 /** 로그인이나 가입을 마친 뒤: 처음 설정을 마친 사장님은 홈으로, 아니면 처음 설정을 이어 간다. */
 function afterSignIn(next: string) {
   if (prefs.read().onboarded) {
-    flashToast("다시 오셨네요", "오늘 할 일을 보여 드릴게요");
+    flashToast("다시 오셨네요", "도나가 준비한 것을 보여 드릴게요");
     goHome();
   } else replace(next);
 }
@@ -152,9 +153,13 @@ export function NaverLoginScreen() {
         if (name) flashToast(`${name} 사장님, 반가워요`, "네이버 계정으로 시작했어요");
         await qc.fetchQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: 0 }).catch(() => undefined);
         if (!alive) return;
-        // 네이버 로그인만으로는 사장님 가게를 알 수 없다. 데모 테스트 모드에서 등록한 가게가 없으면 가게 찾기부터 한다
+        // 네이버 로그인만으로는 사장님 가게를 알 수 없다. 데모 테스트 모드에서 등록한 가게가 없으면(처음 가입) 가게 찾기부터 한다.
+        // 등록과 사장님 확인을 마친 계정(서버가 가게를 알려 줌)은 다시 들어온 사장님이라 처음 설정을 거치지 않고 바로 홈으로 간다
         if (real && !account.read().storeId) replace("/start/store");
-        else afterSignIn(real ? "/start/naver-confirm" : "/start/naver-store");
+        else if (real) {
+          prefs.write({ onboarded: true });
+          afterSignIn("/");
+        } else afterSignIn("/start/naver-store");
       })
       .catch((e: unknown) => {
         if (alive) setFailText(naverErrorText(real && e instanceof Error ? e.message : "NAVER_UNREACHABLE"));
@@ -292,7 +297,11 @@ export function NaverStoreScreen() {
       onBack={() => back("/start")}
       footer={
         <>
-          <PrimaryButton testID="naver-store-ok" disabled={!s} onPress={() => go("/start/naver-confirm")}>
+          <PrimaryButton testID="naver-store-ok" disabled={!s} onPress={() => {
+            // 앱 안 목업: 서버에 등록하지 않고 사장님 확인(목업 심사)부터 거친다
+            ownerCheck.write({ checkId: null, storeId: "mock", again: false });
+            go("/start/owner-check");
+          }}>
             이 가게로 시작하기
           </PrimaryButton>
           <SecondaryButton testID="naver-store-other" onPress={() => go("/start/store")}>

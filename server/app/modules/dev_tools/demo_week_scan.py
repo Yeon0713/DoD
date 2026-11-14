@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.core.seoul_time import at_time, to_seoul
-from app.data_pipeline import read_store_db, registered_stores, store_snapshot_cache
+from app.data_pipeline import read_store_db, registered_stores, store_snapshot_cache, test_scenario
 from app.planner.data_shapes import NoticeItem, PlanItem
 from db.session import COMMON_DB, DATA_DIR
 
@@ -171,6 +171,7 @@ def _fingerprint(store_id: str) -> str:
         AFTER_SLOT.total_seconds(),
         _file_mark(DATA_DIR / f"{store_id}.db"),
         _file_mark(COMMON_DB),
+        test_scenario.mark(store_id),  # 시험 주간 데이터 (db/test_scenarios/<가게>.json)
         # 등록 기록 파일 전체가 아니라 이 가게 것만 본다 (다른 가게를 등록하거나 지워도 이 가게 결과는 그대로 쓴다)
         _registry_part(store_id),
         store_snapshot_cache.get_settings_changes(store_id),

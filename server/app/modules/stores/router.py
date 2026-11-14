@@ -1,11 +1,15 @@
 """매장 등록과 리뷰 불러오기.
 
+GET  /api/stores/image?url=                네이버 플레이스 사진(pstatic.net)을 대신 받아 준다 (앱이 포스터 그림에 그대로 그릴 수 있게)
 GET  /api/stores/map                       지도 그림 (네이버 지도 Static Map). 검색 결과와 고른 가게 위치를 보여 준다
 POST /api/stores/preview                   검색에서 고른 가게를 네이버 지도에서 읽어 "이 가게가 맞나요?"에 보여 준다 (저장 안 함)
-POST /api/stores/register                  그 가게를 등록한다 (DB 에 저장). 로그인 계정과 가게를 이어 둔다
+POST /api/stores/register                  그 가게를 등록한다 (DB 에 저장). 계정과 가게는 사장님 확인(/api/owner_check)이 승인되면 잇는다
 POST /api/stores/{store_id}/refresh        네이버 지도에서 가게 정보를 다시 읽어 DB 를 고친다 (사장님이 원할 때만)
 GET  /api/stores/{store_id}/reviews        플랫폼별로 불러온 리뷰 수
 POST /api/stores/{store_id}/reviews/import 한 플랫폼(배민, 네이버, 쿠팡이츠) 리뷰를 불러온다. 지금은 목업 리뷰를 넣는다
+GET  /api/stores/{store_id}/logo           가게 로고 PNG, 바탕 지움 (올린 로고 → 네이버 소식에서 찾은 로고)
+POST /api/stores/{store_id}/logo           로고 올리기 {"data_url": "data:image/png;base64,..."} (바탕을 지워 저장)
+DELETE /api/stores/{store_id}/logo         올린 로고 지우기
 GET  /api/stores/{store_id}/weather        기상청에서 받아 둔 그 가게 지역 날씨 (등록할 때 받고, 그 뒤 3시간마다 새로 받는다)
 POST /api/stores/{store_id}/weather/refresh 그 가게 지역 날씨를 기상청에서 다시 받는다
 
@@ -13,6 +17,7 @@ POST /api/stores/{store_id}/weather/refresh 그 가게 지역 날씨를 기상�
 """
 
 import datetime as dt
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Query
@@ -24,7 +29,7 @@ from app.core.config import settings
 from app.core.error_response import ApiError
 from app.core.naver_place import PlaceCrawlError, PlaceInfo, crawl_place, find_place_id
 from app.core.seoul_time import now_seoul
-from app.data_pipeline import read_store_db, registered_stores
+from app.data_pipeline import read_store_db, registered_stores, store_logo
 from app.data_pipeline.db_rows_to_analysis_inputs import review_platform
 from app.data_pipeline.read_store_db import list_store_ids
 from app.data_pipeline.store_snapshot_cache import save_settings_changes
@@ -48,7 +53,7 @@ class PreviewRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     place_id: str
-    owner_key: str | None = None  # 예) "naver:<네이버 회원 번호>". 다음에 로그인하면 이 가게로 바로 들어온다
+    # 계정과 가게는 여기서 잇지 않는다. 사장님 확인 심사(app/modules/owner_check)가 승인되면 잇는다
 
 
 class ImportRequest(BaseModel):
@@ -63,6 +68,28 @@ def _place_payload(info: PlaceInfo) -> dict:
 def map_config():
     """네이버 지도 JavaScript API 는 브라우저에서 Client ID 로 불러온다 (공개해도 되는 값, NCP 콘솔에 등록한 주소에서만 동작)."""
     return {"client_id": settings.naver_maps_client_id}
+
+
+IMAGE_HOSTS = ("pstatic.net",)  # 네이버 플레이스 사진이 있는 곳. 그 밖의 주소는 받지 않는다 (아무 주소나 대신 받는 통로가 되지 않게)
+
+
+@router.get("/image", summary="네이버 플레이스 사진 대신 받기")
+def place_image(url: str):
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    if parsed.scheme != "https" or not any(host == h or host.endswith("." + h) for h in IMAGE_HOSTS):
+        raise ApiError(400, "BAD_IMAGE_URL", "네이버 플레이스 사진만 받을 수 있어요")
+    try:
+        res = httpx.get(url, headers={"Referer": "https://m.place.naver.com/"}, timeout=10, follow_redirects=True)
+    except httpx.HTTPError:
+        raise ApiError(502, "IMAGE_UNREACHABLE", "사진을 받지 못했어요")
+    kind = res.headers.get("content-type", "")
+    final = res.url.host or ""
+    if not any(final == h or final.endswith("." + h) for h in IMAGE_HOSTS):  # 다른 곳으로 넘겨졌으면 받지 않는다
+        raise ApiError(400, "BAD_IMAGE_URL", "네이버 플레이스 사진만 받을 수 있어요")
+    if res.status_code != 200 or not kind.startswith("image/"):
+        raise ApiError(502, "IMAGE_FAILED", "사진을 받지 못했어요")
+    return Response(res.content, media_type=kind, headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/map", summary="지도 그림 (Static Map)")
@@ -122,8 +149,6 @@ def register(body: RegisterRequest, background: BackgroundTasks):
     overnight = any(h and h["close"] <= h["open"] for h in info.weekly_hours.values())
     if settings.demo_store_data and not overnight:
         demo_data.fill(store_id, info.weekly_hours, info.break_time)
-    if body.owner_key:
-        registered_stores.set_owner(body.owner_key, store_id)
     # 요일별 영업시간과 브레이크 타임은 DB(등록 기록)에 있어 가게 설정의 기본이 된다 (store_snapshot_cache._registered_base).
     # 새로 등록한 가게라 지난 계산 결과는 지운다
     save_settings_changes(store_id, {})
@@ -186,6 +211,43 @@ def import_reviews(store_id: str, body: ImportRequest):
     # 새 리뷰로 할 일을 다시 계산하게 한다 (설정을 바꾸지 않고 계산 결과만 지운다)
     save_settings_changes(store_id, {})
     return {"platform": body.platform, "imported": added, "already": False}
+
+
+class LogoUpload(BaseModel):
+    data_url: str  # data:image/png;base64,...
+
+
+def _known_store(store_id: str) -> None:
+    if store_id not in list_store_ids():
+        raise ApiError(404, "STORE_NOT_FOUND", "등록한 가게가 아니에요")
+
+
+@router.get("/{store_id}/logo", summary="가게 로고")
+def logo(store_id: str):
+    _known_store(store_id)
+    path = store_logo.path_of(store_id)
+    if path is None:
+        raise ApiError(404, "NO_LOGO", "가게 로고가 없어요")
+    media = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}[path.suffix[1:]]
+    return Response(path.read_bytes(), media_type=media, headers={"Cache-Control": "public, max-age=86400"})
+
+
+@router.post("/{store_id}/logo", summary="가게 로고 올리기 (바탕을 지우고 여백을 잘라 둔다)")
+def upload_logo(store_id: str, body: LogoUpload):
+    _known_store(store_id)
+    try:
+        store_logo.save(store_id, body.data_url)
+    except store_logo.LogoError as error:
+        raise ApiError(422, "BAD_LOGO", str(error))
+    return {"logo": store_logo.url_of(store_id), "logo_source": store_logo.source_of(store_id)}
+
+
+@router.delete("/{store_id}/logo", summary="올린 가게 로고 지우기 (네이버 소식에서 찾은 로고가 있으면 그것으로 돌아간다)")
+def delete_logo(store_id: str):
+    _known_store(store_id)
+    info = registered_stores.place_info(store_id)
+    removed = store_logo.remove(store_id)
+    return {"removed": removed, "logo": store_logo.url_of(store_id, info.logo if info else None), "logo_source": store_logo.source_of(store_id)}
 
 
 @router.get("/{store_id}/weather", summary="기상청에서 받아 둔 가게 지역 날씨")

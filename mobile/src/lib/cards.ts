@@ -1,9 +1,10 @@
 // 줄 세운 항목(QueueEntry)을 화면 카드 한 장(CardView)으로 바꾼다.
 // 카드 모양과 문구는 Figma 06 시안(06-4, 06-10, 06-12, 06-13, 06-14, 06-15, 06-16, 06-17, 06-31, 06-39, 06-41)을 따른다.
+import { occasionIcon, type OccasionIcon } from "@/components/ui/occasion";
 import type { IconName } from "@/components/icons/Icon";
 import type { CalendarCell, ComplaintType, PlanItem, Review, StoreSettings } from "@/types/contract";
 import { LAST_WEEK_LINE, draftFor, storeMenus } from "@/mocks/extras";
-import { USE_MOCK } from "./api";
+import { placeImage, USE_MOCK } from "./api";
 import { COMPLAINT_FOUND, COMPLAINT_ICON, COMPLAINT_REPEAT, COMPLAINT_SHORT, COMPLAINT_TITLE, PLATFORM_KO } from "./labels";
 import type { QueueEntry } from "./queue";
 import type { PosterProps } from "@/components/poster/PosterCard";
@@ -27,7 +28,7 @@ export type CardBlock =
   | { type: "quote"; text: string }
   /** 06-4, 06-39: 손님 리뷰 말풍선. 카드에서는 2줄까지 보이고 "더 보기"로 답글 화면(href)에 간다. */
   | { type: "review"; rating: number; meta: string; text: string; photos: string[]; href: string }
-  | { type: "iconLine"; icons: IconName[]; text: string }
+  | { type: "iconLine"; icons: IconName[]; text: string; /** 있으면 아이콘 대신 행사·경기 종류 그림 (components/ui/occasion.ts) */ occasion?: OccasionIcon }
   | { type: "text"; text: string }
   | { type: "iconRow"; icon: IconName; count: number }
   /** 월~일 일곱 칸 중 단골이 주문하는 요일을 칠한다 (04-11). day는 0=일요일 */
@@ -64,6 +65,10 @@ export interface CardView {
   /** 06-12: 제목 앞 아이콘 (추워지는 날 온도계) */
   titleIcon?: IconName;
   title: string;
+  /** 제목 안에서 브랜드 색으로 칠할 낱말 (예: 가게 이름 "초옹장") */
+  titleAccent?: string;
+  /** 제목에 적어 둔 줄 바꿈을 그대로 쓴다 (예: "…에 맞춰" 뒤에서 줄을 바꾸는 포스터 카드) */
+  titleKeepBreaks?: boolean;
   /** 06-31: 제목 아래 작은 글씨 ("목요일 저녁 축구 경기") */
   sub?: string;
   /** 06-31: 도나 위에 작게 쓰는 한 줄 ("가게 앞에도 붙일 수 있어요!") */
@@ -74,12 +79,16 @@ export interface CardView {
   secondary?: CardAction;
   /** 05-4: 카드 아래에 도나가 써 둔 답글을 바로 보여 준다. 있으면 도나 한마디 대신 쓴다. */
   draft?: { text: string; editHref: string; img: Donna };
+  /** 도나 한마디 아래 빈 곳에 넘겨 보는 도움말 카드 (포스터: 어떻게 만들어지는지) */
+  guide?: "poster";
 }
 
 export interface CardContext {
   now: Date;
   reviews: Review[];
   calendar: CalendarCell[];
+  /** 달력 이유에 나온 행사·경기 이름 (ref_id → 이름). 서버만 준다 */
+  eventNames?: Record<string, string>;
   settings: StoreSettings;
   /** 네이버 플레이스를 연결했는지. 서버 설정에 아직 없어서 이 기기 설정을 쓴다. */
   naverConnected: boolean;
@@ -98,7 +107,13 @@ const LATER: CardAction = { label: "나중에 할게요", action: "snooze" };
 // dayChange, DayKind는 lib/calendarDay.ts로 옮겼다 (cards ↔ menuOrder 서로 부르는 고리를 끊으려고). 쓰던 곳은 그대로 여기서 가져간다.
 export { dayChange, type DayKind } from "./calendarDay";
 
-export function eventName(cells: CalendarCell[], refId: string, kind: "GAME" | "EVENT"): string {
+/** 카드 제목에 실제 행사 이름을 쓰는 최대 글자 수. 더 길면 "지역 행사"처럼 줄여 쓴다 (모바일에서 제목이 2줄을 넘지 않게) */
+const EVENT_NAME_MAX = 9;
+
+export function eventName(cells: CalendarCell[], refId: string, kind: "GAME" | "EVENT", names: Record<string, string> = {}): string {
+  // 행사는 서버가 알려 준 실제 이름(예: "남양 가을 축제")을 쓴다. 경기는 "축구 경기"처럼 종목만 (포스터 문구가 종목을 쓴다)
+  const real = names[refId]?.trim();
+  if (kind === "EVENT" && real && real.length <= EVENT_NAME_MAX) return real;
   const text = cells.find((c) => c.reasons.some((r) => r.ref_id === refId))?.reason_text ?? "";
   if (kind === "GAME") return text.match(/(축구|야구|농구|배구|e스포츠) 경기/)?.[0] ?? "경기";
   return text.match(/(지역 축제|대학 축제|마라톤|지역 행사)/)?.[0] ?? "지역 행사";
@@ -116,19 +131,25 @@ function busyDaypart(cells: CalendarCell[], date: string, refId: string): string
 }
 
 /** 포스터와 메뉴판 카드에 쓰는 "목요일 축구 경기", "주말 지역 축제" 같은 이름과 날짜 줄 */
-export function happening(cells: CalendarCell[], p: PlanItem) {
+export function happening(cells: CalendarCell[], p: PlanItem, names: Record<string, string> = {}) {
   const kind = p.basis.kind === "GAME" || p.basis.kind === "EVENT" ? p.basis.kind : null;
   const refId = p.basis.ref_id;
   const days = kind ? eventDays(cells, refId) : [p.target_date];
   const first = days[0] ?? p.target_date;
-  const name = kind ? eventName(cells, refId, kind) : "";
+  const name = kind ? eventName(cells, refId, kind, names) : "";
   const weekend = days.length > 1 && days.every(isWeekend);
   const label = weekend ? `주말 ${name}` : `${weekdayName(first)} ${name}`;
-  const dateLine = weekend
-    ? `${monthDay(first)}, ${Number(days[days.length - 1].slice(8))}일 ${days.map((d) => weekdayName(d)).join(" ")}`
-    : `${monthDay(first)} ${weekdayName(first)} ${busyDaypart(cells, first, refId)}`.trim();
-  const shortLine = weekend ? `${monthDay(first)}, ${Number(days[days.length - 1].slice(8))}일 주말` : dateLine;
-  return { kind, label, dateLine, shortLine, icon: (kind === "GAME" ? "ball" : "tent") as IconName };
+  // 이틀 이상 주말 내내 하면 "10월 10일~11일 주말"
+  const weekendLine = `${monthDay(first)}~${Number(days[days.length - 1].slice(8))}일 주말`;
+  const dateLine = weekend ? weekendLine : `${monthDay(first)} ${weekdayName(first)} ${busyDaypart(cells, first, refId)}`.trim();
+  const shortLine = weekend ? weekendLine : dateLine;
+  // 아이콘: 경기는 공, 행사는 텐트, 행사·경기 없는 주말 포스터는 달력
+  const icon: IconName = kind === "GAME" ? "ball" : kind === "EVENT" ? "tent" : "calendar";
+  // 도나가 무엇을 보고 준비하는지 (카드 제목 앞부분). 실제 행사 이름이 있으면 이름만, 아니면 "토요일 지역 행사", "이번 주말 지역 축제"
+  // 카드 제목 앞부분 (모바일 한 줄, 12자 안팎). 실제 이름이 길면 이름만 ("남양 가을 축제"), 짧은 이름은 요일을 붙인다 ("토요일 지역 행사", "주말 지역 축제").
+  // 행사·경기 없는 주말은 "이번 주말"
+  const occasion = !kind ? "이번 주말" : name.length > 5 ? name : weekend ? `주말 ${name}` : `${weekdayName(first)} ${name}`;
+  return { kind, label, dateLine, shortLine, icon, occasion, occasionIcon: occasionIcon(kind, name) };
 }
 
 // ---------- 카드 종류별 ----------
@@ -434,21 +455,28 @@ function posterOf(p: PlanItem, h: ReturnType<typeof happening>, ctx: CardContext
     headline: kept?.headline ?? defaultHeadline(h, ctx.settings),
     store: kept?.storeLine ?? ctx.settings.name.replace(/\s*\(.*\)\s*/g, "").trim(),
     theme: kept?.theme ?? "dark",
+    image: placeImage(kept?.image),
   };
 }
 
 /** "목요일 저녁 축구 경기", "이번 주말 지역 축제" (06-31 제목 아래 작은 글씨) */
 function posterWhen(p: PlanItem, h: ReturnType<typeof happening>, ctx: CardContext): string {
   const days = h.kind ? eventDays(ctx.calendar, p.basis.ref_id) : [p.target_date];
-  const name = h.kind ? eventName(ctx.calendar, p.basis.ref_id, h.kind) : "";
+  const name = h.kind ? eventName(ctx.calendar, p.basis.ref_id, h.kind, ctx.eventNames) : "";
   // 행사나 경기 없이 서버가 매주 만드는 주말 포스터: 요일만 쓰면 무슨 포스터인지 알 수 없다
   if (!h.kind) return "이번 주말 손님맞이";
   if (days.length > 1 && days.every(isWeekend)) return `이번 주말 ${name}`;
   return `${weekdayName(days[0])} ${busyDaypart(ctx.calendar, days[0], p.basis.ref_id)} ${name}`.replace(/\s+/g, " ").trim();
 }
 
+/** 카드 제목에 넣는 가게 이름. 괄호(지점 등)를 빼고, 6자보다 길면 "우리 가게" (모바일 두 줄에 들어가게) */
+function shortStore(name: string): string {
+  const plain = name.replace(/\s*\(.*\)\s*/g, "").trim();
+  return plain && plain.length <= 6 ? plain : "우리 가게";
+}
+
 function poster(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
-  const h = happening(ctx.calendar, p);
+  const h = happening(ctx.calendar, p, ctx.eventNames);
   const kept = !!readKept(ctx.drafts, `poster:${p.plan_id}`);
   // 실제 서버에서는 이 기기에서 포스터를 만든 적이 있을 때만 "미리 만들어 뒀어요"라고 한다.
   // 승인 요청 날을 놓쳤거나 오늘 가입한 사장님은 만든 적이 없으니 만들기부터 보여 준다.
@@ -459,11 +487,12 @@ function poster(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
     return {
       id: q.cardId,
       tone: q.notifyKind === "EXECUTE_REMINDER" ? "done" : "brand",
-      title: "포스터 올릴 시간이에요",
+      // 도나가 일을 마쳤다는 말 + 사장님에게 남은 것(올리기)
+      title: `${h.occasion} 포스터를\n다 만들어 뒀어요`,
       sub: posterWhen(p, h, ctx),
       blocks: [{ type: "poster", poster: posterOf(p, h, ctx) }],
       aboveDonna: "가게 앞에도 붙일 수 있어요!",
-      donna: { img: "b4-1", text: "포스터는 미리 만들어 뒀어요" },
+      donna: { img: "b4-1", text: "이제 올리기만\n하면 돼요" },
       primary: { label: "인스타에 올리기", href: `/poster/${encodeURIComponent(p.plan_id)}?step=share` },
       secondary: LATER,
     };
@@ -473,12 +502,14 @@ function poster(q: QueueEntry, p: PlanItem, ctx: CardContext): CardView {
     id: q.cardId,
     tone: "brand",
     pill: { icon: "image", text: "인스타 포스터" },
-    title: `${h.kind ? h.label : "이번 주말"}\n포스터를 만들어 드릴게요`,
-    blocks: [
-      { type: "iconLine", icons: [h.icon], text: h.dateLine },
-      { type: "text", text: "인스타에 올리고 가게 앞에도 붙여요" },
-    ],
-    donna: { img: "b3-2", text: "메뉴 사진만\n골라 주세요" },
+    // 도나가 행사·일정을 먼저 보고 가게 홍보를 챙긴다는 말투. 예: "토요일 남양 가을 축제에 맞춰 초옹장 홍보를 준비할게요"
+    // 모바일에서 두 줄: "남양 가을 축제에 맞춰 / 초옹장 홍보 준비할게요". 가게 이름이 길면 "우리 가게"
+    title: `${h.occasion}에 맞춰\n${shortStore(ctx.settings.name)} 홍보 준비할게요`,
+    titleAccent: shortStore(ctx.settings.name) === "우리 가게" ? undefined : shortStore(ctx.settings.name),
+    titleKeepBreaks: true,
+    blocks: [],
+    donna: { img: "b3-2", text: "인스타·가게 홍보용 포스터를\n만들어 드려요" },
+    guide: "poster",
     primary: { label: "포스터 만들기", href: `/poster/${encodeURIComponent(p.plan_id)}` },
     secondary: LATER,
   };
@@ -508,9 +539,9 @@ function weeklyPreview(q: QueueEntry, ctx: CardContext): CardView {
       if ((r.tag !== "GAME" && r.tag !== "EVENT") || seen.has(r.ref_id)) continue;
       seen.add(r.ref_id);
       const days = eventDays(cells, r.ref_id);
-      const name = eventName(cells, r.ref_id, r.tag);
+      const name = eventName(cells, r.ref_id, r.tag, ctx.eventNames);
       const when = days.length > 1 ? days.map((d) => weekdayName(d)).join(", ") : `${weekdayName(days[0])} ${busyDaypart(cells, days[0], r.ref_id)}`;
-      lines.push({ type: "iconLine", icons: [r.tag === "GAME" ? "ball" : "tent"], text: `${when.trim()} ${name}` });
+      lines.push({ type: "iconLine", icons: [r.tag === "GAME" ? "ball" : "tent"], text: `${when.trim()} ${name}`, occasion: occasionIcon(r.tag, name) });
     }
   }
   const busy = lines.length;

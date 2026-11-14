@@ -16,6 +16,8 @@ POST /api/dev_tools/demo_go                 시연: 서버 시계를 그 단계 
 POST /api/dev_tools/demo_clock_reset        시연: 서버 시계를 실제 시각으로
 POST /api/dev_tools/demo_rescan?store_id=   시연: 기억한 시연 기간 훑기 결과를 지우고 다시 훑기
 GET  /api/dev_tools/demo_progress           시연: 가게마다 훑기가 끝났는지, 훑는 중이면 몇 개 시각까지 했는지
+GET  /api/dev_tools/test_week?store_id=     시험 날짜: 시험 주간 데이터가 있는 가게의 그 주 알림 시각과 그때 오는 할 일 (앱 ☰ "시험 날짜")
+POST /api/dev_tools/test_go                 시험 날짜: 서버 시계를 그 시각으로 옮기고 그 주 앞 시각부터 이어 계산 {"store_id", "at"}
 GET  /api/dev_tools/ui_text                 화면 글: 화면별 앱 글과 저장해 둔 수정
 POST /api/dev_tools/ui_text/save            화면 글: 수정을 mobile/scripts/ui-text/edits.json 에 저장 {"edits"}
 POST /api/dev_tools/ui_text/apply           화면 글: 저장하고 앱 코드에 넣은 뒤 타입 검사 {"edits"}
@@ -32,8 +34,8 @@ from app.core.config import settings
 from app.core.error_response import ApiError
 from app.data_pipeline import read_store_db
 from app.data_pipeline.store_selection import resolve_store_id
-from app.modules.dev_tools import data_provider, demo_scenario, demo_week_scan, ui_text
-from app.modules.dev_tools.response_format import DemoGo, PolishSwitch, UiTextEdits
+from app.modules.dev_tools import data_provider, demo_scenario, demo_week_scan, scenario_week, ui_text
+from app.modules.dev_tools.response_format import DemoGo, PolishSwitch, TestGo, UiTextEdits
 
 
 def require_dev_tools() -> None:
@@ -121,6 +123,16 @@ def demo_rescan(store_id: str | None = STORE):
     sid = resolve_store_id(store_id)
     demo_week_scan.forget(sid)
     return demo_scenario.build_steps(sid)
+
+
+@router.get("/test_week", summary="시험 날짜: 그 주 알림 시각과 할 일")
+def test_week_stops(store_id: str | None = STORE):
+    return scenario_week.week_stops(resolve_store_id(store_id))
+
+
+@router.post("/test_go", summary="시험 날짜: 서버 시계를 그 시각으로")
+def test_go(body: TestGo):
+    return scenario_week.go_to(resolve_store_id(body.store_id), body.at)
 
 
 @router.get("/ui_text", summary="화면 글: 화면별 앱 글과 저장해 둔 수정")

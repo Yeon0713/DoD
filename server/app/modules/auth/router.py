@@ -4,6 +4,7 @@ GET  /api/auth/naver/start?back=<앱 주소>     네이버 로그인 창으로 �
 GET  /api/auth/naver/callback                 네이버가 돌려보내는 곳. 프로필을 받아 앱(back)으로 돌려보낸다
 GET  /api/auth/naver/result/{ticket}          앱이 네이버에서 받은 정보와 이 계정의 가게를 읽는다 (30분 안)
 POST /api/auth/naver/result/{ticket}/unlink   이 앱과 네이버 계정 연결을 끊는다
+POST /api/auth/test/logout · /test/withdraw   테스트 계정 로그아웃 · 탈퇴 (임시 네이버 로그인)
 
 진짜 네이버: server/.env 에 NAVER_LOGIN_CLIENT_ID / SECRET 이 있으면 nid.naver.com 으로 보낸다.
 임시 네이버: 키가 없으면(도메인을 받아 앱을 등록하기 전) 이 서버가 그리는 임시 로그인 화면과 동의 화면으로 보낸다.
@@ -187,6 +188,28 @@ def test_logout(body: dict):
         if settings.dev_clock_enabled:
             set_clock_shift(dt.timedelta(0))
     return {"login_id": account["login_id"], "on_logout": account["on_logout"]}
+
+
+@router.post("/test/withdraw", summary="테스트 계정 탈퇴 (계정은 남기고 가게 연결만 끊음)")
+def test_withdraw(body: dict):
+    """앱이 테스트 계정으로 탈퇴할 때 부른다. 이 계정과 가게의 연결(등록 기록 owners)과 사장님이 고친 설정·계산을 지운다.
+    목업 가게로 이은 가게(초옹장 s005, 피플스클럽 s004)는 리뷰 불러오기 기록도 비운다 (리뷰는 가게 파일에 그대로 있고,
+    다시 가입하면 리뷰 불러오기를 처음부터 한다). 등록 가게(s101 ...)는 불러오기로 리뷰를 만들어 넣었으므로 기록을 남긴다.
+    테스트 계정(아이디·비밀번호)과 가게 데이터(가게 파일, 등록 기록, 리뷰)는 그대로 둔다.
+    그래서 같은 아이디로 다시 로그인하면 등록한 가게가 없어 가게 찾기 · 등록(가입)부터 한다."""
+    account = test_accounts.by_login_id(str(body.get("login_id", "")))
+    if account is None:
+        raise ApiError(404, "TEST_ACCOUNT_NOT_FOUND", "테스트 계정이 아니에요")
+    from app.modules.owner_check import review as owner_check
+
+    owner_key = f"naver:{account['profile']['id']}"
+    store_id = registered_stores.remove_owner(owner_key)
+    owner_check.withdraw(owner_key)  # 사장님 확인 승인도 거둔다 (기록은 남는다). 다시 가입하면 다시 확인받는다
+    if store_id:
+        store_snapshot_cache.reset_store(store_id)
+        if registered_stores.is_mock_store(store_id):
+            registered_stores.clear_review_platforms(store_id)  # 다시 가입하면 리뷰 불러오기부터
+    return {"login_id": account["login_id"], "unlinked_store_id": store_id}
 
 
 @router.get("/naver/result/{ticket}", summary="네이버에서 받은 정보")

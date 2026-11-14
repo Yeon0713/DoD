@@ -12,9 +12,9 @@ from app.core import api_hub
 from app.core.error_response import ApiError
 from app.core.seoul_time import now_seoul
 from app.data_pipeline import read_store_db
-from app.data_pipeline import registered_stores
+from app.data_pipeline import registered_stores, store_logo
 from app.data_pipeline.analysis_to_plan_inputs import DEFAULT_BUSY_DAYPARTS, default_notice_dayparts, hhmm
-from app.modules.naver.response_format import NaverPlace, NaverPlaceResponse, OpenClose, PlaceMenu, PlaceSearchResponse, SearchedPlace, StartEnd
+from app.modules.naver.response_format import NaverPlace, NaverPlaceResponse, OpenClose, PlaceMenu, PlaceNews, PlaceSearchResponse, SearchedPlace, StartEnd
 
 WEEKDAY_CODES = ("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
 
@@ -38,9 +38,15 @@ def get_place(store_id: str) -> NaverPlaceResponse:
             dayparts=default_notice_dayparts(first["open"], first["close"]),
             busy_dayparts=DEFAULT_BUSY_DAYPARTS,
             menus=[PlaceMenu(name=m.name, photo=m.photo) for m in info.menus],
-            photo_count=sum(1 for m in info.menus if m.photo),
+            photo_count=sum(1 for m in info.menus if m.photo) + len(info.photos),
             review_count=len(reviews),
             rating=rating,
+            store_photos=info.photos,
+            profile_photo=info.profile_photo,
+            logo=store_logo.url_of(store_id, info.logo),
+            logo_source=store_logo.source_of(store_id),
+            facilities=info.facilities,
+            news=[PlaceNews(**n.__dict__) for n in info.news],
         )
         return NaverPlaceResponse(is_example=False, place=place)
 
@@ -61,6 +67,8 @@ def get_place(store_id: str) -> NaverPlaceResponse:
         photo_count=0,
         review_count=len(reviews),
         rating=rating,
+        logo=store_logo.url_of(store_id),
+        logo_source=store_logo.source_of(store_id),
     )
     return NaverPlaceResponse(is_example=False, place=place)
 

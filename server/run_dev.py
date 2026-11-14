@@ -59,7 +59,7 @@ def print_key_check() -> None:
         print(f"  [{'있음' if filled else '없음'}] {label}: {names}")
     if not all(filled for _, filled, _ in checks):
         print("  '없음'인 기능은 화면에서 실패 안내가 나옵니다. 로그인과 테스트 계정은 키 없이도 됩니다.")
-    login = "진짜 네이버 로그인" if settings.naver_login_client_id and settings.naver_login_client_secret else "임시 네이버 로그인 (테스트 계정 dona_test1 ~ 3)"
+    login = "진짜 네이버 로그인" if settings.naver_login_client_id and settings.naver_login_client_secret else "임시 네이버 로그인 (데모 계정 dona_demo)"
     print(f"  네이버 로그인: {login}")
 
 

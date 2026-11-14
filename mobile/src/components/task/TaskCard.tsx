@@ -1,5 +1,6 @@
 // 오늘 화면의 할 일 카드 한 장 (Figma 06-4 할 일 카드). 내용은 lib/cards.ts가 만든다.
-import { View } from "react-native";
+import { Image, View } from "react-native";
+import { OCCASION_IMG } from "@/components/ui/occasion";
 import { Text } from "@/components/ui/Text";
 import { Icon } from "@/components/icons/Icon";
 import { PosterScaled } from "@/components/poster/PosterCard";
@@ -62,11 +63,15 @@ function Block({ b }: { b: CardBlock }) {
     case "iconLine":
       return (
         <View className="flex-row items-center gap-2.5">
-          <View className="flex-row gap-1">
-            {b.icons.map((i, k) => (
-              <Icon key={i + k} name={i} size={28} color={C.brand} />
-            ))}
-          </View>
+          {b.occasion ? (
+            <Image source={OCCASION_IMG[b.occasion]} style={{ width: 32, height: 32 }} resizeMode="contain" accessibilityIgnoresInvertColors />
+          ) : (
+            <View className="flex-row gap-1">
+              {b.icons.map((i, k) => (
+                <Icon key={i + k} name={i} size={28} color={C.brand} />
+              ))}
+            </View>
+          )}
           <Text className="flex-1 text-body font-medium text-ink">{b.text}</Text>
         </View>
       );
@@ -150,7 +155,7 @@ export function TaskCard({ card, finished }: { card: CardView; finished?: boolea
       <View className="gap-1">
         <View className="flex-row items-center gap-2">
           {card.titleIcon ? <Icon name={card.titleIcon} size={28} color={C.brand} /> : null}
-          <Text className="flex-1 text-title text-ink" accessibilityRole="header">
+          <Text className="flex-1 text-title text-ink" accessibilityRole="header" accent={card.titleAccent} keepBreaks={card.titleKeepBreaks}>
             {card.title}
           </Text>
         </View>

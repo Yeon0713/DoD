@@ -65,7 +65,7 @@ export function ProgressSteps({ total, done, label }: { total: number; done: num
       className="flex-row gap-1.5"
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: total, now: done }}
-      accessibilityLabel={label ?? `오늘 할 일 ${total}개 중 ${done}개 끝냄`}
+      accessibilityLabel={label ?? `오늘 준비한 것 ${total}개 중 ${done}개 확인함`}
     >
       {total > 8 ? (
         // 칸이 많으면(목업 한 주 모아 보기) 칸을 나누지 않고 막대 하나로 채운다.

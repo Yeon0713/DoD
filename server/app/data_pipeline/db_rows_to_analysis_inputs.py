@@ -206,7 +206,7 @@ def build_analysis_inputs(store_id: str, now: dt.datetime) -> AnalysisInputs:
         order_items=[to_order_item(row) for row in read_store_db.read_order_items(store_id, now)],
         menus=[to_menu(row) for row in read_store_db.read_menus(store_id)],
         shifts=[to_shift(row, wages[row["staff_id"]]) for row in read_store_db.read_shifts(store_id, now)],
-        events=[to_event(row, store) for row in read_store_db.read_events()],
+        events=[to_event(row, store) for row in read_store_db.read_events(store_id)],
         games=to_games(read_store_db.read_games()),
         weather=[to_weather(row) for row in read_store_db.read_weather(store_id)],
         reviews=[to_review(row) for row in read_store_db.read_reviews(store_id, now)],

@@ -11,7 +11,9 @@ import { StyleSheet, Text as RNText, useWindowDimensions, type LayoutChangeEvent
 import { breakTitle } from "@/lib/titleBreak";
 import tokens from "@/theme/tokens.json";
 
-type Props = TextProps & { className?: string };
+// accent: 글 안의 이 낱말(예: 가게 이름)만 브랜드 색으로 칠한다. 줄 나누기 규칙은 그대로 따른다
+// keepBreaks: 적어 둔 줄 바꿈(\n)을 그대로 쓴다 (줄 나누기 규칙을 쓰지 않음. 줄마다 폭에 들어가게 짧게 적은 글에만)
+type Props = TextProps & { className?: string; accent?: string; keepBreaks?: boolean };
 type TitleFont = { size: number; lineHeight: number };
 
 // 규칙을 쓰는 글꼴 (tailwind.config.js 의 text-* 와 같은 값)
@@ -33,14 +35,37 @@ function titleFont({ className, style }: Props): TitleFont | null {
 
 export function Text(props: Props) {
   const font = titleFont(props);
-  if (font && typeof props.children === "string" && !props.numberOfLines && props.children.length <= MAX_RULE_LENGTH) {
-    return <Title {...props} text={props.children} font={font} />;
+  const { accent, keepBreaks, ...rest } = props;
+  if (keepBreaks && typeof props.children === "string") {
+    return (
+      <RNText lineBreakStrategyIOS="hangul-word" {...rest}>
+        {withAccent(props.children, accent)}
+      </RNText>
+    );
   }
-  return <RNText lineBreakStrategyIOS="hangul-word" {...props} />;
+  if (font && typeof props.children === "string" && !props.numberOfLines && props.children.length <= MAX_RULE_LENGTH) {
+    return <Title {...rest} accent={accent} text={props.children} font={font} />;
+  }
+  return <RNText lineBreakStrategyIOS="hangul-word" {...rest} />;
+}
+
+/** 글을 accent 낱말 앞뒤로 나눠 accent 만 브랜드 색으로 */
+function withAccent(text: string, accent?: string) {
+  if (!accent || !text.includes(accent)) return text;
+  return text.split(accent).flatMap((part, i) =>
+    i === 0
+      ? [part]
+      : [
+          <RNText key={i} style={{ color: tokens.colors.brand }}>
+            {accent}
+          </RNText>,
+          part,
+        ],
+  );
 }
 
 /** 제목·본문: 한 줄에 들어가면 한 줄로, 넘치면 줄 나누기 규칙으로 */
-function Title({ text, font, onLayout, ...rest }: Props & { text: string; font: TitleFont }) {
+function Title({ text, font, onLayout, accent, ...rest }: Props & { text: string; font: TitleFont }) {
   // 화면 폭이 바뀌면(회전, 창 크기) 다시 한 줄로 그려 본다
   const { width: screen } = useWindowDimensions();
   const [broken, setBroken] = useState<{ screen: number; text: string; lines: string } | null>(null);
@@ -57,7 +82,7 @@ function Title({ text, font, onLayout, ...rest }: Props & { text: string; font: 
 
   return (
     <RNText lineBreakStrategyIOS="hangul-word" {...rest} onLayout={check}>
-      {done ? broken.lines : oneLine}
+      {withAccent(done ? broken.lines : oneLine, accent)}
     </RNText>
   );
 }

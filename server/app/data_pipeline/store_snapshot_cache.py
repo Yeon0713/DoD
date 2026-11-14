@@ -31,7 +31,8 @@ from app.analysis.store_calendar.calendar_day import CALENDAR_DAYS, build_calend
 from app.core.config import settings as app_settings
 from app.core.error_response import ApiError
 from app.core.seoul_time import at_time, now_seoul, to_seoul
-from app.data_pipeline import registered_stores, read_store_db
+from app.data_pipeline import read_store_db, registered_stores, reservations
+from app.data_pipeline.reservation_effect import apply_reservations
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs, inputs_until
 from app.menu_board.for_snapshot import MenuBoardCard, snapshot_menu_boards
@@ -171,6 +172,10 @@ def _compute(
     calendar_cells, customer_cycles, reviews, risk_signals = (
         parts.calendar_cells, parts.customer_cycles, parts.reviews, parts.risk_signals
     )
+    # 확정한 예약·단체 주문을 화면 달력(이번 주)의 예상 매출에 더한다. 계획 엔진이 쓰는 달력(planner_calendar)은 그대로다
+    if calendar_cells:
+        booked = reservations.list_reservations(store_id, min(c.date for c in calendar_cells), max(c.date for c in calendar_cells))
+        calendar_cells = apply_reservations(calendar_cells, booked, inputs, now)
     settings, plan, unavailable = parts.settings, parts.plan, parts.unavailable
 
     # 답글 초안: 이번 한 주 답글과 가까운 재주문 인사만 (같은 리뷰는 한 번만 CLOVA 를 부른다)
@@ -289,26 +294,50 @@ def plan_only(store_id: str, now: dt.datetime) -> tuple[StoreSettings | None, Pl
 
 
 def plan_at_times(
-    store_id: str, moments: list[dt.datetime], on_step: Callable[[int], None] | None = None
+    store_id: str, moments: list[dt.datetime], on_step: Callable[[int], None] | None = None, *, chain: bool = False
 ) -> list[tuple[StoreSettings | None, PlanResult | None, ApiError | None]]:
     """plan_only 를 여러 시각에. 결과는 시각마다 plan_only(store_id, 그 시각)와 같다.
 
     DB 는 가장 늦은 시각까지 한 번만 읽고, 시각마다 그때까지 생긴 행만 남겨 쓴다 (inputs_until).
     시연 훑기(42개 시각)가 시각마다 DB 전체를 다시 읽던 시간(가게 하나에 20초 넘게)을 줄인다.
     on_step: 시각 하나를 마칠 때마다 마친 수를 받는다 (대시보드 진행 표시).
+    chain: 앞 시각의 반복 불만 신호를 다음 시각에 이어 준다 (서버가 계속 켜져 있을 때와 같게). moments 는 시간순이어야 한다.
     """
     if not moments:
         return []
     moments = [to_seoul(moment) for moment in moments]
     store = read_store_db.read_store(store_id)
     full = build_analysis_inputs(store_id, max(moments))
-    results = []
+    results, previous = [], None
     for now in moments:
-        parts = _analyze_and_plan(store_id, store, inputs_until(full, now), now, previous=None)
+        parts = _analyze_and_plan(store_id, store, inputs_until(full, now), now, previous=previous if chain else None)
+        previous = parts
         results.append((parts.settings, parts.plan, parts.unavailable))
         if on_step:
             on_step(len(results))
     return results
+
+
+def jump_to(store_id: str, at: dt.datetime, earlier: list[dt.datetime]) -> StoreSnapshot:
+    """시험 날짜로 시계를 옮긴 뒤 at 의 결과를 새로 만들어 보관한다.
+
+    반복 불만 신호는 앞 결과를 이어 쓴다(처음 본 시각이 발견 시각). 보관한 결과를 지우고 at 에서 바로 계산하면
+    발견 시각이 at 이 되어 점검 승인 요청이 늘 다음 날로 밀린다. 그래서 earlier(at 앞의 알림 시각들, 시간순)마다
+    차례로 계산해 신호를 이어 받은 뒤 at 을 계산한다. 서버가 그 주 내내 켜져 있었을 때와 같은 화면이 나온다.
+    CLOVA 답글 초안은 기다리지 않고(써 둔 것만 쓰고 나머지는 뒤에서), 카드 문장 다듬기는 맡기지 않는다.
+    """
+    at = to_seoul(at)
+    store = read_store_db.read_store(store_id)
+    previous = None
+    moments = sorted(to_seoul(m) for m in earlier if to_seoul(m) < at)
+    if moments:
+        full = build_analysis_inputs(store_id, moments[-1])
+        for now in moments:
+            previous = _analyze_and_plan(store_id, store, inputs_until(full, now), now, previous=previous)
+    with _lock_for(store_id):
+        snapshot = _compute(store_id, at, previous=previous, wait_for_drafts=False, polish=False)  # type: ignore[arg-type]  # risk_signals 만 쓴다
+        _snapshots[store_id] = snapshot
+    return snapshot
 
 
 def first_known_at(day: dt.date) -> dt.datetime:

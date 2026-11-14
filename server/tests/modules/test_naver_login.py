@@ -36,12 +36,12 @@ def _mock_start(client, monkeypatch) -> str:
 def test_without_keys_goes_to_test_login_page(client, monkeypatch):
     state = _mock_start(client, monkeypatch)
     page = client.get("/api/auth/naver/mock/login", params={"state": state}).text
-    assert "테스트" in page and "dona_test1" in page
+    assert "테스트" in page and "dona_demo" in page
 
 
 def test_test_login_wrong_password_stays_on_page(client, monkeypatch):
     state = _mock_start(client, monkeypatch)
-    page = client.post("/api/auth/naver/mock/login", data={"state": state, "login_id": "dona_test1", "password": "wrong"}).text
+    page = client.post("/api/auth/naver/mock/login", data={"state": state, "login_id": "dona_demo", "password": "wrong"}).text
     assert "잘못 입력했어요" in page
     assert not auth._mock_codes
 
@@ -57,19 +57,16 @@ def _test_login(client, monkeypatch, login_id: str) -> dict:
     return client.get(f"/api/auth/naver/result/{ticket}").json()
 
 
-@pytest.mark.parametrize(
-    ("login_id", "store_id", "on_logout"),
-    [("dona_test1", None, "reset"), ("dona_test2", "s001", "reset"), ("dona_test3", "s003", "keep")],
-)
-def test_test_accounts_follow_db_conditions(client, monkeypatch, login_id, store_id, on_logout):
-    """test1 은 등록해 둔 가게가 있어도 늘 가게 찾기부터(store_id 없음), test2·3 은 DB 에 정해 둔 가게로 들어간다."""
-    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: "s002")  # 등록 기록이 있어도
+def test_demo_account_goes_to_store_registered_by_that_account(client, monkeypatch):
+    """데모 계정은 정해 둔 가게 없이, 이 계정으로 등록해 둔 가게로 들어간다 (진짜 네이버 계정과 같다). 없으면 가게 찾기부터."""
     monkeypatch.setattr(settings, "dev_clock_enabled", False)
-    body = _test_login(client, monkeypatch, login_id)
-    assert body["test"] is True
-    assert body["store_id"] == store_id
-    assert body["received"]["email"] == f"{login_id}@example.com"
-    assert body["test_account"] == {"login_id": login_id, "on_logout": on_logout, "scene_at": None}
+    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: "s003" if key == "naver:TEST_NAVER_ID_DEMO" else None)
+    body = _test_login(client, monkeypatch, "dona_demo")
+    assert body["test"] is True and body["store_id"] == "s003"
+    assert body["received"]["email"] == "dona_demo@example.com"
+    assert body["test_account"] == {"login_id": "dona_demo", "on_logout": "keep", "scene_at": None}
+    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: None)
+    assert _test_login(client, monkeypatch, "dona_demo")["store_id"] is None
 
 
 def test_start_refuses_unknown_back_url(client):
@@ -122,21 +119,27 @@ def test_callback_success_keeps_token_on_server(client, monkeypatch):
     assert "secret-token" not in str(body)
 
 
-def test_login_returns_store_registered_by_that_account(client, monkeypatch):
-    """DB 에서 가게 찾기(find_store)를 끄고 가게(store_id)를 비우면, 그 계정으로 등록해 둔 가게로 들어간다 (진짜 네이버 계정과 같다)."""
+def test_find_store_ignores_registered_store_and_store_id_wins(client, monkeypatch):
+    """DB 에서 find_store 를 켜면 등록 기록이 있어도 가게 찾기부터, store_id 를 넣으면 그 가게로 들어간다."""
+    monkeypatch.setattr(settings, "dev_clock_enabled", False)
+    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: "s003")
     with test_accounts._db() as conn:
-        conn.execute("UPDATE test_accounts SET find_store = 0, store_id = NULL WHERE login_id = 'dona_test1'")
-    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: "s003" if key == "naver:TEST_NAVER_ID_0001" else None)
-    assert _test_login(client, monkeypatch, "dona_test1")["store_id"] == "s003"
+        conn.execute("UPDATE test_accounts SET find_store = 1 WHERE login_id = 'dona_demo'")
+    assert _test_login(client, monkeypatch, "dona_demo")["store_id"] is None
+    with test_accounts._db() as conn:
+        conn.execute("UPDATE test_accounts SET find_store = 0, store_id = 's001' WHERE login_id = 'dona_demo'")
+    assert _test_login(client, monkeypatch, "dona_demo")["store_id"] == "s001"
 
 
 def test_scene_account_moves_server_clock_on_login(client, monkeypatch):
-    """test2 는 DB 의 scene_at(할 일이 몰리는 9/10 21:35)으로 서버 시계를 옮긴다 (DEV_CLOCK_ENABLED 일 때만)."""
+    """DB 에 scene_at 을 넣은 계정은 로그인할 때 서버 시계를 그 시각으로 옮긴다 (DEV_CLOCK_ENABLED 일 때만)."""
+    with test_accounts._db() as conn:
+        conn.execute("UPDATE test_accounts SET store_id = 's001', scene_at = '2026-09-10T21:35:00+09:00' WHERE login_id = 'dona_demo'")
     monkeypatch.setattr(settings, "dev_clock_enabled", True)
     forgotten = []
     monkeypatch.setattr(auth.store_snapshot_cache, "forget", forgotten.append)
     try:
-        body = _test_login(client, monkeypatch, "dona_test2")
+        body = _test_login(client, monkeypatch, "dona_demo")
         assert body["test_account"]["scene_at"] == "2026-09-10T21:35:00+09:00"
         assert abs((now_seoul() - dt.datetime(2026, 9, 10, 21, 35, tzinfo=SEOUL)).total_seconds()) < 5
         assert forgotten == ["s001"]
@@ -146,35 +149,71 @@ def test_scene_account_moves_server_clock_on_login(client, monkeypatch):
 
 def test_logout_reset_clears_store_and_clock_but_keep_does_not(client, monkeypatch):
     monkeypatch.setattr(settings, "dev_clock_enabled", True)
+    monkeypatch.setattr(auth.registered_stores, "store_for_owner", lambda key: "s005")
     reset = []
     monkeypatch.setattr(auth.store_snapshot_cache, "reset_store", reset.append)
     try:
         set_clock_shift(dt.timedelta(days=-60))
-        assert client.post("/api/auth/test/logout", json={"login_id": "dona_test3"}).json()["on_logout"] == "keep"
+        assert client.post("/api/auth/test/logout", json={"login_id": "dona_demo"}).json()["on_logout"] == "keep"
         assert reset == [] and clock_shift() == dt.timedelta(days=-60)  # keep: 그대로
-        assert client.post("/api/auth/test/logout", json={"login_id": "dona_test2"}).json()["on_logout"] == "reset"
-        assert reset == ["s001"] and clock_shift() == dt.timedelta(0)  # reset: 그 가게와 시계를 처음으로
+        with test_accounts._db() as conn:
+            conn.execute("UPDATE test_accounts SET on_logout = 'reset' WHERE login_id = 'dona_demo'")
+        assert client.post("/api/auth/test/logout", json={"login_id": "dona_demo"}).json()["on_logout"] == "reset"
+        assert reset == ["s005"] and clock_shift() == dt.timedelta(0)  # reset: 그 가게와 시계를 처음으로
     finally:
         set_clock_shift(dt.timedelta(0))
     assert client.post("/api/auth/test/logout", json={"login_id": "nobody"}).status_code == 404
 
 
+def test_withdraw_unlinks_store_but_keeps_account_and_store_data(client, monkeypatch, tmp_path):
+    """탈퇴: 계정과 가게 연결을 끊고 리뷰 불러오기 기록을 비운다. 같은 아이디로 다시 로그인하면 가게 찾기(가입)부터, 가게의 등록 기록은 남는다."""
+    registry = auth.registered_stores
+    monkeypatch.setattr(registry, "REGISTRY_PATH", tmp_path / "registry.db")
+    monkeypatch.setattr(registry, "DATA_DIR", tmp_path)
+    (tmp_path / "s005.db").touch()
+    monkeypatch.setattr(auth, "list_store_ids", lambda: ["s005"])
+    monkeypatch.setattr(auth, "read_store", lambda store_id: {"name": "초옹장"})
+    monkeypatch.setattr(settings, "dev_clock_enabled", False)
+    with registry._db() as conn:
+        conn.execute("INSERT INTO stores VALUES ('s005', '2004174048', '{}', 'now', 'now')")
+    registry.set_owner("naver:TEST_NAVER_ID_DEMO", "s005")
+    registry.mark_platform("s005", "BAEMIN", [1, 2])
+    reset, revoked = [], []
+    monkeypatch.setattr(auth.store_snapshot_cache, "reset_store", reset.append)
+    from app.modules.owner_check import review as owner_check
+    monkeypatch.setattr(owner_check, "withdraw", revoked.append)
+    assert _test_login(client, monkeypatch, "dona_demo")["store_id"] == "s005"
+
+    body = client.post("/api/auth/test/withdraw", json={"login_id": "dona_demo"}).json()
+    assert body == {"login_id": "dona_demo", "unlinked_store_id": "s005"} and reset == ["s005"]
+    assert revoked == ["naver:TEST_NAVER_ID_DEMO"]  # 사장님 확인 승인도 거둔다 → 다시 가입하면 다시 확인
+    assert _test_login(client, monkeypatch, "dona_demo")["store_id"] is None  # 다시 가입부터
+    assert test_accounts.by_login_id("dona_demo") is not None  # 계정은 그대로
+    assert registry.store_for_place("2004174048") == "s005"  # 가게 등록 기록은 그대로
+    assert registry.imported_counts("s005") == {}  # 목업 가게로 이은 가게는 리뷰 불러오기 기록을 비운다 → 다시 가입하면 불러오기부터
+    assert client.post("/api/auth/test/withdraw", json={"login_id": "dona_demo"}).json()["unlinked_store_id"] is None
+    assert client.post("/api/auth/test/withdraw", json={"login_id": "nobody"}).status_code == 404
+
+
 def test_test_accounts_db_is_made_with_defaults_and_edits_apply(tmp_path):
     assert not test_accounts.DB_PATH.exists()
-    assert [a["login_id"] for a in test_accounts.all_accounts()] == ["dona_test1", "dona_test2", "dona_test3"]
+    assert [a["login_id"] for a in test_accounts.all_accounts()] == ["dona_demo"]
     assert test_accounts.DB_PATH.exists()
     with test_accounts._db() as conn:
-        conn.execute("UPDATE test_accounts SET on_logout = 'keep' WHERE login_id = 'dona_test2'")
-    assert test_accounts.by_login_id("dona_test2")["on_logout"] == "keep"  # 서버를 다시 켜지 않아도 바로
+        conn.execute("UPDATE test_accounts SET on_logout = 'reset' WHERE login_id = 'dona_demo'")
+    assert test_accounts.by_login_id("dona_demo")["on_logout"] == "reset"  # 서버를 다시 켜지 않아도 바로
 
 
-def test_app_on_this_computer_is_accepted_on_any_port(client, monkeypatch):
-    """앱을 8081 같은 다른 포트로 켜거나, 예전 .env 의 CORS_ORIGINS 에 8082 가 없어도 로그인과 요청이 된다."""
+def test_only_cors_origins_are_accepted(client, monkeypatch):
+    """CORS_ORIGINS 에 있는 주소(3000, localhost:8082, 127.0.0.1:8082)만 로그인 뒤 돌아갈 주소와 요청을 받는다. 같은 컴퓨터라도 다른 포트는 막는다."""
     monkeypatch.setattr(settings, "naver_login_client_id", "")
-    monkeypatch.setattr(settings, "cors_origins", ["http://localhost:3000"])
-    for origin in ("http://localhost:8081", "http://127.0.0.1:8082", "http://localhost:19006"):
+    assert settings.cors_origin_regex == ""
+    for origin in ("http://localhost:3000", "http://localhost:8082", "http://127.0.0.1:8082"):
         assert client.get("/api/auth/naver/start", params={"back": f"{origin}/start/naver-login"}).status_code == 302
         assert client.get("/health", headers={"Origin": origin}).headers["access-control-allow-origin"] == origin
+    for origin in ("http://localhost:8081", "http://localhost:8092", "http://127.0.0.1:3000", "http://localhost:19006"):
+        assert client.get("/api/auth/naver/start", params={"back": f"{origin}/start/naver-login"}).json()["error"]["code"] == "BAD_BACK_URL"
+        assert "access-control-allow-origin" not in client.get("/health", headers={"Origin": origin}).headers
 
 
 def test_other_sites_are_still_refused(client, monkeypatch):
@@ -189,9 +228,11 @@ def test_health_tells_whether_server_is_in_dev_mode(client, monkeypatch):
 
 
 def test_test_account_list_says_store_and_what_happens(client, monkeypatch):
-    """임시 네이버 로그인의 테스트 계정 목록: '사장님 1' 이 아니라 어느 가게로 들어가고 무엇을 시험하는지 보인다 (DB 의 scenario)."""
+    """임시 네이버 로그인의 테스트 계정 목록: 어느 가게로 들어가고 무엇을 시험하는지 보인다 (DB 의 scenario)."""
+    with test_accounts._db() as conn:
+        conn.execute("UPDATE test_accounts SET store_id = 's001' WHERE login_id = 'dona_demo'")
     state = _mock_start(client, monkeypatch)
     page = client.get(f"/api/auth/naver/mock/login?state={state}").text
     assert "사장님 1" not in page
-    assert "로그인할 때마다 네이버 지도에서 가게 찾기" in page
-    assert "한림국수 (s001)" in page and "석사돈가스 (s003)" in page
+    assert "탈퇴하면 다시 가입부터" in page
+    assert "dona_demo" in page

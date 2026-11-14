@@ -1,8 +1,10 @@
-// 홈 (Figma 07-1 할 일이 남았을 때, 07-2 다 끝냈을 때). 앱을 열면 먼저 보는 화면이다.
-// 위에서부터: 날짜와 남은 일 수 → 지금 할 일 1장 → 다음 할 일 → 오늘 끝낸 일.
+// 홈 (Figma 07-1 준비한 것이 있을 때, 07-2 다 확인했을 때). 앱을 열면 먼저 보는 화면이다.
+// 도나는 비서다: 사장님에게 일을 시키지 않고 "도나가 ~을 준비했어요"라고 알린다. "할 일", 남은 개수 같은 말은 쓰지 않는다
+// (얼마나 확인했는지는 제목 아래 막대로만 보인다).
+// 위에서부터: 가게 이름과 날짜 → 도나가 준비한 것(제목, 옆에 도나) → 먼저 봐 주세요 1장 → 이어서 준비한 것 → 오늘 확인한 것.
 // 바탕은 home 색으로, 다른 화면(paper)과 구분한다.
 import { useFocusEffect } from "expo-router";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Pressable, RefreshControl, View } from "react-native";
 import { Text } from "@/components/ui/Text";
 import { Icon, type IconName } from "@/components/icons/Icon";
@@ -16,7 +18,9 @@ import { devFlags } from "@/lib/dev";
 import { slotLabel } from "@/lib/hours";
 import { nextSlot } from "@/lib/queue";
 import { addDays, dateOnly, hhmm, monthDay, relativeDay, weekdayName, ymd } from "@/lib/time";
+import { storeName } from "@/components/start/flow";
 import { countDone, DONE_KINDS, type DoneKind } from "@/lib/todayCards";
+import { rememberDonePlans } from "@/lib/doneHistory";
 import { useHome, useTodayCards } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import type { Slot, StoreSettings } from "@/types/contract";
@@ -34,16 +38,42 @@ function dayOf(slot: string, now: Date) {
 /** 끝낸 때. 오늘이 아니면 요일을 붙인다 (모아 보기에서는 다른 요일 카드도 끝낸다) */
 const doneWhen = (at: string, now: Date) => `${ymd(new Date(at)) === ymd(now) ? "" : `${weekdayName(at)} `}${hhmm(at)}에 `;
 
-function Header({ now, title, total, done, checking }: { now: Date; title: string; total: number; done: number; checking?: boolean }) {
+/** 도나가 준비한 것 → 홈 제목. 카드 id 는 "알림 종류:계획 id" (BASIC: 좋은 리뷰 묶음, FIRST_DAY: 첫날 지난 리뷰) */
+export function preparedTitle(cardId: string, card?: { blocks?: { type: string }[] }): string {
+  const [kind, type] = cardId.split(":");
+  if (kind === "FIRST_DAY") return "도나가 지난 리뷰 답글을 써 뒀어요";
+  if (kind === "BASIC") return "도나가 좋은 리뷰 답글을 써 뒀어요";
+  if (type === "REVISIT_REPLY") return "도나가 답글을 써 뒀어요";
+  if (type === "REORDER_NUDGE") return "도나가 단골 인사말을 써 뒀어요";
+  if (type === "REVIEW_FIX") return "도나가 점검 목록을 준비했어요";
+  if (type === "MENU_ORDER") return "도나가 새 메뉴판을 준비했어요";
+  // 포스터: 아직 안 만들었으면 사진을 고르면 도나가 그린다. 만들어 뒀으면(카드에 포스터 그림이 있으면) 올리기만 남았다
+  if (type === "POSTER") return card?.blocks?.some((b) => b.type === "poster") ? "도나가 홍보 포스터를 다 만들어 뒀어요" : "도나가 가게 홍보를 준비할게요";
+  if (type === "WEEKLY_PREVIEW") return "도나가 이번 주를 정리해 뒀어요";
+  if (type === "SALES_ANOMALY") return "도나가 매출 변화를 정리해 뒀어요";
+  return "도나가 미리 챙겨 뒀어요";
+}
+
+function Header({ now, store, title, total, done, checking, donna }: { now: Date; store?: string; title: string; total: number; done: number; checking?: boolean; donna?: boolean }) {
   return (
     <View className="gap-1.5">
-      <View className="h-7 flex-row items-center justify-between">
-        <Text className="text-label text-ink-2">{`${monthDay(now)} ${weekdayName(now)}`}</Text>
+      <View className="h-7 flex-row items-center gap-2">
+        {store ? (
+          <View testID="home-store" className="flex-row items-center gap-1 rounded-full bg-brand-soft px-2.5 py-1">
+            <Icon name="store" size={16} color={C.brand} />
+            <Text className="text-small font-bold text-brand">{store}</Text>
+          </View>
+        ) : null}
+        <Text className="flex-1 text-label text-ink-2">{`${monthDay(now)} ${weekdayName(now)}`}</Text>
         {checking ? <Checking /> : null}
       </View>
-      <Text testID="home-title" className="text-display text-ink" accessibilityRole="header">
-        {title}
-      </Text>
+      {/* 아래 내용에 도나가 없을 때(준비한 카드를 보여 줄 때)는 제목 옆에 도나를 둔다 */}
+      <View className="flex-row items-center gap-3">
+        <Text testID="home-title" className="flex-1 text-title text-ink" accessibilityRole="header">
+          {title}
+        </Text>
+        {donna ? <DonnaImage img="b3-2" size={72} /> : null}
+      </View>
       <View className="mt-1.5">
         <ProgressSteps total={Math.max(total, 1)} done={done} />
       </View>
@@ -51,21 +81,20 @@ function Header({ now, title, total, done, checking }: { now: Date; title: strin
   );
 }
 
-function Group({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
+function Group({ title, children }: { title: string; children: ReactNode }) {
   return (
     <View className="gap-2.5">
       <View className="flex-row items-center gap-1.5">
         <Text className="text-body font-bold text-ink" accessibilityRole="header">
           {title}
         </Text>
-        {count != null ? <Text className="text-body font-bold text-ink-3">{count}</Text> : null}
       </View>
       {children}
     </View>
   );
 }
 
-/** 07-1: 지금 할 일 카드 한 장. 자세한 내용과 처리는 07-3에서 한다. */
+/** 07-1: 먼저 봐 주세요 카드 한 장. 자세한 내용과 처리는 07-3에서 한다. */
 function NowCard({ card }: { card: CardView }) {
   const line = card.draft ? "도나가 답글을 써 뒀어요" : (card.sub ?? oneLine(card.donna.text));
   return (
@@ -83,7 +112,7 @@ function NowCard({ card }: { card: CardView }) {
       </View>
       <Text className="text-label text-ink-2">{line}</Text>
       <PrimaryButton testID="home-start" href={taskHref(card.id)}>
-        지금 하기
+        확인하기
       </PrimaryButton>
     </View>
   );
@@ -96,11 +125,12 @@ const DONE_TILE: Record<DoneKind, { icon: IconName; label: string; unit: string 
   poster: { icon: "image", label: "포스터", unit: "장" },
 };
 
-/** 08-2: 오늘 함께 한 일. 네 칸은 늘 같은 자리, 하지 않은 일은 0으로 쓰고 회색. 아낀 시간 같은 자랑하는 말은 넣지 않는다. */
-function DoneTiles({ counts }: { counts: Record<DoneKind, number> }) {
+/** 08-2: 오늘 함께 한 일. 네 칸은 늘 같은 자리, 하지 않은 일은 0으로 쓰고 회색. 아낀 시간 같은 자랑하는 말은 넣지 않는다.
+ * title: 지난 기록 화면은 "11월 14일 함께 한 일"처럼 그 날짜를 쓴다 */
+export function DoneTiles({ counts, title = "오늘 함께 한 일" }: { counts: Record<DoneKind, number>; title?: string }) {
   return (
     <View className="w-full gap-2.5">
-      <Text className="text-center text-label text-ink-2">오늘 함께 한 일</Text>
+      <Text className="text-center text-label text-ink-2">{title}</Text>
       <View testID="home-done-tiles" className="flex-row gap-2">
         {DONE_KINDS.map((k) => {
           const n = counts[k];
@@ -125,7 +155,7 @@ function DoneTiles({ counts }: { counts: Record<DoneKind, number> }) {
   );
 }
 
-/** 07-2, 08-2: 다 끝냈을 때(또는 지금은 할 일이 없을 때) 지금 할 일 자리. counts가 있으면(다 끝냈을 때) 오늘 함께 한 일을 함께 보여 준다. */
+/** 07-2, 08-2: 다 확인했을 때(또는 지금은 준비한 것이 없을 때) 먼저 봐 주세요 자리. counts가 있으면(다 끝냈을 때) 오늘 함께 한 일을 함께 보여 준다. */
 function RestBox({ title, settings, now, counts }: { title: string; settings: StoreSettings; now: Date; counts?: Record<DoneKind, number> }) {
   const next = nextSlot(settings.slots, now);
   return (
@@ -151,7 +181,7 @@ function RestBox({ title, settings, now, counts }: { title: string; settings: St
 
 type Row = { id: string; title: string; sub: string; icon: IconName; done?: boolean; href: string };
 
-/** 07-1, 07-2: 다음 할 일, 오늘 끝낸 일 목록 */
+/** 07-1, 07-2: 이어서 준비한 것, 오늘 확인한 것 목록 */
 function List({ rows, testID }: { rows: Row[]; testID: string }) {
   return (
     <View testID={testID} className="overflow-hidden rounded-card border border-line bg-surface">
@@ -183,9 +213,14 @@ function List({ rows, testID }: { rows: Row[]; testID: string }) {
 function HomeBody() {
   const { data, view, store, error, isPending, isFetching, refetch, now, prefs: p, allWeek, persona, scene } = useTodayCards();
   const stage = useWaitStage(isPending);
+  // 지난 기록: 끝낸 카드가 묶은 계획(좋은 리뷰 묶음은 여러 개)을 적어 둔다 (lib/doneHistory.ts)
+  useEffect(() => {
+    if (!view) return;
+    rememberDonePlans(view.cards.filter((c) => store[c.id]?.kind === "done").map((c) => [c.id, view.plansOf[c.id] ?? []]));
+  }, [view, store]);
 
   if (!data || !view) {
-    const header = <Header now={now} title={"오늘 할 일을\n모으고 있어요"} total={1} done={0} />;
+    const header = <Header now={now} title="도나가 오늘 일을 챙기고 있어요" total={1} done={0} />;
     if (error instanceof ApiFailure && error.offline) return <Offline header={header} onRetry={() => refetch()} />;
     // 서버가 아직 다루지 못하는 가게(자정을 넘겨 여는 가게): 불러오는 척하지 않고 까닭을 알려 준다
     if (error instanceof ApiFailure && error.code === "OVERNIGHT_STORE_NOT_SUPPORTED") {
@@ -215,7 +250,14 @@ function HomeBody() {
   const remaining = view.open.length + later.length;
   const total = Math.max(view.total, doneCards.length + remaining);
 
-  const title = remaining > 0 ? `오늘 할 일이\n${remaining}개 남았어요` : doneCards.length > 0 ? `오늘 할 일 ${doneCards.length}개를\n다 끝냈어요` : "오늘 할 일을\n다 끝냈어요";
+  // 도나가 준비한 것으로 말한다. 남은 개수는 쓰지 않는다 (제목 아래 막대가 보여 준다)
+  const title = first
+    ? preparedTitle(first.id, first)
+    : later.length > 0
+      ? "도나가 나중에 다시 알려 드릴게요"
+      : doneCards.length > 0
+        ? "오늘 준비한 일을 모두 확인했어요"
+        : "도나가 가게를 살피고 있어요";
 
   const nextRows: Row[] = [
     ...rest.map((c) => {
@@ -223,7 +265,7 @@ function HomeBody() {
       const slot = view.slotOf[c.id];
       const otherDay = !!slot && slot.slice(0, 10) !== ymd(now);
       const when = slot && (allWeek || (persona && otherDay)) ? `${dayOf(slot, now)} ${hhmm(slot)} 알림` : null;
-      const sub = [c.pill?.text, when].filter(Boolean).join(", ") || "할 일";
+      const sub = [c.pill?.text, when].filter(Boolean).join(", ") || "도나가 준비했어요";
       return { id: c.id, title: oneLine(c.title), sub, icon: c.pill?.icon ?? "bell", href: taskHref(c.id) };
     }),
     ...later.map((c) => {
@@ -245,10 +287,10 @@ function HomeBody() {
     <View className="gap-6">
       <View>
         {p.notifyOff ? <NotifyOffBanner /> : null}
-        <Header now={now} title={title} total={total} done={doneCards.length} checking={isFetching} />
+        <Header now={now} store={storeName(settings.name)} title={title} total={total} done={doneCards.length} checking={isFetching} donna={!!first} />
         {allWeek ? (
           <Text testID="home-all-week" className="mt-2 text-small text-ink-3">
-            검토용 목업: 데모 한 주(11월 16일~25일) 할 일을 모두 모아 보여 줘요
+            검토용 목업: 데모 한 주(11월 16일~25일) 도나가 준비한 것을 모두 모아 보여 줘요
           </Text>
         ) : persona && scene && !persona.main ? (
           <Text testID="home-persona" className="mt-2 text-small text-ink-3">
@@ -257,24 +299,24 @@ function HomeBody() {
         ) : null}
       </View>
       {first ? (
-        <Group title="지금 할 일">
+        <Group title="먼저 봐 주세요">
           <NowCard card={first} />
         </Group>
       ) : (
         <RestBox
-          title={remaining > 0 ? "지금은 할 일이 없어요" : "수고하셨어요"}
+          title={remaining > 0 ? "지금은 확인할 게 없어요" : "수고하셨어요"}
           settings={settings}
           now={now}
           counts={remaining > 0 ? undefined : countDone(view, doneCards.map(({ c }) => c.id))}
         />
       )}
       {nextRows.length > 0 ? (
-        <Group title="다음 할 일" count={nextRows.length}>
+        <Group title="이어서 준비했어요">
           <List testID="home-next" rows={nextRows} />
         </Group>
       ) : null}
       {doneRows.length > 0 ? (
-        <Group title="오늘 끝낸 일" count={doneRows.length}>
+        <Group title="오늘 확인한 것">
           <List testID="home-done" rows={doneRows} />
         </Group>
       ) : null}
@@ -301,8 +343,24 @@ export function HomeScreen() {
     }
   };
   return (
-    <TabPage bg={C.home} refresh={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}>
-      <HomeBody />
-    </TabPage>
+    <View className="flex-1">
+      <TabPage bg={C.home} refresh={<RefreshControl refreshing={pulling} onRefresh={onRefresh} tintColor={C.brand} colors={[C.brand]} />}>
+        <HomeBody />
+        {/* 오른쪽 아래 버튼에 가리지 않게 아래를 비워 둔다 */}
+        <View className="h-16" />
+      </TabPage>
+      {/* 지난 기록: 날짜마다 함께 한 일 */}
+      <Pressable
+        testID="home-history"
+        accessibilityRole="button"
+        accessibilityLabel="지난 기록 보기"
+        onPress={() => go("/history")}
+        className="absolute bottom-4 right-4 h-12 flex-row items-center gap-1.5 rounded-full border border-line bg-surface px-4 active:bg-brand-soft"
+        style={{ shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 3 }}
+      >
+        <Icon name="calendar" size={20} color={C.brand} />
+        <Text className="text-label font-bold text-ink">지난 기록</Text>
+      </Pressable>
+    </View>
   );
 }

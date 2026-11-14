@@ -2,6 +2,6 @@
 import type { ComponentRef } from "react";
 import type { View } from "react-native";
 
-export async function shareView(_target: ComponentRef<typeof View> | null, _title: string): Promise<void> {
+export async function shareView(_target: ComponentRef<typeof View> | null, _title: string, _size?: { width: number; height: number }): Promise<void> {
   throw new Error("web uses canvas");
 }

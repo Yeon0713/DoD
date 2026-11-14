@@ -24,7 +24,7 @@
 시작 화면 ─ 오른쪽 위 메뉴(☰) › 데모 테스트 모드 켜기
    │
    ▼
-네이버로 시작하기 ──▶ 임시 네이버 로그인 (dona_test1~3 / dona1234)
+네이버로 시작하기 ──▶ 임시 네이버 로그인 (dona_demo / dona1234)
    │                    ※ 서버에 NAVER_LOGIN_CLIENT_ID/SECRET 이 있으면 진짜 nid.naver.com 으로 감
    ▼
 ① 우리 가게 찾기  (/start/store)        가게 이름 검색 → 네이버 지역 검색 결과 + 지도
@@ -65,7 +65,7 @@
 | 파일 | 내용 | git |
 |---|---|---|
 | `server/db/data/s101.db`, `s102.db` … | 등록한 가게 전용 파일. 기존 목업 가게(s001~s003)와 **같은 표 모양**. 가게 정보·메뉴가 들어가고, 리뷰는 리뷰 불러오기로 채움. 주문·알바는 없음 | 올리지 않음 (`.gitignore`) |
-| `server/db/app_data/registry.db` | 등록 기록: `stores`(가게 id ↔ 네이버 가게 id, 읽은 정보 JSON), `owners`(로그인 계정 ↔ 가게), `review_platforms`(불러온 리뷰가 어느 플랫폼 것인지) | 올리지 않음 |
+| `server/db/app_data/registry.db` | 등록 기록: `stores`(가게 id ↔ 네이버 가게 id, 읽은 정보 JSON), `owners`(로그인 계정 ↔ 가게, 사장님 확인이 승인되면 이음), `review_platforms`(불러온 리뷰가 어느 플랫폼 것인지), `owner_checks`(사장님 확인 심사, [owner-check.md](owner-check.md)) | 올리지 않음 |
 
 - 가게 파일은 s101 부터 붙입니다 (s001~s099 는 목업 가게 자리).
 - **지호님 목업 생성기(`db/mock/generate.py`)를 다시 돌리면 `db/data/*.db` 가 모두 지워지므로 등록한 가게 파일도 지워집니다.** 그때는 다시 등록하면 됩니다 (등록 기록은 `app_data` 에 남아 있어도 파일이 없으면 무시).
@@ -107,7 +107,7 @@
 | `GET /api/stores/map?lat&lng&level&markers=위도,경도;…&numbered&selected` | 지도 그림. `numbered` 면 핀에 1, 2, 3, `selected` 번 핀을 갈색으로 |
 | `GET /api/stores/map-config` | 웹 지도(JavaScript)용 Client ID (NCP 에 웹 주소를 등록해야 동작) |
 | `POST /api/stores/preview` `{name,address,lat,lng}` | 네이버 지도에서 가게를 읽어 "이 가게가 맞나요?"에 보여 줌 (저장 안 함) |
-| `POST /api/stores/register` `{place_id, owner_key}` | 가게 등록 (DB 저장, 계정 연결). 같은 네이버 가게면 같은 가게 id 를 돌려줌 |
+| `POST /api/stores/register` `{place_id}` | 가게 등록 (DB 저장). 계정 연결은 사장님 확인(`/api/owner_check`)이 승인될 때. 같은 네이버 가게면 같은 가게 id 를 돌려줌 |
 | `POST /api/stores/{store_id}/refresh` | 네이버 지도에서 다시 읽어 가게·메뉴 갱신 |
 | `GET /api/stores/{store_id}/reviews` | 플랫폼별로 불러온 리뷰 수 |
 | `POST /api/stores/{store_id}/reviews/import` `{platform}` | 리뷰 불러오기 (BAEMIN, NAVER, COUPANG). 지금은 목업 |
@@ -145,11 +145,11 @@ npm run web              # http://localhost:8082
 - 앱: 시작 화면(또는 로그인 화면) ☰ › **데모 테스트 모드** 켜기. 같은 메뉴의 **초기화**는 서버의 등록 가게와 이 기기 기록을 지워 가게 찾기(지도)부터 다시 하게 한다. 데모 테스트 모드와 `?cursor=1` 은 초기화·로그아웃·서버 재시작에도 남는다 (`dona.keep.*`).
 - 앱(예전 설명): 켜져 있으면 "알림이 꺼져 있어요" 띠를 띄우지 않습니다 (시험 브라우저는 알림을 켤 수 없음).
 - 웹 시연 때 마우스 표시: 주소 끝에 `?cursor=1` (끄기 `?cursor=0`).
-- **서버를 다시 켜면 앱 저장값(가입, 데모 모드 등)이 처음으로 돌아갑니다** (`/health` 의 boot_id). 등록한 가게와 불러온 리뷰는 DB 에 남습니다.
+- 서버를 다시 켜도 앱 저장값(로그인, 처음 설정 등)은 그대로입니다 (2026-11-15부터). 등록한 가게와 불러온 리뷰는 DB 에 남습니다. 처음부터 다시 하려면 ☰ › 초기화.
 
 ## 9. 그 밖에 바뀐 것
 
-- 테스트 계정은 2026-11-13부터 계정마다 시험할 장면(가게, 시각, 로그아웃 때 남길지)을 DB(`server/db/test_accounts.db`)에 정해 둡니다. [docs/test-accounts.md](test-accounts.md)
+- 테스트 계정은 DB(`server/db/test_accounts.db`)에 둡니다. 2026-11-15부터 데모 계정 `dona_demo` 하나이고, 탈퇴하면 가게 연결만 끊겨 같은 아이디로 다시 가입합니다. [docs/test-accounts.md](test-accounts.md)
 - 앞서 있던 `POST /api/naver/choose`(검색한 가게 이름만 덮어쓰기)는 매장 등록으로 바뀌어 없앴습니다.
 - "네이버 플레이스 연결" 단계(06-2n)는 없애고 가게 확인 다음 바로 가게 정보 확인으로 갑니다. 메뉴·메뉴 사진 "고치기"는 네이버 스마트플레이스를 엽니다.
 - 자정을 넘겨 여는 가게는 지금 서버가 알림 계획을 만들지 못해 "아직 준비 중이에요"로 막습니다 (저장 전에 안내).

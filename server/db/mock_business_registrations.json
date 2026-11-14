@@ -1,0 +1,9 @@
+{
+  "_설명": "사장님 확인(owner_check) 목업 국세청 사업자등록 자료. 진짜 국세청을 부르지 않고 이 값으로 진위확인·상태조회를 흉내 낸다. 모두 시험용으로 지은 값이다. place_id 는 그 사업자의 가게(네이버 플레이스 id). null 이면 어느 가게와도 맞지 않는다. docs/owner-check.md",
+  "registrations": [
+    {"business_no": "1208103450", "owner_name": "김도나", "opened_on": "2021-04-01", "trade_name": "초옹장", "status": "계속사업자", "tax_type": "일반과세자", "place_id": "2004174048", "note": "초옹장 (s005). 통과"},
+    {"business_no": "4128705567", "owner_name": "김도나", "opened_on": "2019-09-02", "trade_name": "피플스클럽", "status": "계속사업자", "tax_type": "일반과세자", "place_id": "1909851296", "note": "피플스클럽 (s004). 통과"},
+    {"business_no": "2159301277", "owner_name": "김도나", "opened_on": "2015-05-20", "trade_name": "도나분식", "status": "폐업자", "tax_type": "간이과세자", "place_id": null, "note": "폐업 → 보류"},
+    {"business_no": "3164509829", "owner_name": "김도나", "opened_on": "2018-03-12", "trade_name": "도나국수", "status": "휴업자", "tax_type": "일반과세자", "place_id": null, "note": "휴업 → 보류"}
+  ]
+}

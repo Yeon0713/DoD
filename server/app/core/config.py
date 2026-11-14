@@ -11,9 +11,8 @@ class Settings(BaseSettings):
     app_name: str = "DoD API"
     # 서버를 부를 수 있는 웹 주소. 8082 는 mobile/ 앱을 웹으로 켠 주소, 3000 은 예전 frontend/
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:8082", "http://127.0.0.1:8082"]
-    # 내 컴퓨터에서 켠 앱(localhost, 127.0.0.1)은 포트가 무엇이든 받는다. 예전에 만든 .env 의 CORS_ORIGINS 에 8082 가 없거나,
-    # 앱을 8081 같은 다른 포트로 켜도 서버를 부를 수 있게 한다. 배포 서버에서 끄려면 .env 에 CORS_ORIGIN_REGEX= (빈 값)
-    cors_origin_regex: str = r"^http://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$"
+    # 위 목록(CORS_ORIGINS)에 있는 주소만 받는다. 목록 밖 주소를 더 받아야 할 때만 .env 에 CORS_ORIGIN_REGEX 를 적는다 (기본은 비움)
+    cors_origin_regex: str = ""
 
     # 로그인이 생기기 전까지 보여 줄 가게. 주소에 ?store_id=s002 를 붙이면 그 가게를 보여 준다
     demo_store_id: str = "s001"
@@ -48,6 +47,12 @@ class Settings(BaseSettings):
     # 0 이면 개발자 대시보드에 '단가 미설정'으로 보이고 비용은 0원으로 센다
     clova_price_input_per_1k: float = 0
     clova_price_output_per_1k: float = 0
+
+    # AI 포스터 그림 (app/poster_ai). codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(gpt-image-2)를 쓴다
+    # (구독제, API 키 없음. 데모용. 나중에 OpenAI API 로 옮긴다). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)
+    poster_image_engine: str = "codex"
+    codex_bin: str = "codex"  # Codex CLI 실행 파일 (PATH 에 없으면 전체 경로)
+    poster_image_timeout: float = 300  # 그림 하나에 기다리는 초
 
     # Maps (Application Services > Maps > Application 등록)
     naver_maps_client_id: str = ""

@@ -81,6 +81,14 @@ def set_owner(owner_key: str, store_id: str) -> None:
         conn.execute("INSERT INTO owners VALUES (?, ?) ON CONFLICT(owner_key) DO UPDATE SET store_id = excluded.store_id", (owner_key, store_id))
 
 
+def remove_owner(owner_key: str) -> str | None:
+    """계정과 가게 연결만 끊는다 (탈퇴). 가게 파일과 등록 기록(stores, 불러온 리뷰)은 그대로 둔다. 끊은 가게 id 를 돌려준다."""
+    with _db() as conn:
+        row = conn.execute("SELECT store_id FROM owners WHERE owner_key = ?", (owner_key,)).fetchone()
+        conn.execute("DELETE FROM owners WHERE owner_key = ?", (owner_key,))
+    return row[0] if row else None
+
+
 def place_info(store_id: str) -> PlaceInfo | None:
     """등록한 가게면 네이버 지도에서 읽어 둔 정보, 아니면(목업 가게) None."""
     with _db() as conn:
@@ -160,6 +168,7 @@ def register(info: PlaceInfo) -> str:
     now = now_seoul().isoformat()
     mock = MOCK_PLACES.get(info.place_id)
     if mock and (DATA_DIR / f"{mock}.db").exists():
+        _retire_old_registration(info.place_id, mock)
         _save_place(mock, info, now)
         return mock
     existing = store_for_place(info.place_id)
@@ -180,6 +189,14 @@ def register(info: PlaceInfo) -> str:
         raise
     _save_place(store_id, info, now)
     return store_id
+
+
+def _retire_old_registration(place_id: str, mock: str) -> None:
+    """목업 가게로 잇는 규칙(MOCK_PLACES, 2026-11-13)이 생기기 전에 같은 가게를 새 번호(s101 ...)로 등록해 둔 기록이 있으면
+    그 줄의 네이버 가게 id 만 "<id>:old:<예전 가게 id>" 로 바꿔 목업 가게에 자리를 내준다 (place_id 는 한 줄에만 있을 수 있다).
+    예전 가게 파일, 등록 정보, 불러온 리뷰, 그 가게로 이어 둔 계정은 지우지 않는다."""
+    with _db() as conn:
+        conn.execute("UPDATE stores SET place_id = place_id || ':old:' || store_id WHERE place_id = ? AND store_id != ?", (place_id, mock))
 
 
 def _save_place(store_id: str, info: PlaceInfo, now: str) -> None:
@@ -236,6 +253,12 @@ def add_reviews(store_id: str, platform: str, rows: list[dict]) -> int:
         values = [{"review_id": start + i, "order_id": None, "customer_key": row.get("customer_key"), **{k: v for k, v in row.items() if k != "customer_key"}} for i, row in enumerate(rows)]
         conn.execute(insert(models.Review), values)
     return mark_platform(store_id, platform, [v["review_id"] for v in values])
+
+
+def clear_review_platforms(store_id: str) -> int:
+    """리뷰 불러오기 기록(어느 리뷰를 어느 플랫폼에서 불러왔는지)을 지운다. 리뷰 자체는 지우지 않는다. 지운 수"""
+    with _db() as conn:
+        return conn.execute("DELETE FROM review_platforms WHERE store_id = ?", (store_id,)).rowcount
 
 
 def mark_platform(store_id: str, platform: str, review_ids: list[int]) -> int:

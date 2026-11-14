@@ -5,7 +5,7 @@ DB: server/db/test_accounts.db (git 에 같이 올라간다. 팀 모두 같은 �
     목업 생성기(db/mock/generate.py)는 db/data 만 다시 만들고, 데모 초기화(/dev/reset)는 db/app_data 만 지우므로 이 파일은 그대로다.
 
 표 test_accounts (한 줄 = 테스트 계정 하나)
-  login_id      임시 네이버 로그인 아이디 (dona_test1 ...)
+  login_id      임시 네이버 로그인 아이디 (dona_demo)
   password      시험용 비밀번호 (진짜 비밀번호가 아니다)
   naver_id      네이버 회원 번호 자리 (profile.id). 등록 기록(owners)의 "naver:<naver_id>" 와 이어진다
   profile_json  네이버 회원 프로필 조회 API(/v1/nid/me)가 돌려주는 모양과 같은 프로필
@@ -43,39 +43,18 @@ def _profile(naver_id: str, login_id: str, nickname: str, name: str, gender: str
 
 
 # 파일이 없을 때 처음 만드는 값. 고칠 때는 DB 를 고친다.
+# 2026-11-15: 시나리오별 계정(dona_test1~3)을 지우고 데모 계정 하나만 둔다. 가게 데이터(db/data, 등록 기록)는 그대로다.
 DEFAULT_ACCOUNTS: list[dict] = [
     {
-        "login_id": "dona_test1",
+        "login_id": "dona_demo",
         "password": "dona1234",
-        "naver_id": "TEST_NAVER_ID_0001",
-        "profile": _profile("TEST_NAVER_ID_0001", "dona_test1", "새가게사장", "김새봄", "F", "40-49", "03-14", "1981", "010-1111-0001"),
-        "find_store": 1,
+        "naver_id": "TEST_NAVER_ID_DEMO",
+        "profile": _profile("TEST_NAVER_ID_DEMO", "dona_demo", "도나데모", "김도나", "F", "40-49", "03-14", "1981", "010-1111-0001"),
+        "find_store": 0,
         "store_id": None,
         "scene_at": None,
-        "on_logout": "reset",
-        "scenario": "가게 등록 시험: 로그인할 때마다 네이버 지도에서 가게 찾기 · 등록 → 처음 설정 (등록 기록을 보지 않음)",
-    },
-    {
-        "login_id": "dona_test2",
-        "password": "dona1234",
-        "naver_id": "TEST_NAVER_ID_0002",
-        "profile": _profile("TEST_NAVER_ID_0002", "dona_test2", "한림국수사장", "김한림", "F", "50-59", "05-02", "1971", "010-2222-0002"),
-        "find_store": 0,
-        "store_id": "s001",
-        "scene_at": "2026-09-10T21:35:00+09:00",
-        "on_logout": "reset",
-        "scenario": "한림국수 (s001) · 9/10(목) 21:35 할 일 4개: 불만 리뷰 답글 2, 메뉴판 되돌리기, 포스터 · 로그아웃하면 전부 처음으로",
-    },
-    {
-        "login_id": "dona_test3",
-        "password": "dona1234",
-        "naver_id": "TEST_NAVER_ID_0003",
-        "profile": _profile("TEST_NAVER_ID_0003", "dona_test3", "석사돈가스사장", "이석사", "M", "40-49", "11-27", "1983", "010-3333-0003"),
-        "find_store": 0,
-        "store_id": "s003",
-        "scene_at": "2026-09-23T20:35:00+09:00",
         "on_logout": "keep",
-        "scenario": "석사돈가스 (s003) · 9/23(수) 강원대 대동제 날 20:35 할 일 4개: 불만 리뷰 답글, 행사·날씨 메뉴판 2, 포스터 · 로그아웃해도 그대로",
+        "scenario": "데모 계정: 처음엔 가게 찾기 · 등록 → 처음 설정, 그다음부터는 등록한 가게로 바로 · 탈퇴하면 다시 가입부터 (가게 데이터는 남음)",
     },
 ]
 

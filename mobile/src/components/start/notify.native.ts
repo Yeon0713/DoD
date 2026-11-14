@@ -8,7 +8,7 @@ const SLOTS: Slot[] = ["OPENING", "AFTERNOON", "CLOSING"];
 async function schedule(slots: Record<Slot, string>, extra: string[] = []) {
   // 예전에 예약한 알림을 먼저 지운다.
   await Notifications.cancelAllScheduledNotificationsAsync();
-  const times = [...SLOTS.map((slot) => ({ time: slots[slot], body: "오늘 할 일을 챙겨 뒀어요" })), ...extra.map((time) => ({ time, body: "남은 할 일이 있는지 확인해 보세요" }))];
+  const times = [...SLOTS.map((slot) => ({ time: slots[slot], body: "도나가 오늘 일을 챙겨 뒀어요" })), ...extra.map((time) => ({ time, body: "도나가 준비한 것을 확인해 보세요" }))];
   for (const t of times) {
     const [hour, minute] = t.time.split(":").map(Number);
     await Notifications.scheduleNotificationAsync({

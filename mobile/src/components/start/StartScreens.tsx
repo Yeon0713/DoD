@@ -12,7 +12,7 @@ import { back, go } from "@/components/ui/nav";
 import { Bone, DonnaImage, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Sheet } from "@/components/ui/Sheet";
 import { FailNote, Note, SubPage } from "@/components/ui/sub";
-import { api } from "@/lib/api";
+import { api, placeImage } from "@/lib/api";
 import { hoursLabel, PATTERNS, patternOf, slotChoices, slotInfo } from "@/lib/hours";
 import { flashToast, prefs } from "@/lib/localStore";
 import { openSmartPlace } from "@/lib/smartplace";
@@ -166,7 +166,7 @@ export function ImportedScreen() {
   }
   if (!place || !data) {
     return (
-      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver-store")}>
+      <SubPage progress={{ total: STEPS, done: 4 }} onBack={() => back("/start/naver-store")}>
         {placeQ.isError ? (
           <FailNote title="불러오지 못했어요" sub={"인터넷이 끊겼어요.\n뒤로 가서 다시 연결해 주세요"} />
         ) : (
@@ -206,7 +206,7 @@ export function ImportedScreen() {
   return (
     <>
       <SubPage
-        progress={{ total: STEPS, done: 3 }}
+        progress={{ total: STEPS, done: 4 }}
         onBack={() => back("/start/naver-store")}
         footer={
           <PrimaryButton onPress={save} disabled={saving}>
@@ -226,9 +226,23 @@ export function ImportedScreen() {
           <ImportedCard icon="list" title={`메뉴 ${place.menus.length}개`} editId="menus-edit" onEdit={naverOnly}>
             <Text className="text-body text-ink-2">{menuLine}</Text>
           </ImportedCard>
-          <ImportedCard icon="image" title={`메뉴 사진 ${place.photo_count}장`} editId="photos-edit" onEdit={naverOnly}>
+          <ImportedCard icon="image" title={`매장·메뉴 사진 ${place.photo_count}장`} editId="photos-edit" onEdit={naverOnly}>
             <Text className="text-body text-ink-2">포스터 만들 때 써요</Text>
+            {place.logo ? (
+              // 네이버 소식 사진에서 찾은 로고 (서버가 바탕을 지워 둔 그림)
+              <View testID="imported-logo" className="mt-2 flex-row items-center gap-2.5">
+                <Image source={{ uri: placeImage(place.logo) }} style={{ width: 40, height: 40 }} resizeMode="contain" accessibilityLabel="가게 로고" />
+                <Text className="flex-1 text-small text-ink-2">{place.logo_source === "OWNER" ? "올린 로고도 포스터에 넣어요" : "소식에서 가게 로고도 찾았어요"}</Text>
+              </View>
+            ) : null}
           </ImportedCard>
+          {place.news?.length ? (
+            <ImportedCard icon="bell" title={`네이버 소식 ${place.news.length}개`} editId="news-edit" onEdit={naverOnly}>
+              <Text className="text-body text-ink-2" numberOfLines={1}>
+                {place.news[0].title}
+              </Text>
+            </ImportedCard>
+          ) : null}
         </View>
         {err ? <FailNote title="저장하지 못했어요" sub={err} /> : null}
       </SubPage>
@@ -263,7 +277,7 @@ export function ManualHoursScreen() {
     const problem = startProblem(error, () => refetch(), () => back("/start/naver-confirm"));
     if (problem) return problem;
     return (
-      <SubPage progress={{ total: STEPS, done: 3 }} onBack={() => back("/start/naver-confirm")}>
+      <SubPage progress={{ total: STEPS, done: 4 }} onBack={() => back("/start/naver-confirm")}>
         <Bone className="h-80 w-full rounded-2xl" />
       </SubPage>
     );
@@ -284,7 +298,7 @@ export function ManualHoursScreen() {
   };
   return (
     <SubPage
-      progress={{ total: STEPS, done: 3 }}
+      progress={{ total: STEPS, done: 4 }}
       onBack={() => back("/start/naver-confirm")}
       footer={
         <PrimaryButton onPress={save} disabled={saving}>
@@ -323,7 +337,7 @@ export function NotifyTimeScreen() {
     const problem = startProblem(error, () => refetch(), () => back("/start"));
     if (problem) return problem;
     return (
-      <SubPage progress={{ total: STEPS, done: 6 }}>
+      <SubPage progress={{ total: STEPS, done: 7 }}>
         <Bone className="h-60 w-full rounded-2xl" />
       </SubPage>
     );
@@ -372,7 +386,7 @@ export function NotifyTimeScreen() {
 
   return (
     <>
-      <SubPage progress={{ total: STEPS, done: 6 }} footer={<PrimaryButton onPress={() => go("/start/notify-on")}>이대로 좋아요</PrimaryButton>}>
+      <SubPage progress={{ total: STEPS, done: 7 }} footer={<PrimaryButton onPress={() => go("/start/notify-on")}>이대로 좋아요</PrimaryButton>}>
         <TitleWithDonna title={"장사 시간에 맞춰\n골랐어요"} sub="누르면 원하는 시간으로 바꿀 수 있어요" />
         {work ? (
           <Pressable testID="work-hours-change" accessibilityRole="button" onPress={() => back("/start/work-hours")} className="mt-2 flex-row items-center gap-1.5 self-start rounded-full bg-brand-soft px-3 py-1.5 active:opacity-80">
@@ -415,7 +429,7 @@ export function NotifyTimeScreen() {
                 <Icon name="bell" size={24} color={C["ink-2"]} />
                 <View className="flex-1">
                   <Text className="text-body text-ink">추가 알림</Text>
-                  <Text className="text-small text-ink-2">남은 할 일을 다시 알려 드려요</Text>
+                  <Text className="text-small text-ink-2">확인하지 않은 것을 다시 알려 드려요</Text>
                 </View>
                 <Text className="text-title text-ink">{t}</Text>
                 <Pressable accessibilityRole="button" accessibilityLabel={`${t} 알림 빼기`} hitSlop={8} disabled={saving} onPress={() => saveExtras(extras.filter((x) => x !== t))} className="h-9 justify-center rounded-xl border border-line px-3 active:bg-brand-soft">
@@ -448,7 +462,7 @@ export function NotifyTimeScreen() {
         ) : null}
       </SubPage>
       <Sheet open={adding !== null} onClose={() => setAdding(null)} title={"언제 더\n알려 드릴까요?"}>
-        <Text className="mb-4 text-body text-ink-2">이 시간에 남은 할 일이 있으면 다시 알려 드려요</Text>
+        <Text className="mb-4 text-body text-ink-2">이 시간에 확인하지 않은 것이 있으면 다시 알려 드려요</Text>
         {adding ? <TimeStepper id="extra-slot" label="알림 시간" value={adding} onChange={setAdding} step={10} /> : null}
         {adding && (extras.includes(adding) || Object.values(s.slots).includes(adding)) ? <Text className="mt-3 text-label text-urgent">이미 이 시간에 알림이 있어요</Text> : null}
         {err ? (
@@ -522,7 +536,7 @@ export function NotifyOnScreen() {
   };
   return (
     <SubPage
-      progress={{ total: STEPS, done: 6 }}
+      progress={{ total: STEPS, done: 7 }}
       footer={
         <>
           <PrimaryButton onPress={turnOn} disabled={busy || !s}>
@@ -534,7 +548,7 @@ export function NotifyOnScreen() {
         </>
       }
     >
-      <TitleWithDonna title={"알림을\n켜 주세요"} sub="할 일이 생기면 이때 알려 드려요" />
+      <TitleWithDonna title={"알림을\n켜 주세요"} sub="도나가 준비한 게 있으면 이때 알려 드려요" />
       {s ? (
         <View testID="notify-times" className="mt-4 gap-1.5 rounded-2xl bg-brand-soft px-4 py-3">
           {(["OPENING", "AFTERNOON", "CLOSING"] as Slot[]).map((k) => (

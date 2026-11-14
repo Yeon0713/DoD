@@ -16,10 +16,10 @@ K = 2
 
 
 def lift(n: int, **pp: float) -> ShareLift:
-    """lift(5, m3=6.0) → n=5, 메뉴 3 의 비중 변화 +6%p, 나머지 0.0"""
+    """lift(5, m3=6.0) → n=5(n_eff 도 5), 메뉴 3 의 비중 변화 +6%p, 나머지 0.0"""
     values = dict.fromkeys([menu.menu_id for menu in ORIGINAL], 0.0)
     values.update({key.removeprefix("m"): value for key, value in pp.items()})
-    return ShareLift(n, values)
+    return ShareLift(n, float(n), values)
 
 
 NO_DATA = lift(0)
@@ -58,6 +58,14 @@ def test_menu_outside_llm_candidates_can_rise_with_data():
     assert arrange_menu_board(WINTER, ORIGINAL, data, candidates, K).raised == ("4", "5")
 
 
+def test_data_weight_uses_effective_days_not_day_count():
+    # 작은 날 여럿이라 n = 20 이어도 유효 날 수 n_eff = 1 이면 w = 1/(1 + 5) = 1/6
+    data = ShareLift(20, 1.0, {menu.menu_id: 0.0 for menu in ORIGINAL} | {"4": 10.0})
+    candidates = MenuCandidates(("5",), "수육이 어울려요")
+    # 수육 (5/6)·1.0 ≈ 0.83, 전 (1/6)·1.0 ≈ 0.17. n 으로 w(= 0.8)를 정했다면 전 0.8, 수육 0.2 로 뒤집힌다
+    assert arrange_menu_board(WINTER, ORIGINAL, data, candidates, K).raised == ("5", "4")
+
+
 def test_ties_keep_original_order():
     assert arrange_menu_board(WINTER, ORIGINAL, lift(5, m5=5.0, m3=5.0), EMPTY, K).raised == ("3", "5")
 
@@ -65,7 +73,7 @@ def test_ties_keep_original_order():
 def test_ties_survive_floating_point_noise():
     six = [*ORIGINAL, Menu(menu_id="6", name="보쌈", category="MAIN", price=9000)]
     candidates = MenuCandidates(("1", "2", "3", "4", "6"), "")  # 보쌈은 LLM 5위: (5/6)·(1/5) = 1/6
-    data = ShareLift(1, {"5": 4.0})  # w = 1/6. 수육은 데이터 최댓값: (1/6)·1 = 1/6
+    data = ShareLift(1, 1.0, {"5": 4.0})  # w = 1/6. 수육은 데이터 최댓값: (1/6)·1 = 1/6
     result = arrange_menu_board(WINTER, six, data, candidates, k=6)
     assert result.raised[-2:] == ("5", "6")  # 같은 점수라 원래 순서에서 앞선 수육이 먼저
 
@@ -104,7 +112,7 @@ def test_fewer_positive_menus_than_k_raise_only_those():
 
 def test_ids_outside_original_order_are_ignored_and_missing_lift_counts_as_zero():
     candidates = MenuCandidates(("9", "5"), "")  # 9 는 원래 순서에 없는 메뉴. 걸러 낸 뒤 순위를 매겨 수육이 1위(1.0)
-    data = ShareLift(5, {"9": 50.0, "3": 10.0, "4": 9.0})  # 9 는 최댓값 계산에서도 빠진다. 1·2·5 는 lift_pp 에 없다
+    data = ShareLift(5, 5.0, {"9": 50.0, "3": 10.0, "4": 9.0})  # 9 는 최댓값 계산에서도 빠진다. 1·2·5 는 lift_pp 에 없다
     result = arrange_menu_board(WINTER, ORIGINAL, data, candidates, K)
     # 만두 0.5·1.0 = 0.5, 수육 0.5·1.0 = 0.5, 전 0.5·0.9 = 0.45.
     # 9 가 자리를 차지했다면 수육은 0.5·0.8 = 0.4 로 전에 밀리고, 9 가 최댓값이었다면 만두는 0.1

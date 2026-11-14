@@ -1,6 +1,7 @@
 """LLM 메뉴 후보: 상황(행사·경기·계절의 세부 종류)에 어울리는 메뉴를 HyperCLOVA X 로 고른다.
 
-- 보내는 것은 상황 이름과 매장 메뉴 목록(id, 이름, 종류)뿐이다. 손님 정보나 리뷰는 넣지 않는다.
+- 보내는 것은 상황 이름과 매장 메뉴 목록(id, 이름)뿐이다. 손님 정보나 리뷰는 넣지 않는다.
+  메뉴 종류(category)는 보내지 않는다. 가게 업종({업종})은 매장 정보라 프롬프트에 넣는다.
   메뉴 목록은 JSON 으로 보낸다. 메뉴 이름은 네이버 지도에서 읽어 온 바깥 글이라 줄바꿈이나 지시문이 섞여 있을 수 있는데,
   JSON 이면 이름이 새 줄(가짜 메뉴 줄, 가짜 상황 줄)이 되지 못한다.
 - 답은 JSON {"menu_ids": [...], "reason": "..."} 로 받아 검사한다. 이 검사가 마지막 방어선이다.
@@ -158,7 +159,7 @@ def load_prompt(store: dict, count: int) -> str:
 
 def user_message(menus: list[Menu], kind: str) -> str:
     """첫 줄 상황, 둘째 줄 안내, 셋째 줄 메뉴 목록 JSON(한 줄)."""
-    listed = [{"id": menu.menu_id, "name": menu.name, "category": menu.category} for menu in menus]
+    listed = [{"id": menu.menu_id, "name": menu.name} for menu in menus]
     return f"상황: {KIND_NAMES[kind]}\n메뉴 목록(JSON):\n{json.dumps(listed, ensure_ascii=False)}"
 
 

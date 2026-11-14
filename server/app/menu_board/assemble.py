@@ -101,7 +101,7 @@ def assemble_menu_board_cards(
     bases = menu_board_bases(calendar, periods, settings, k)
     first_days = {ref_id: start for ref_id, (start, _) in tag_periods(calendar, periods).items()}
 
-    no_data = ShareLift(0, dict.fromkeys((menu.menu_id for menu in original), 0.0))
+    no_data = ShareLift(0, 0.0, dict.fromkeys((menu.menu_id for menu in original), 0.0))
     candidates_by_kind: dict[MenuBoardKind, MenuCandidates] = {}
     arrangements: dict[str | None, Arrangement] = {}
 

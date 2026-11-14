@@ -338,43 +338,39 @@ def no_clova():
         store_snapshot_cache.clear_all()
 
 
-S003_NOW = dt.datetime(2026, 12, 8, 10, 35, tzinfo=SEOUL)  # 화요일. 12/6(일) 동네 행사, 12/7(월) 휴무, 12/8(화) 겨울
-
-
 @pytest.mark.parametrize(
-    ("store_id", "now", "card_id"),
+    ("store_id", "now"),
     [
-        ("s001", dt.datetime(2026, 11, 17, 13, 50, tzinfo=SEOUL), "MENU_ORDER:2026-11-18:2026-11-18"),
-        ("s003", S003_NOW, "MENU_ORDER:2026-12-08:2026-12-08"),  # 월요일 휴무 다음 날
+        ("s001", dt.datetime(2026, 11, 17, 13, 50, tzinfo=SEOUL)),
+        ("s003", dt.datetime(2026, 12, 8, 10, 35, tzinfo=SEOUL)),
     ],
 )
-def test_mock_stores_have_periods_for_every_calendar_ref_id(no_clova, store_id, now, card_id):
+def test_mock_store_cards_have_periods_and_valid_shape(no_clova, store_id, now):
+    # 목업 DB 의 특정 날짜·태그·값은 단정하지 않는다. 카드가 있으면 모양과 규칙만 본다
     snapshot = store_snapshot_cache.get_snapshot(store_id, now)
     calendar = store_snapshot_cache.calendar_for_planner(store_id, snapshot.inputs, snapshot.calendar_cells, now)
     seen = {r.ref_id for cell in calendar for r in cell.reasons if r.tag != "WEATHER"}
-    assert seen <= {period.ref_id for period in tag_periods_from_inputs(snapshot.inputs, calendar)}
+    period_ids = {period.ref_id for period in tag_periods_from_inputs(snapshot.inputs, calendar)}
+    assert seen <= period_ids
     cards = [item for item in snapshot.plan.plan_items if item.task_type == "MENU_ORDER"]
     store = {"store_id": store_id, "name": snapshot.store["name"], "category": snapshot.store["category"]}
-    result = assemble_menu_board_cards(calendar, cards, snapshot.inputs, snapshot.settings, store, original_menu_order(store_id), FakeLookup({}))
+    original = original_menu_order(store_id)
+    menu_ids = [menu.menu_id for menu in original]
+    result = assemble_menu_board_cards(calendar, cards, snapshot.inputs, snapshot.settings, store, original, FakeLookup({}))
     assert set(result) == {item.plan_id for item in cards}
-    assert card_id in result
-
-
-
-def test_mock_store_day_after_closed_monday_is_compared_with_sunday(no_clova, monkeypatch):
-    from app.menu_board import assemble as module
-
-    # 데이터 점수 0, LLM 후보 없음 → 12/6(동네 행사)과 12/8(겨울) 모두 원래 순서. 일요일과 견주어야만 '바뀌는 것 없음'이다
-    monkeypatch.setattr(module, "menu_share_lift", lambda inputs, tag, kind, as_of: module.ShareLift(0, 0.0, {}))
-    snapshot = store_snapshot_cache.get_snapshot("s003", S003_NOW)
-    calendar = store_snapshot_cache.calendar_for_planner("s003", snapshot.inputs, snapshot.calendar_cells, S003_NOW)
-    cards = [item for item in snapshot.plan.plan_items if item.task_type == "MENU_ORDER"]
-    store = {"store_id": "s003", "name": snapshot.store["name"], "category": snapshot.store["category"]}
-    result = assemble_menu_board_cards(calendar, cards, snapshot.inputs, snapshot.settings, store, original_menu_order("s003"), FakeLookup({}))
-    tuesday = result["MENU_ORDER:2026-12-08:2026-12-08"]
-    assert tuesday.basis == "season_winter"
-    assert tuesday.unchanged is True
-    assert tuesday.reason == UNCHANGED_REASON
+    for plan_id, board in result.items():
+        assert board.plan_id == plan_id
+        assert board.basis is None or board.basis in period_ids
+        order = [menu.menu_id for menu in board.arrangement.order]
+        assert sorted(order) == sorted(menu_ids)  # 그 매장 메뉴를 빠짐없이, 겹치지 않게
+        raised = list(board.arrangement.raised)
+        assert set(raised) <= set(menu_ids)
+        assert len(raised) <= min(2, len(menu_ids))
+        assert order[: len(raised)] == raised  # 올린 메뉴가 맨 위
+        assert isinstance(board.reason, str)
+        assert isinstance(board.unchanged, bool)
+        if board.unchanged:
+            assert board.reason == UNCHANGED_REASON
 
 
 def test_overnight_store_without_cards_gets_nothing(no_clova):

@@ -183,6 +183,14 @@ def test_newlines_in_menu_names_cannot_forge_menu_lines():
     assert menus_sent[4]["name"] == forged.name
 
 
+def test_menus_are_sent_with_id_and_name_only():
+    # 메뉴 종류(category)는 매장마다 붙이는 방식이 달라 보내지 않는다. 가게 업종은 프롬프트에 그대로 들어간다
+    fake = FakeClova({"menu_ids": ["2"], "reason": "잘 어울려요"})
+    menu_candidates(STORE, MENUS, "WINTER", post=fake)
+    menus_sent = json.loads(fake.user_text().split("\n")[2])
+    assert menus_sent == [{"id": menu.menu_id, "name": menu.name} for menu in MENUS]
+
+
 def test_unknown_kind_returns_empty_candidates_with_warning(caplog):
     fake = FakeClova({"menu_ids": ["2"], "reason": "잘 어울려요"})
     assert menu_candidates(STORE, MENUS, "RAIN", post=fake).menu_ids == ()

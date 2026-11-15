@@ -11,10 +11,18 @@
 - 현재 메뉴 목록에 없는 메뉴의 판매도 전체 수량(비중의 분모)에는 들어간다.
 - 평소 구간은 기준점(EVENT·GAME 은 그날, SEASON 은 계절 시작일)부터 7일씩 거슬러 1~8주로 나눈다.
   특별한 칸을 빼고 남은 칸에 주문이 있는 주가 4주 미만이면 그날은 쓰지 않는다.
-- 날마다 (그날 비중 − 평소 비중)을 구해 쓴 날 수(n)로 평균한다.
+- 날마다 (그날 비중 − 평소 비중)을 구해 쓴 날 수(n)로 평균한다. 날마다 같은 무게다.
+- 작은 표본 보정(경험적 베이즈): 그날 비중은 평소 비중 쪽으로 당겨 쓴다.
+  당긴 그날 비중 = (그날 그 메뉴 수량 + α · 평소 비중) / (그날 전체 수량 + α).
+  α 는 그날의 평소 구간에서 같은 시간대(그날 본 시간대)의 하루 수량 중앙값이다. 주문이 있는 날만 센다
+  (첫 주문 이전 날이나 기록이 빈 날이 α 를 끌어내리지 않게). 4주 규칙을 통과한 날은 주문 있는 평소 날이 있어 α > 0 이다.
+  평소 구간은 기준점 앞이므로 α 도 그날(과 as_of) 앞선 날로만 구한다.
+  2건 중 2건 같은 작은 날은 평소 비중에 가깝게, 200건 같은 큰 날은 거의 그대로 남는다.
+- 유효 날 수 n_eff = Σ N / (N + α) (N: 그날 전체 수량). 작은 날은 하루보다 적게 센다. 데이터 점수 가중치에 쓴다.
 """
 
 import datetime as dt
+import statistics
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from typing import Literal
@@ -33,12 +41,14 @@ Cell = tuple[dt.date, str]  # (영업일, 시간대)
 
 @dataclass(frozen=True)
 class ShareLift:
-    """n: 쓴 과거 날 수. lift_pp: 메뉴 id(문자열) → 비중 변화. 단위는 %p 이다(6.0 = 6%p, 0.06 이 아니다).
+    """n: 쓴 과거 날 수(정수). n_eff: 유효 날 수 Σ N/(N+α)(0 ≤ n_eff ≤ n).
+    lift_pp: 메뉴 id(문자열) → 비중 변화. 단위는 %p 이다(6.0 = 6%p, 0.06 이 아니다).
 
     매장의 현재 메뉴(inputs.menus)는 빠짐없이 들어간다. 그때 안 팔렸거나 없던 메뉴, n 이 0 일 때는 0.0 이다.
     """
 
     n: int
+    n_eff: float
     lift_pp: dict[str, float]
 
 
@@ -57,7 +67,7 @@ def menu_share_lift(inputs: AnalysisInputs, tag: MenuBoardTag, kind: str, as_of:
     menu_ids = [menu.menu_id for menu in inputs.menus]
     qty = _quantities(inputs)
     if not qty:
-        return ShareLift(0, dict.fromkeys(menu_ids, 0.0))
+        return ShareLift(0, 0.0, dict.fromkeys(menu_ids, 0.0))
     first_day = min(day for day, _ in qty)
     specials = find_special_cells(inputs, first_day, as_of - dt.timedelta(days=1))  # as_of 앞선 날만
     special_keys = cell_keys(specials)
@@ -66,7 +76,7 @@ def menu_share_lift(inputs: AnalysisInputs, tag: MenuBoardTag, kind: str, as_of:
     else:
         samples = _tagged_samples(specials, tag, kind)
 
-    lifts = []
+    lifts, n_eff = [], 0.0
     for sample in samples:
         tagged = _total(qty, sample.cells)
         if not tagged:
@@ -75,9 +85,12 @@ def menu_share_lift(inputs: AnalysisInputs, tag: MenuBoardTag, kind: str, as_of:
         if len(_weeks_with_orders(usual_cells, sample.anchor, qty)) < MIN_USUAL_WEEKS:
             continue
         usual = _total(qty, usual_cells)
-        lifts.append({m: (_share(tagged, m) - _share(usual, m)) * 100 for m in menu_ids})
+        alpha = _usual_day_median(qty, usual_cells)
+        size = sum(tagged.values())
+        n_eff += size / (size + alpha)
+        lifts.append({m: (_pulled_share(tagged, usual, m, alpha) - _share(usual, m)) * 100 for m in menu_ids})
     n = len(lifts)
-    return ShareLift(n, {m: sum(lift[m] for lift in lifts) / n if n else 0.0 for m in menu_ids})
+    return ShareLift(n, n_eff, {m: sum(lift[m] for lift in lifts) / n if n else 0.0 for m in menu_ids})
 
 
 def _quantities(inputs: AnalysisInputs) -> dict[Cell, Counter]:
@@ -148,3 +161,16 @@ def _total(qty: dict[Cell, Counter], cells: list[Cell]) -> Counter:
 
 def _share(total: Counter, menu_id: str) -> float:
     return total[menu_id] / sum(total.values())
+
+
+def _usual_day_median(qty: dict[Cell, Counter], usual_cells: list[Cell]) -> float:
+    """α: 평소 칸들을 날짜별로 더한 하루 수량의 중앙값. 주문이 있는 날만 센다."""
+    by_day: Counter = Counter()
+    for day, part in usual_cells:
+        by_day[day] += sum(qty.get((day, part), Counter()).values())
+    return statistics.median(total for total in by_day.values() if total > 0)
+
+
+def _pulled_share(tagged: Counter, usual: Counter, menu_id: str, alpha: float) -> float:
+    """평소 비중 쪽으로 당긴 그날 비중: (그날 수량 + α · 평소 비중) / (그날 전체 + α)."""
+    return (tagged[menu_id] + alpha * _share(usual, menu_id)) / (sum(tagged.values()) + alpha)

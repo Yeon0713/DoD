@@ -43,6 +43,7 @@ export function buildTodayCards(
     now,
     reviews: data.reviews.reviews,
     calendar: data.calendar.cells,
+    eventNames: data.calendar.names,
     settings: data.settings.settings,
     naverConnected: p.naverConnected,
     naverAuto: p.naverAuto,
@@ -85,7 +86,7 @@ export type DoneKind = "reply" | "check" | "menu" | "poster";
 export const DONE_KINDS: DoneKind[] = ["reply", "check", "menu", "poster"];
 
 /** 계획 id 앞부분(task_type)으로 어떤 일인지 정한다. 알림만 확인한 카드(미리 보기, 매출, 결과 알림)는 계획이 없어서 세지 않는다. */
-function kindOf(planId: string): DoneKind | null {
+export function kindOf(planId: string): DoneKind | null {
   const type = planId.split(":")[0];
   if (type === "REVISIT_REPLY" || type === "REORDER_NUDGE") return "reply";
   if (type === "REVIEW_FIX") return "check";

@@ -15,6 +15,7 @@ import { account, maskPhone } from "@/lib/account";
 import { resetCardState } from "@/lib/cardState";
 import { drafts, flashToast, prefs } from "@/lib/localStore";
 import { NAVER_FIELD_LABEL, naverFieldText, naverProfile } from "@/lib/naverDemo";
+import { onTestLogout, onTestWithdraw } from "@/lib/testAccount";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 
@@ -46,7 +47,9 @@ export function AccountSettingsScreen() {
     flashToast("네이버 연결을 끊었어요", "메뉴 순서는 직접 바꿔 주세요");
   };
   // 계정을 지우면 아래 탭의 문(app/(tabs)/_layout.tsx)이 로그인 화면으로 보낸다. 여기서 따로 화면을 옮기지 않는다.
-  const logout = () => {
+  const logout = async () => {
+    // 테스트 계정이면 서버 DB 조건(on_logout)대로: reset 은 그 가게와 이 기기 기록을 처음으로, keep 은 계정별로 보관
+    await onTestLogout();
     naverProfile.reset();
     account.reset();
   };
@@ -54,6 +57,8 @@ export function AccountSettingsScreen() {
     // 시트가 다 닫힌 뒤에 화면을 옮긴다 (열린 시트째 옮기면 iOS에서 앱이 멈춘다).
     setLeaving(false);
     await sheetClose.closed();
+    // 테스트 계정이면 서버에서 가게 연결만 끊는다 (계정과 가게 데이터는 남는다 → 같은 아이디로 다시 가입).
+    await onTestWithdraw();
     // 목업: 이 기기의 계정과 처음 설정, 카드 기록, 고쳐 쓴 답글을 지운다. 제안: DELETE /api/account
     naverProfile.reset();
     account.reset();
@@ -145,7 +150,7 @@ export function AccountSettingsScreen() {
               <Pressable testID="account-naver-disconnect" accessibilityRole="button" onPress={disconnect} className="h-[52px] items-center justify-center rounded-button border-[1.5px] border-line active:bg-brand-soft">
                 <Text className="text-body font-medium text-ink-2">연결 끊기</Text>
               </Pressable>
-              <Text className="text-small text-ink-3">끊어도 도나에 있는 리뷰와 할 일은 그대로예요. 메뉴 순서 바꾸기만 멈춰요</Text>
+              <Text className="text-small text-ink-3">끊어도 도나에 있는 리뷰와 준비해 둔 것은 그대로예요. 메뉴 순서 바꾸기만 멈춰요</Text>
             </>
           ) : (
             <>
@@ -160,7 +165,7 @@ export function AccountSettingsScreen() {
       </View>
 
       <Sheet open={leaving} onClose={() => setLeaving(false)} onDismiss={sheetClose.onDismiss} title={"정말\n탈퇴할까요?"}>
-        <Text className="text-body text-ink-2">이 휴대폰에 있는 가게 설정, 할 일 기록, 고쳐 쓴 답글이 모두 지워져요. 되돌릴 수 없어요.</Text>
+        <Text className="text-body text-ink-2">이 휴대폰에 있는 가게 설정, 확인한 기록, 고쳐 쓴 답글이 모두 지워져요. 되돌릴 수 없어요.</Text>
         <View className="mt-5 gap-1">
           <PrimaryButton testID="withdraw-cancel" onPress={() => setLeaving(false)}>
             계속 쓸게요

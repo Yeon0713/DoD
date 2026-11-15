@@ -10,8 +10,9 @@ function parseNow(q: string): Date {
   return new Date(/[+-]\d\d:\d\d$|Z$/.test(q) ? q : `${q}:00+09:00`);
 }
 
-/** 개발 화면에서 고른 가상 시각(q)으로 지금을 정한다. 훅에서 q를 의존값으로 넘기려고 따로 둔다. */
-export function nowFrom(q: string | null): Date {
+/** 개발 화면에서 고른 가상 시각(q)으로 지금을 정한다. 훅에서 q를 의존값으로 넘기려고 따로 둔다.
+ * _tick: 쓰지 않는다. 훅이 시계가 갈 때마다 다시 부르게 의존값으로 넘기는 자리 (lib/useHome.ts) */
+export function nowFrom(q: string | null, _tick?: number): Date {
   if (!USE_MOCK) return new Date(Date.now() + serverClockShiftMs());
   return q ? parseNow(q) : new Date(DEMO_NOW);
 }

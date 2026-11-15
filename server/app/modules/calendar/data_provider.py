@@ -19,4 +19,6 @@ def get_calendar(store_id: str, from_date: dt.date | None, to_date: dt.date | No
         for cell in snapshot.calendar_cells
         if is_within_dates(cell.date, from_date, to_date)
     ]
-    return CalendarResponse(is_example=False, cells=cells)
+    refs = {r.ref_id for cell in cells for r in cell.reasons if r.tag in ("EVENT", "GAME")}
+    titles = {e.event_id: e.title for e in snapshot.inputs.events} | {g.game_id: g.title for g in snapshot.inputs.games}
+    return CalendarResponse(is_example=False, cells=cells, names={ref: titles[ref] for ref in sorted(refs) if ref in titles})

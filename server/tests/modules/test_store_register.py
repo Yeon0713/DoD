@@ -89,14 +89,15 @@ def test_preview_reads_place_without_saving(client, monkeypatch):
     assert body["place"]["place_id"] == "123456" and body["registered_store_id"] is None
 
 
-def test_register_saves_and_links_owner(client, monkeypatch):
+def test_register_saves_but_does_not_link_owner(client, monkeypatch):
+    """등록은 가게만 저장한다. 계정과 가게는 사장님 확인 심사가 승인되면 잇는다 (tests/modules/test_owner_check.py)."""
     saved, owners = [], {}
     monkeypatch.setattr(stores_router.registered_stores, "register", lambda info: saved.append(info) or "s101")
     monkeypatch.setattr(stores_router.registered_stores, "set_owner", lambda key, sid: owners.update({key: sid}))
     monkeypatch.setattr(stores_router, "save_settings_changes", lambda sid, ch: None)
     monkeypatch.setattr(stores_router.demo_data, "fill", lambda *a, **k: {"orders": 0})
-    body = client.post("/api/stores/register", json={"place_id": "123456", "owner_key": "naver:abc"}).json()
-    assert body["store_id"] == "s101" and saved[0].name == "피플스클럽" and owners == {"naver:abc": "s101"}
+    body = client.post("/api/stores/register", json={"place_id": "123456"}).json()
+    assert body["store_id"] == "s101" and saved[0].name == "피플스클럽" and owners == {}
 
 
 def test_preview_explains_when_naver_cannot_be_read(client, monkeypatch):
@@ -122,8 +123,8 @@ def test_mock_place_links_to_mock_store_and_marks_existing_reviews(client, tmp_p
     mock_file = registered_stores.DATA_DIR / f"{store_id}.db"
     files_before, mock_before = sorted(registered_stores.DATA_DIR.glob("*.db")), mock_file.read_bytes()
 
-    body = client.post("/api/stores/register", json={"place_id": place_id, "owner_key": "naver:abc"}).json()
-    assert body["store_id"] == store_id and registered_stores.store_for_owner("naver:abc") == store_id
+    body = client.post("/api/stores/register", json={"place_id": place_id}).json()
+    assert body["store_id"] == store_id and registered_stores.store_for_owner("naver:abc") is None  # 사장님 확인 전에는 잇지 않는다
 
     reviews = read_store_db.read_reviews(store_id, until=now_seoul())
     linked = sum(r["order_id"] is not None for r in reviews)
@@ -151,3 +152,67 @@ def test_reset_all_removes_only_registered_store_files(tmp_path, monkeypatch):
     assert registered_stores.reset_all() == ["s101", "s150"]
     assert sorted(p.name for p in tmp_path.glob("*.db")) == ["common.db", "s001.db", "s003.db"]
     assert not registry.exists()
+
+
+def test_mock_place_takes_over_old_registration_without_deleting_it(client, tmp_path, monkeypatch):
+    """목업 가게로 잇는 규칙이 생기기 전에 피플스클럽을 s101 로 등록해 둔 기록이 있어도, 다시 등록하면 s004 로 잇는다.
+    예전 기록(s101 가게 파일, 등록 정보, 불러온 리뷰, 그 계정 연결)은 지우지 않고 네이버 가게 id 만 비켜 둔다."""
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    monkeypatch.setattr(stores_router, "save_settings_changes", lambda sid, ch: None)
+    info = dataclasses.replace(parse_place("123456", HTML), place_id="1909851296")
+    monkeypatch.setattr(stores_router, "crawl_place", lambda place_id: info)
+    with registered_stores._db() as conn:
+        conn.execute("INSERT INTO stores VALUES ('s101', '1909851296', ?, 'then', 'then')", (json.dumps(info.to_dict(), ensure_ascii=False),))
+    registered_stores.set_owner("naver:old", "s101")
+    registered_stores.mark_platform("s101", "BAEMIN", [1, 2, 3])
+
+    res = client.post("/api/stores/register", json={"place_id": "1909851296"})
+    assert res.status_code == 200 and res.json()["store_id"] == "s004"
+    assert registered_stores.store_for_place("1909851296") == "s004"
+    assert registered_stores.place_info("s101") is not None and registered_stores.imported_counts("s101") == {"BAEMIN": 3}
+    with registered_stores._db() as conn:
+        assert conn.execute("SELECT store_id FROM owners WHERE owner_key = 'naver:old'").fetchone() == ("s101",)
+        assert conn.execute("SELECT place_id FROM stores WHERE store_id = 's101'").fetchone() == ("1909851296:old:s101",)
+    # 한 번 더 등록해도 그대로
+    assert client.post("/api/stores/register", json={"place_id": "1909851296"}).json()["store_id"] == "s004"
+
+
+def _hours_html(rows: list[dict]) -> str:
+    state = {**STATE, "ROOT_QUERY": {'placeDetail({"id":"123456"})': {"newBusinessHours": [{"businessHours": rows}]}}}
+    return f"<script>window.__APOLLO_STATE__ = {json.dumps(state, ensure_ascii=False)};window.__X = 1</script>"
+
+
+def test_every_day_line_fills_all_days():
+    """초옹장처럼 네이버가 "매일 10:30 - 20:30" 한 줄로 주면 모든 요일을 연다 (예전에는 건너뛰어 모두 쉬는 날이 됐다)."""
+    info = parse_place("123456", _hours_html([{"day": "매일", "businessHours": {"start": "10:30", "end": "20:30"}, "breakHours": []}]))
+    assert all(h == {"open": "10:30", "close": "20:30"} for h in info.weekly_hours.values())
+    assert registered_stores.store_row("s101", info)["closed_weekdays"] == []
+
+
+def test_single_day_line_overrides_group_line():
+    rows = [
+        {"day": "토", "businessHours": {"start": "11:00", "end": "15:00"}, "breakHours": []},
+        {"day": "평일", "businessHours": {"start": "10:00", "end": "21:00"}, "breakHours": [{"start": "15:00", "end": "17:00"}]},
+        {"day": "공휴일", "businessHours": {"start": "12:00", "end": "18:00"}, "breakHours": []},
+    ]
+    info = parse_place("123456", _hours_html(rows))
+    assert info.weekly_hours["MON"] == info.weekly_hours["FRI"] == {"open": "10:00", "close": "21:00"}
+    assert info.weekly_hours["SAT"] == {"open": "11:00", "close": "15:00"} and info.weekly_hours["SUN"] is None
+    assert info.break_time == {"start": "15:00", "end": "17:00"}
+
+
+@pytest.mark.parametrize(
+    ("label", "codes"),
+    [
+        ("매일", ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]),
+        ("평일", ["MON", "TUE", "WED", "THU", "FRI"]),
+        ("주말", ["SAT", "SUN"]),
+        ("월~수", ["MON", "TUE", "WED"]),
+        ("금-월", ["FRI", "SAT", "SUN", "MON"]),
+        ("월, 수, 금", ["MON", "WED", "FRI"]),
+        ("토", ["SAT"]),
+        ("공휴일", []),
+    ],
+)
+def test_day_codes_reads_naver_day_labels(label, codes):
+    assert naver_place.day_codes(label) == codes

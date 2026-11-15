@@ -1,6 +1,7 @@
 // 시작 화면과 로그인 화면 위의 메뉴(☰). 시험·시연용 기능을 모아 둔다.
 // - 데모 테스트 모드: 켜면 "네이버로 시작하기/로그인"이 서버의 네이버 로그인(앱 키가 없으면 임시 네이버 로그인)으로 가서 계정을 고를 수 있다.
 // - 개발자 대시보드 접속: 서버의 웹 개발자 대시보드(dev/ 폴더)를 새 탭(휴대폰은 브라우저)으로 연다. 실제 서버에 붙었을 때만 보인다.
+// - 시험 날짜: 시험 주간 데이터가 있는 가게(초옹장)의 알림 시각으로 서버 시계를 옮긴다 (데모 테스트 모드일 때만, TestDate.tsx).
 // - 초기화: 등록한 가게, 불러온 리뷰, 이 기기 기록을 지워 가게 찾기(지도)부터 다시 할 수 있게 한다.
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -21,6 +22,7 @@ import { BASE_URL, serverHealth, type ServerHealth } from "@/lib/server";
 import { storage } from "@/lib/storage";
 import tokens from "@/theme/tokens.json";
 import { pickedPlace } from "./flow";
+import { TestDateSheet, useTestDateAvailable } from "./TestDate";
 
 const C = tokens.colors;
 
@@ -67,7 +69,9 @@ export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?:
   const [confirming, setConfirming] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [serverNote, setServerNote] = useState<string | null>(null);
+  const [dateOpen, setDateOpen] = useState(false);
   const demo = demoMode.useValue();
+  const testDate = useTestDateAvailable();
   const health = useServerCheck(open);
 
   const reset = async () => {
@@ -128,7 +132,7 @@ export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?:
           <Text className="text-small font-medium text-brand">데모 테스트 모드</Text>
         </View>
       ) : null}
-      <Sheet open={open && !confirming} onClose={() => setOpen(false)} title="메뉴">
+      <Sheet open={open && !confirming && !dateOpen} onClose={() => setOpen(false)} title="메뉴">
         <View className="gap-2.5">
           <View testID="start-menu-demo" className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3">
             <Icon name="user" size={24} color={C.brand} />
@@ -157,6 +161,21 @@ export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?:
               <Icon name="chevR" size={20} color={C["ink-3"]} />
             </Pressable>
           ) : null}
+          {testDate ? (
+            <Pressable
+              testID="start-menu-test-date"
+              accessibilityRole="button"
+              onPress={() => setDateOpen(true)}
+              className="min-h-[64px] flex-row items-center gap-3 rounded-card border border-line px-4 py-3 active:bg-brand-soft"
+            >
+              <Icon name="calendar" size={24} color={C.brand} />
+              <View className="flex-1">
+                <Text className="text-body font-medium text-ink">시험 날짜</Text>
+                <Text className="text-small text-ink-2">초옹장 시험 주간(10/5~10/11)의 알림 시각으로 옮겨요</Text>
+              </View>
+              <Icon name="chevR" size={20} color={C["ink-3"]} />
+            </Pressable>
+          ) : null}
           <Pressable
             testID="start-menu-reset"
             accessibilityRole="button"
@@ -174,6 +193,13 @@ export function DemoMenuBar({ left, center }: { left?: React.ReactNode; center?:
           <ServerLine health={health} />
         </View>
       </Sheet>
+      <TestDateSheet
+        open={dateOpen}
+        onClose={() => {
+          setDateOpen(false);
+          setOpen(false);
+        }}
+      />
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="처음부터 다시 할까요?">
         <Text className="text-body text-ink-2">{"등록한 가게, 불러온 리뷰, 끝낸 일과 설정을 모두 지워요.\n로그인하면 가게 찾기(지도)부터 다시 해요."}</Text>
         <Text className="mt-2 text-small text-ink-3">팀 목업 가게와 데모 테스트 모드는 그대로 둬요</Text>

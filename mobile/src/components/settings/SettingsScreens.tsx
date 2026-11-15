@@ -9,6 +9,7 @@ import { closingNotes, saveWeek, TitleWithDonna, WeeklyEditor, weekStateOf, type
 import { errorText, NAVER_PLACE_KEY, param, storeName } from "@/components/start/flow";
 import { rescheduleIfAllowed } from "@/components/start/notify";
 import { SlotChoiceList } from "@/components/start/StartScreens";
+import { TestDateSheet, useTestDateAvailable } from "@/components/start/TestDate";
 import { back, go } from "@/components/ui/nav";
 import { Bone, DonnaImage, PrimaryButton, SecondaryButton } from "@/components/ui/parts";
 import { Sheet } from "@/components/ui/Sheet";
@@ -38,6 +39,8 @@ const SLOTS: Slot[] = ["OPENING", "AFTERNOON", "CLOSING"];
 /** 06-19 설정 모아 보기 */
 export function SettingsScreen() {
   const { data, prefs: p } = useHome();
+  const testDate = useTestDateAvailable();
+  const [dateOpen, setDateOpen] = useState(false);
   const acc = account.useValue();
   // 가게 주소 (네이버 플레이스, 또는 우리 가게 찾기에서 고른 가게)
   const placeQ = useQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: 5 * 60 * 1000 });
@@ -77,18 +80,28 @@ export function SettingsScreen() {
         <ListRow testID="settings-store-again" icon="store" title="우리 가게 다시 찾기" href="/start/store?again=1" />
       </View>
       <View className="flex-1" />
-      {/* 검토용 개발 화면 (가상 시각, 실패, 인터넷 끊김). 개발 빌드에서만 보인다. 배포 빌드에서 보려면 EXPO_PUBLIC_SHOW_DEV=true */}
-      {SHOW_DEV ? (
-        <View className="mt-10 flex-row self-center">
-          <Pressable testID="settings-dev" accessibilityRole="link" onPress={() => go("/dev")} className="px-4 py-2">
-            <Text className="text-small text-ink-3">개발 화면</Text>
-          </Pressable>
-          {/* 서버의 웹 개발자 대시보드 (dev/ 폴더). 서버를 DEV_TOOLS_ENABLED=true 로 켰을 때만 열린다 */}
-          <Pressable testID="settings-dev-dashboard" accessibilityRole="link" onPress={openDevDashboard} className="px-4 py-2">
-            <Text className="text-small text-ink-3">개발자 대시보드</Text>
-          </Pressable>
+      {/* 검토용 링크 한 줄: 개발 화면, 개발자 대시보드(개발 빌드에서만), 시험 날짜(데모 테스트 모드에서만, components/start/TestDate.tsx) */}
+      {SHOW_DEV || testDate ? (
+        <View className="mt-10 flex-row flex-wrap justify-center self-center">
+          {SHOW_DEV ? (
+            <>
+              <Pressable testID="settings-dev" accessibilityRole="link" onPress={() => go("/dev")} className="px-4 py-2">
+                <Text className="text-small text-ink-3">개발 화면</Text>
+              </Pressable>
+              {/* 서버의 웹 개발자 대시보드 (dev/ 폴더). 서버를 DEV_TOOLS_ENABLED=true 로 켰을 때만 열린다 */}
+              <Pressable testID="settings-dev-dashboard" accessibilityRole="link" onPress={openDevDashboard} className="px-4 py-2">
+                <Text className="text-small text-ink-3">개발자 대시보드</Text>
+              </Pressable>
+            </>
+          ) : null}
+          {testDate ? (
+            <Pressable testID="settings-test-date" accessibilityRole="button" onPress={() => setDateOpen(true)} className="px-4 py-2">
+              <Text className="text-small text-ink-3">시험 날짜</Text>
+            </Pressable>
+          ) : null}
         </View>
       ) : null}
+      {testDate ? <TestDateSheet open={dateOpen} onClose={() => setDateOpen(false)} /> : null}
     </>
   );
 }

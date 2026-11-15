@@ -1,5 +1,7 @@
 """GET /api/naver/place 응답 모양. 앱의 mobile/src/lib/api.ts NaverPlace 와 칸 이름이 같다."""
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from app.planner.data_shapes import Daypart, Weekday
@@ -20,6 +22,18 @@ class PlaceMenu(BaseModel):
     photo: str | None  # 메뉴 사진 주소. DB 에 사진이 없어서 지금은 None
 
 
+class PlaceNews(BaseModel):
+    """네이버 플레이스 소식 카드 (사장님이 올린 알림·이벤트)"""
+
+    news_id: str
+    title: str
+    body: str
+    category: str  # "알림", "EVENT" 같은 네이버 분류
+    period: str | None = None  # 적힌 기간. 예) "2026.10.01. ~ 2026.10.09."
+    created: str | None = None  # 올린 날 "2026-10-01"
+    photos: list[str] = []
+
+
 class NaverPlace(BaseModel):
     place_id: str
     name: str
@@ -33,6 +47,15 @@ class NaverPlace(BaseModel):
     photo_count: int
     review_count: int
     rating: float  # 평균 별점 (소수 첫째 자리)
+    # 포스터에 쓰는 가게 사진과 로고 (사장님이 네이버 플레이스에 올린 매장 사진, 대표 사진. 손님 사진은 넣지 않는다)
+    store_photos: list[str] = []
+    profile_photo: str | None = None
+    # 로고 (바탕을 지운 PNG, 서버 주소 /api/stores/.../logo): 사장님이 앱에서 올린 로고 → 네이버 소식에서 찾은 로고 → 없으면 None
+    # 로고가 없어도 포스터에는 가게 이름·주소가 글자로 들어간다
+    logo: str | None = None
+    logo_source: Literal["OWNER", "NAVER"] | None = None
+    facilities: list[str] = []  # 편의 시설. 예) "단체 이용 가능", "예약"
+    news: list[PlaceNews] = []  # 네이버 소식 카드 (최근 것이 앞)
 
 
 class NaverPlaceResponse(BaseModel):

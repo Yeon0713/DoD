@@ -92,3 +92,28 @@ def test_real_data_lists_screens(dashboard):
     routes = {g.get("route") for g in body["groups"]}
     assert "/start" in routes and body["total"] > 0
     assert body["editsFile"] == "mobile/scripts/ui-text/edits.json"
+
+
+def test_export_downloads_script_json(dashboard, fake_node):
+    calls, answer = fake_node
+    answer["stdout"] = json.dumps({"뽑은 날": "2026-11-13", "화면": [{"이름": "시작", "글": [{"원본": "도나", "수정": ""}]}]}, ensure_ascii=False)
+    res = dashboard.get("/api/dev_tools/ui_text/export")
+    assert res.status_code == 200
+    assert 'filename="ui-text-2026-11-13.json"' in res.headers["content-disposition"]
+    assert res.json()["화면"][0]["글"][0] == {"원본": "도나", "수정": ""}
+    assert calls[0]["command"] == "export"
+
+
+def test_import_passes_whole_file_to_script(dashboard, fake_node):
+    calls, answer = fake_node
+    doc = {"화면": [{"이름": "시작", "글": [{"위치": "components/start/StartScreens.tsx:56 · IntroScreen", "원본": "매장 운영,", "수정": "가게 일,"}]}]}
+    answer["stdout"] = json.dumps({"asked": 1, "loaded": [{"original": "매장 운영,"}], "skipped": [], "editsCount": 1})
+    res = dashboard.post("/api/dev_tools/ui_text/import", json=doc)
+    assert res.status_code == 200 and res.json()["asked"] == 1
+    assert calls == [{"command": "import", "input": {"doc": doc}}]
+
+
+def test_import_refuses_file_that_is_not_ui_text(dashboard, fake_node):
+    calls, _ = fake_node
+    res = dashboard.post("/api/dev_tools/ui_text/import", json={"edits": {}})
+    assert res.status_code == 422 and calls == []

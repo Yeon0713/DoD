@@ -8,7 +8,7 @@ export type Platform = "NAVER" | "BAEMIN" | "YOGIYO" | "COUPANG";
 export type TaskType = "REVISIT_REPLY" | "MENU_ORDER" | "POSTER" | "REVIEW_FIX" | "REORDER_NUDGE";
 export type RevisitClass = "QUICK" | "WEEKLY" | "MONTHLY" | "BASIC";
 export type NotifyKind = "APPROVAL_REQUEST" | "EXECUTE_REMINDER" | "PREVIEW" | "NOTICE";
-export type ReasonTag = "EVENT" | "GAME" | "WEATHER" | "SEASON";
+export type ReasonTag = "EVENT" | "GAME" | "WEATHER" | "SEASON" | "RESERVATION"; // RESERVATION: 확정한 예약·단체 주문 (이번 주 화면 달력에만)
 export type ComplaintType = "TASTE" | "PORTION" | "HYGIENE" | "PHOTO_MISMATCH" | "DELIVERY_DELAY" | "SERVICE";
 export type ComplaintGroup = "FOOD" | "DELIVERY" | "SERVICE";
 export type BasisKind = "REVIEW" | "RISK_SIGNAL" | "CALENDAR_DAY" | "EVENT" | "GAME" | "CUSTOMER";
@@ -77,6 +77,8 @@ export interface CalendarCell {
 
 export interface CalendarResponse extends Example {
   cells: CalendarCell[];
+  /** 칸의 이유에 나온 행사·경기 이름 (ref_id → 이름). 예) {"event_9002": "남양 가을 축제"}. 목업에는 없다 */
+  names?: Record<string, string>;
 }
 
 export interface Review {

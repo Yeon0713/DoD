@@ -1,4 +1,4 @@
-// 가입: 우리 가게 찾기 → 이 가게가 맞나요? → (가게 정보 확인) → 리뷰 불러오기 → 출근·퇴근 시간 → (알림 시간).
+// 가입: 우리 가게 찾기 → 이 가게가 맞나요? → 사장님 확인(OwnerCheck.tsx) → (가게 정보 확인) → 리뷰 불러오기 → 출근·퇴근 시간 → (알림 시간).
 // 네이버 로그인만으로는 사장님 가게를 알 수 없어서, 사장님이 네이버 지도에서 가게를 찾아 고르고 확인한 뒤 등록한다.
 // 등록하면 서버가 네이버 지도에서 가게 정보를 한 번 읽어 DB 에 저장하고 (server/app/modules/stores), 다음 로그인부터 이 가게로 들어온다.
 // 리뷰는 배민, 네이버, 쿠팡이츠를 따로 불러온다. 지금은 버튼을 누르면 3초 기다린 뒤 목업 리뷰가 들어간다.
@@ -16,8 +16,8 @@ import { Text } from "@/components/ui/Text";
 import { account } from "@/lib/account";
 import { api, ApiFailure, storeMapUrl, USE_MOCK, type ReviewSource, type SearchedPlace, type StorePlace } from "@/lib/api";
 import { fromMin, suggestSlots, toMin, WEEKDAY_KO } from "@/lib/hours";
-import { flashToast } from "@/lib/localStore";
 import { naverProfile } from "@/lib/naverDemo";
+import { ownerCheck } from "@/lib/ownerCheck";
 import { currentNow } from "@/lib/time";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
@@ -30,10 +30,9 @@ const C = tokens.colors;
 const DAYS: Weekday[] = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const JS_DAY: Weekday[] = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
 const CHUNCHEON = { lat: 37.8747, lng: 127.7342 };
-const EXAMPLES = ["춘천 피플스클럽", "석사동 돈가스", "효자동 국수"];
 
 /** 이 기기 사장님 계정 열쇠. 같은 계정으로 다시 로그인하면 등록해 둔 가게로 들어온다 */
-function ownerKey(): string | undefined {
+export function ownerKey(): string | undefined {
   const naverId = naverProfile.read().value?.received.id;
   if (naverId) return `naver:${naverId}`;
   const phone = account.read().phone;
@@ -152,14 +151,6 @@ export function StoreSearchScreen() {
       {searched.length < 2 ? (
         <View className="mt-5 gap-3">
           <MapImage uri={mapUri} label="춘천 지도" />
-          <Text className="text-label text-ink-2">이렇게 찾아 보세요</Text>
-          <View className="flex-row flex-wrap gap-2">
-            {EXAMPLES.map((ex) => (
-              <Pressable key={ex} accessibilityRole="button" onPress={() => setQuery(ex)} className="rounded-full border border-line bg-surface px-3.5 py-2 active:bg-brand-soft">
-                <Text className="text-label text-ink">{ex}</Text>
-              </Pressable>
-            ))}
-          </View>
         </View>
       ) : results.isPending ? (
         <View className="mt-5 gap-3">
@@ -235,7 +226,6 @@ function Section({ title, right, children }: { title: string; right?: string; ch
 export function StoreConfirmScreen() {
   const again = param(useLocalSearchParams<{ again?: string }>().again) === "1";
   const picked = pickedPlace.useValue().value;
-  const qc = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [saveFailed, setSaveFailed] = useState<string | null>(null);
   const preview = useQuery({
@@ -256,16 +246,10 @@ export function StoreConfirmScreen() {
     setSaving(true);
     setSaveFailed(null);
     try {
-      if (!USE_MOCK) {
-        const res = await api.storeRegister(place.place_id, ownerKey());
-        account.write({ storeId: res.store_id });
-        // 앞서 본 다른 가게 데이터는 지우고 이 가게 것으로 새로 받는다
-        qc.clear();
-      }
-      if (again) {
-        flashToast("우리 가게를 바꿨어요", place.name);
-        back("/settings");
-      } else go("/start/naver-confirm");
+      // 가게만 등록한다. 계정과 가게는 다음 화면의 사장님 확인이 끝나면 이어진다 (그때 이 기기의 가게도 바꾼다)
+      const storeId = USE_MOCK ? "mock" : (await api.storeRegister(place.place_id)).store_id;
+      ownerCheck.write({ checkId: null, storeId, again });
+      go(again ? "/start/owner-check?again=1" : "/start/owner-check");
     } catch (e) {
       setSaveFailed(errorText(e));
     } finally {
@@ -401,6 +385,9 @@ const SOURCES: { key: ReviewSource; name: string; icon: IconName }[] = [
   { key: "NAVER", name: "네이버", icon: "store" },
   { key: "COUPANG", name: "쿠팡이츠", icon: "truck" },
 ];
+// 앱 안 목업 모드(서버 없음)에서 보여 줄 불러온 리뷰 수. 초옹장(s005) DB 리뷰를 서버가 나누는 대로 맞췄다
+// (배달 주문 리뷰 → 배민·쿠팡이츠, 나머지 → 네이버. server/app/modules/stores/router.py import_reviews)
+const MOCK_IMPORTED: Record<ReviewSource, number> = { BAEMIN: 52, NAVER: 184, COUPANG: 20 };
 type LoadState = { kind: "idle" } | { kind: "loading" } | { kind: "done"; count: number } | { kind: "failed" };
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -422,8 +409,10 @@ export function ReviewImportScreen() {
   const load = async (k: ReviewSource) => {
     setStates((s) => ({ ...s, [k]: { kind: "loading" } }));
     try {
-      // 시험용: 크롤링하는 것처럼 3초 기다린 뒤 목업 리뷰를 넣는다
-      const [res] = await Promise.all([storeId && !USE_MOCK ? api.importReviews(storeId, k) : Promise.resolve({ imported: 12 }), wait(3000)]);
+      // 시험용: 크롤링하는 것처럼 3초 기다린 뒤 서버가 가게 DB 리뷰를 플랫폼별로 나눠 표시한다 (목업 가게는 있는 리뷰, 등록 가게는 새 목업 리뷰).
+      // 서버를 쓰는데 가게가 없으면(로그인 기록이 지워짐) 지어낸 수를 보여 주지 않고 실패로 둔다
+      if (!USE_MOCK && !storeId) throw new Error("NO_STORE");
+      const [res] = await Promise.all([USE_MOCK ? Promise.resolve({ imported: MOCK_IMPORTED[k] }) : api.importReviews(storeId as string, k), wait(3000)]);
       setStates((s) => ({ ...s, [k]: { kind: "done", count: res.imported } }));
     } catch {
       setStates((s) => ({ ...s, [k]: { kind: "failed" } }));
@@ -441,7 +430,7 @@ export function ReviewImportScreen() {
   return (
     <>
       <SubPage
-        progress={{ total: STEPS, done: 4 }}
+        progress={{ total: STEPS, done: 5 }}
         onBack={() => back("/start/naver-confirm")}
         footer={
           <PrimaryButton testID="reviews-next" disabled={anyLoading} onPress={() => (missing.length ? setAsking(true) : proceed())}>
@@ -546,7 +535,7 @@ export function WorkHoursScreen() {
     const problem = startProblem(error, () => refetch(), () => back("/start/reviews"));
     if (problem) return problem;
     return (
-      <SubPage progress={{ total: STEPS, done: 5 }}>
+      <SubPage progress={{ total: STEPS, done: 6 }}>
         <Bone className="h-60 w-full rounded-2xl" />
       </SubPage>
     );
@@ -600,7 +589,7 @@ export function WorkHoursScreen() {
   return (
     <>
       <SubPage
-        progress={{ total: STEPS, done: 5 }}
+        progress={{ total: STEPS, done: 6 }}
         onBack={() => back("/start/reviews")}
         footer={
           <PrimaryButton testID="work-hours-next" disabled={saving} onPress={() => save(false)}>
@@ -608,7 +597,7 @@ export function WorkHoursScreen() {
           </PrimaryButton>
         }
       >
-        <TitleWithDonna title={"출근하고 퇴근하는\n시간을 적어 주세요"} img="b3-1" sub="이 시간에 맞춰 할 일을 알려 드려요" />
+        <TitleWithDonna title={"출근하고 퇴근하는\n시간을 적어 주세요"} img="b3-1" sub="이 시간에 맞춰 도나가 준비해 둘게요" />
         <View className="mt-5 gap-3">
           <TimeField testID="work-start" label="출근" value={st} onChange={setStart} />
           <TimeField testID="work-end" label="퇴근" value={en} onChange={setEnd} />

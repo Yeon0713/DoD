@@ -3,7 +3,8 @@
 // 06: 추워지는 날 이유에는 온도계 아이콘. 쉬는 요일(요일별 장사 시간)은 "쉬는 날"로 보여 준다.
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { Image, Pressable, View } from "react-native";
+import { OCCASION_IMG, occasionIcon } from "@/components/ui/occasion";
 import { Text } from "@/components/ui/Text";
 import { Icon, type IconName } from "@/components/icons/Icon";
 import { Bone, DonnaImage, PrimaryButton } from "@/components/ui/parts";
@@ -16,6 +17,8 @@ import { useHome } from "@/lib/useHome";
 import { SKY_KO, WEATHER, type Sky } from "@/mocks/extras";
 import tokens from "@/theme/tokens.json";
 import type { CalendarCell, Daypart, PlanItem, Signal } from "@/types/contract";
+import type { Reservation } from "@/lib/api";
+import { DayReservations, useWeekReservations } from "./Reservations";
 
 const C = tokens.colors;
 
@@ -54,8 +57,8 @@ function eventLabel(cells: CalendarCell[]): { tag: "GAME" | "EVENT"; refId: stri
   return null;
 }
 
-/** 하루 요약: 제목, 이유 상자 (06-7 계열 글) */
-function daySummary(all: CalendarCell[], date: string, today?: string) {
+/** 하루 요약: 제목, 이유 상자 (06-7 계열 글). booked: 그날 확정한 예약·단체 주문 */
+function daySummary(all: CalendarCell[], date: string, today?: string, booked: Reservation[] = []) {
   const cells = all.filter((c) => c.date === date);
   const high = cells.filter((c) => c.signal === "HIGH").map((c) => DP_KO[c.daypart]);
   const low = cells.filter((c) => c.signal === "LOW").map((c) => DP_KO[c.daypart]);
@@ -66,17 +69,24 @@ function daySummary(all: CalendarCell[], date: string, today?: string) {
   const season = !ev && seasonToday;
   let reason = "특별한 일정은 없어요";
   let sub: string | undefined;
+  let seasonNote = false; // 이유 상자가 "추워져요"일 때만 온도계를 그린다 (예약 이유가 앞서면 그리지 않음)
   if (ev) {
     reason = `${ev.name}가 있어요`;
     if (low.length) sub = `${withTopic(low.join(", "))} 한가할 것 같아요`;
     else if (high.length) sub = ev.tag === "GAME" ? `${high[0]} 배달이 평소보다 늘 것 같아요` : `${high.join(", ")} 주문이 늘 것 같아요`;
+  } else if (booked.length) {
+    // 확정한 예약·단체 주문이 있는 날 (서버가 그 시간대 예상 매출에 더해 바쁨을 다시 계산했다)
+    const people = booked.reduce((n, r) => n + r.people, 0);
+    reason = booked.length === 1 ? `${booked[0].kind === "GROUP_ORDER" ? "단체 주문" : "예약"} ${people}${booked[0].kind === "GROUP_ORDER" ? "인분" : "명"}이 있어요` : `예약 ${booked.length}건, ${people}명이 있어요`;
+    sub = high.length ? `${high.join(", ")} 주문이 늘 것 같아요` : "미리 준비해 두면 좋아요";
   } else if (season) {
     reason = seasonBefore ? "추운 날이 이어져요" : date === today ? "오늘부터 추워져요" : "이날부터 추워져요";
     sub = "국물 메뉴가 더 나가요";
+    seasonNote = true;
   } else if (low.length) {
     sub = `${low.join(", ")}에는 조금 한가해요`;
   }
-  return { cells, busy: high.length > 0, title, reason, sub, ev, season };
+  return { cells, busy: high.length > 0, title, reason, sub, ev, season, seasonNote };
 }
 
 /** 이번 주 월요일부터 일요일까지 (불러오는 중에도 요일 칸을 그린다) */
@@ -192,6 +202,8 @@ export function WeekScreen() {
     setPicked(null);
   }
   const today = ymd(now);
+  const weekDays = stripDays([...new Set((data?.calendar.cells ?? []).map((c) => c.date))], today);
+  const reservations = useWeekReservations(weekDays[0], weekDays[weekDays.length - 1]);
 
   if (!data) {
     if (error) {
@@ -236,6 +248,7 @@ export function WeekScreen() {
 
   const cells = data.calendar.cells;
   const days = stripDays([...new Set(cells.map((c) => c.date))], today);
+  const booked = reservations.data?.reservations ?? [];
   const weekly = weeklyOf(data.settings.settings);
   const isClosed = (d: string) => weekly[weekdayOf(d)] === null;
   const marks: Record<string, Mark> = {};
@@ -243,7 +256,7 @@ export function WeekScreen() {
   const want = picked ?? (typeof params.day === "string" ? params.day : null);
   const selected = want && days.includes(want) ? want : days.includes(today) ? today : days[0];
   const closed = isClosed(selected);
-  const s = daySummary(cells, selected, today);
+  const s = daySummary(cells, selected, today, booked.filter((r) => r.status === "CONFIRMED" && r.at.slice(0, 10) === selected));
   const w = USE_MOCK ? WEATHER[selected] : undefined;
   const linkTo = !closed && s.ev ? `/week/${encodeURIComponent(s.ev.refId)}` : null;
   const busy = !closed && s.busy;
@@ -260,8 +273,8 @@ export function WeekScreen() {
           <Text className="flex-1 text-display text-ink">{closed ? "쉬는 날이에요" : s.title}</Text>
           <DonnaImage img={busy ? "b1-1" : "b2-1"} size={72} />
         </View>
-        <View className={`mt-2 flex-row items-center gap-3 rounded-2xl px-4 py-3 ${busy ? "bg-busy-soft" : !closed && s.season ? "bg-brand-soft" : "border border-line bg-surface"}`}>
-          {!closed && s.season && <Icon name="thermometerDown" size={28} color={C.calm} />}
+        <View className={`mt-2 flex-row items-center gap-3 rounded-2xl px-4 py-3 ${busy ? "bg-busy-soft" : !closed && s.seasonNote ? "bg-brand-soft" : "border border-line bg-surface"}`}>
+          {!closed && s.seasonNote && <Icon name="thermometerDown" size={28} color={C.calm} />}
           <View className="min-w-0 flex-1">
             <Text className="text-body font-medium text-ink">{closed ? "가게 문을 닫는 날이에요" : s.reason}</Text>
             {closed ? <Text className="text-label text-ink-2">이날은 알림을 보내지 않아요</Text> : s.sub ? <Text className="text-label text-ink-2">{s.sub}</Text> : null}
@@ -280,6 +293,7 @@ export function WeekScreen() {
         {linkTo && <ListRow icon="list" title="같이 하면 좋은 일 2가지" href={linkTo} testID="week-together" />}
         {/* 06-7-수: 추워지는 날은 그날 메뉴판 순서 바꾸기로 바로 간다 */}
         {seasonMenu && <ListRow icon="list" title="국물 메뉴를 위로 올리는 날" href={`/menu-order/${encodeURIComponent(seasonMenu.plan_id)}`} testID="week-season-menu" />}
+        {!closed && <DayReservations date={selected} list={booked} />}
       </View>
     </TabPage>
   );
@@ -312,7 +326,7 @@ export function WeekDetailScreen() {
 
   return (
     <SubPage title={title}>
-      <Icon name={ev?.tag === "GAME" ? "ball" : "tent"} size={48} color={C.busy} />
+      <Image source={OCCASION_IMG[occasionIcon(ev?.tag ?? "EVENT", ev?.name ?? "")]} style={{ width: 56, height: 56 }} resizeMode="contain" accessibilityIgnoresInvertColors />
       <Text className="mt-3 text-display text-ink">
         {`${ev?.name.replace("국가대표 ", "") ?? ""}로\n`}
         {multi ? `${dps.join(", ")}이 바빠요` : ev?.tag === "GAME" ? "배달이 늘 것 같아요" : "손님이 늘 것 같아요"}

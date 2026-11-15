@@ -13,6 +13,7 @@ import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { DemoCursor } from '@/components/dev/DemoCursor';
+import { LaunchLoading } from '@/components/start/LaunchLoading';
 import { ToastHost } from '@/components/ui/Toast';
 import { hydrateStorage } from '@/lib/storage';
 import tokens from '@/theme/tokens.json';
@@ -53,6 +54,8 @@ export default function RootLayout() {
             }}
           />
           <ToastHost />
+          {/* 앱을 켤 때마다 첫 화면 위에 잠깐 덮는 로딩 화면(타이핑하는 도나). 아래에서는 첫 화면이 미리 그려진다 */}
+          <LaunchLoading />
           {/* 시연용 마우스 표시. 웹 개발 빌드에서 주소에 ?cursor=1 을 붙였을 때만 보인다 */}
           <DemoCursor />
         </View>

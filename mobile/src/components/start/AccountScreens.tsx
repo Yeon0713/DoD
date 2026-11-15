@@ -17,6 +17,8 @@ import { naverLogin, sendPhoneCode, verifyPhoneCode } from "@/lib/actions";
 import { api, ApiFailure } from "@/lib/api";
 import { flashToast, prefs } from "@/lib/localStore";
 import { goToNaverLogin, naverErrorText, naverProfile, readNaverResult, useRealNaver } from "@/lib/naverDemo";
+import { ownerCheck } from "@/lib/ownerCheck";
+import { onTestLogin } from "@/lib/testAccount";
 import { useHome } from "@/lib/useHome";
 import tokens from "@/theme/tokens.json";
 import { DemoMenuBar } from "./DemoMenu";
@@ -64,7 +66,7 @@ export function AskLink({ ask, label, onPress, testID }: { ask: string; label: s
 /** 로그인이나 가입을 마친 뒤: 처음 설정을 마친 사장님은 홈으로, 아니면 처음 설정을 이어 간다. */
 function afterSignIn(next: string) {
   if (prefs.read().onboarded) {
-    flashToast("다시 오셨네요", "오늘 할 일을 보여 드릴게요");
+    flashToast("다시 오셨네요", "도나가 준비한 것을 보여 드릴게요");
     goHome();
   } else replace(next);
 }
@@ -123,11 +125,13 @@ export function NaverLoginScreen() {
       if (!real) return naverLogin();
       // 처음 돌아왔을 때만 돌아온 값을 본다. 다시 하기를 누르면 네이버 화면부터 다시 연다.
       if (tries === 0 && ticket)
-        return readNaverResult(ticket).then((value) => {
+        return readNaverResult(ticket).then(async (value) => {
           naverProfile.write({ value });
           // 이 계정의 가게로 바꾸고, 앞서 본 다른 가게 데이터는 지운다
           account.write({ storeId: value.storeId });
           qc.clear();
+          // 테스트 계정: 서버 DB 조건대로 이 기기 기록을 지우거나(reset) 되살리고(keep), 옮긴 서버 시계를 다시 읽는다
+          if (value.testAccount) await onTestLogin(value.testAccount);
         });
       if (tries === 0 && naverError) return Promise.reject(new Error(naverError));
       // 바로 네이버 로그인 화면으로 옮긴다 (개발 모드에서 효과가 두 번 돌아도 살아 있는 쪽만 옮긴다).
@@ -149,9 +153,13 @@ export function NaverLoginScreen() {
         if (name) flashToast(`${name} 사장님, 반가워요`, "네이버 계정으로 시작했어요");
         await qc.fetchQuery({ queryKey: NAVER_PLACE_KEY, queryFn: api.naverPlace, staleTime: 0 }).catch(() => undefined);
         if (!alive) return;
-        // 네이버 로그인만으로는 사장님 가게를 알 수 없다. 데모 테스트 모드에서 등록한 가게가 없으면 가게 찾기부터 한다
+        // 네이버 로그인만으로는 사장님 가게를 알 수 없다. 데모 테스트 모드에서 등록한 가게가 없으면(처음 가입) 가게 찾기부터 한다.
+        // 등록과 사장님 확인을 마친 계정(서버가 가게를 알려 줌)은 다시 들어온 사장님이라 처음 설정을 거치지 않고 바로 홈으로 간다
         if (real && !account.read().storeId) replace("/start/store");
-        else afterSignIn(real ? "/start/naver-confirm" : "/start/naver-store");
+        else if (real) {
+          prefs.write({ onboarded: true });
+          afterSignIn("/");
+        } else afterSignIn("/start/naver-store");
       })
       .catch((e: unknown) => {
         if (alive) setFailText(naverErrorText(real && e instanceof Error ? e.message : "NAVER_UNREACHABLE"));
@@ -289,7 +297,11 @@ export function NaverStoreScreen() {
       onBack={() => back("/start")}
       footer={
         <>
-          <PrimaryButton testID="naver-store-ok" disabled={!s} onPress={() => go("/start/naver-confirm")}>
+          <PrimaryButton testID="naver-store-ok" disabled={!s} onPress={() => {
+            // 앱 안 목업: 서버에 등록하지 않고 사장님 확인(목업 심사)부터 거친다
+            ownerCheck.write({ checkId: null, storeId: "mock", again: false });
+            go("/start/owner-check");
+          }}>
             이 가게로 시작하기
           </PrimaryButton>
           <SecondaryButton testID="naver-store-other" onPress={() => go("/start/store")}>
@@ -449,7 +461,7 @@ export function CodeScreen() {
       }
     >
       <Text className="pt-4 text-display text-ink" accessibilityRole="header">
-        {"문자로 온\n숫자 6개를 적어 주세요"}
+        {"문자로 온 숫자 6자리를 입력해주세요."}
       </Text>
       <Text className="mt-2 text-body text-ink-2">{formatPhone(phone)}로 보냈어요</Text>
       <View testID="code-boxes" className="mt-6 flex-row gap-2">

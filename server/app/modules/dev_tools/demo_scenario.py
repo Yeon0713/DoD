@@ -132,13 +132,13 @@ def build_steps(store_id: str) -> dict:
     add = steps.append
 
     # UC01 네이버로 가입하기 (로그인 안 한 사장님)
-    add(_step("UC01", "09-s1", "처음 · 왜 도나인가", "/start", base_at, signed="out"))
+    add(_step("UC01", "10-s1b", "처음 · 시작 화면 (도나를 비서로 영입하러 가기)", "/start", base_at, signed="out"))
+    add(_step("UC01", "10-s2", "처음 · 어떻게 시작할까요? (네이버, 휴대폰, 로그인)", "/start/choose", base_at, signed="out"))
     # 서버에 네이버 키가 없으면 서버가 그리는 임시 네이버 로그인 화면으로 간다 (앱 데모 테스트 모드를 켜서 연다).
     # 진짜 키를 넣으면 nid.naver.com 으로 가는데, 그 화면은 휴대폰 틀 안에서 열리지 않을 수 있다.
     add(_step("UC01", "09-s2", "네이버로 시작하기 · 네이버 화면", "/start/naver-login", base_at, signed="out", naver_demo=True,
               note="서버 임시 네이버 로그인"))
     add(_step("UC01", "09-s3", "네이버로 가입했어요 · 우리 가게 확인", "/start/naver-store", base_at, signed="naver_new"))
-    add(_step("UC01", "09-3", "처음 · 알림 받을 때 고르기", "/start/notify-time", base_at, signed="naver_new"))
     add(_step("UC01", "09-3b", "처음 · 알림 켜 주세요", "/start/notify-on", base_at, signed="naver_new"))
     add(_step("UC01", "09-4n", "처음 · 알림이 꺼진 채로 들어왔을 때", "/", base_at, notify_off=True))
 
@@ -147,9 +147,7 @@ def build_steps(store_id: str) -> dict:
     add(_step("UC02", "09-s5", "휴대폰 번호로 시작하기 · 숫자 6개", f"/start/code?phone={EXAMPLE_PHONE}", base_at, signed="out", note="번호는 예시"))
     add(_step("UC02", "09-2", "처음 · 우리 가게 찾기", "/start/store", base_at, signed="phone_new"))
     add(_step("UC02", "09-2b", "처음 · 가게를 못 찾았을 때", f"/start/store?q={quote(EXAMPLE_MISSING_STORE)}", base_at, signed="phone_new", note="가게 이름은 예시"))
-    add(_step("UC02", "09-2n", "처음 · 네이버 플레이스 연결 (불러오기)", "/start/naver", base_at, signed="phone_new"))
     add(_step("UC02", "09-2c", "처음 · 네이버에서 불러왔어요 (확인)", "/start/naver-confirm", base_at, signed="phone_new"))
-    add(_step("UC02", "09-2i", "처음 · 장사 시간 직접 적기", "/start/hours", base_at, signed="phone_new"))
 
     # UC03 앱을 열 때
     add(_step("UC03", "09-23", "알림 · 잠금 화면에서 시작", "/lock", base_at))

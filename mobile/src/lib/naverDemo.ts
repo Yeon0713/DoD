@@ -20,7 +20,11 @@ export type NaverProfile = {
   /** 테스트 계정에 정해 둔 가게. 진짜 네이버 로그인이면 없다 (가게는 따로 찾는다) */
   storeId: string | null;
   storeName: string | null;
+  /** 테스트 계정이면 서버 DB(test_accounts.db)의 조건. 진짜 네이버 계정이면 없다 */
+  testAccount?: TestAccount | null;
 };
+/** 테스트 계정 조건: 로그아웃하면 처음부터(reset) 또는 그대로(keep), 서버가 옮긴 장면 시각 */
+export type TestAccount = { loginId: string; onLogout: "reset" | "keep"; sceneAt: string | null };
 export const naverProfile = createStore<{ value: NaverProfile | null }>("dona.naverProfile.v1", { value: null });
 
 /** 네이버 회원 프로필 항목 이름 */
@@ -76,8 +80,18 @@ export async function readNaverResult(ticket: string): Promise<NaverProfile> {
     test: boolean;
     store_id: string | null;
     store_name: string | null;
+    test_account?: { login_id: string; on_logout: "reset" | "keep"; scene_at: string | null } | null;
   };
-  return { received: body.received, missing: body.missing, at: body.received_at, test: body.test, storeId: body.store_id, storeName: body.store_name };
+  const t = body.test_account;
+  return {
+    received: body.received,
+    missing: body.missing,
+    at: body.received_at,
+    test: body.test,
+    storeId: body.store_id,
+    storeName: body.store_name,
+    testAccount: t ? { loginId: t.login_id, onLogout: t.on_logout, sceneAt: t.scene_at } : null,
+  };
 }
 
 /** 서버가 돌려보낸 오류 코드 → 사장님이 읽을 말 (코드는 보여 주지 않는다) */

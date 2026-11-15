@@ -2,10 +2,12 @@
 //   node scripts/ui-text/cli.mjs data            화면별 글, 저장해 둔 수정, 원본을 못 찾은 수정
 //   node scripts/ui-text/cli.mjs save  < {edits}   edits.json 에 저장
 //   node scripts/ui-text/cli.mjs apply < {edits}   저장하고 코드에 넣은 뒤 타입 검사(tsc)
+//   node scripts/ui-text/cli.mjs export            밖에서 고치는 JSON (모든 원본 + 빈 수정 칸)
+//   node scripts/ui-text/cli.mjs import < {doc}     밖에서 고친 JSON 의 수정을 edits.json 에 더하기
 // 서버: server/app/modules/dev_tools/ui_text.py → /api/dev_tools/ui_text
 import { execFile } from "node:child_process";
 import path from "node:path";
-import { apply, collect, EDITS_FILE, loadEdits, MOBILE, saveEdits } from "./core.mjs";
+import { apply, collect, EDITS_FILE, exportDoc, importDoc, loadEdits, MOBILE, saveEdits } from "./core.mjs";
 
 async function readStdin() {
   let data = "";
@@ -44,8 +46,12 @@ try {
     if (edits) saveEdits(edits);
     const done = apply();
     result = { ...done, check: done.applied.length ? await typecheck() : { ok: true, output: "" } };
+  } else if (command === "export") {
+    result = exportDoc();
+  } else if (command === "import") {
+    result = importDoc((await readStdin()).doc);
   } else {
-    throw new Error(`모르는 명령이에요: ${command ?? "(없음)"} (data, save, apply)`);
+    throw new Error(`모르는 명령이에요: ${command ?? "(없음)"} (data, save, apply, export, import)`);
   }
   process.stdout.write(JSON.stringify(result));
 } catch (e) {

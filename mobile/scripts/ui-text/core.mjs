@@ -338,6 +338,7 @@ export function collect() {
         name: `${path.basename(s.file)} › ${s.func}`,
         desc: `여러 화면이 같이 쓰는 글 (${routes.length}개 화면): ${names.slice(0, 6).join(", ")}${names.length > 6 ? " 외" : ""}`,
         routes,
+        routeNames: names,
       }));
       g.items.push(item);
     } else {
@@ -430,4 +431,118 @@ export function apply() {
   }
   saveEdits(remaining);
   return { applied, failed };
+}
+
+// ---------- 밖에서 고치는 JSON (내보내기, 등록) ----------
+// 이 파일 하나만 들고 밖에서 고칠 수 있게, 글마다 원본이 그대로 적혀 있고 "수정" 칸이 비어 있다.
+// 등록할 때는 따로 붙인 열쇠(ID) 없이 "원본" 글로 코드의 자리를 찾는다. 같은 글이 여러 곳에 있으면 "위치"로 고른다.
+
+const GROUP_KO = { screen: "화면", shared: "여러 화면이 같이 쓰는 글", unused: "쓰는 곳을 못 찾은 글" };
+
+export const EXPORT_GUIDE = [
+  "도나 앱 화면 글입니다. 글마다 '원본'이 지금 앱에 들어 있는 글이고, '수정' 칸에 바꿀 글을 적습니다.",
+  "'수정'을 비워 두면 원본 그대로 둡니다. '원본'과 '위치'는 고치지 마세요. 이 둘로 코드의 자리를 찾습니다.",
+  "'그대로 둘 자리'에 적힌 ${…} 는 코드가 채우는 자리(가게 이름, 시각, 숫자 등)입니다. '수정'에도 같은 순서로 모두 남겨야 넣을 수 있어요.",
+  "줄 바꿈은 \\n 으로 적습니다. 화면에서도 그 자리에서 줄이 바뀝니다.",
+  "'여러 화면이 같이 쓰는 글'을 고치면 '쓰는 화면'의 화면이 모두 바뀝니다.",
+  "'종류'는 그 글이 화면에서 하는 역할입니다: 제목, 설명, 버튼, 작은 글, 띠(잠깐 뜨는 알림), 시트 제목, 오류, 입력칸 예시, 읽어 주기 이름(화면엔 안 보이고 화면 읽기 기능이 읽음) 등.",
+  "다 고쳤으면 개발자 대시보드 '화면 글' 탭의 [JSON 등록]으로 이 파일을 올리거나, mobile 폴더에서 `npm run ui-text:import -- <파일>` 을 실행합니다.",
+];
+
+const where = (it) => `${it.file.replace(/^src\//, "")}:${it.line} · ${it.func}`;
+
+/** 화면별 모든 글의 원본과 빈 수정 칸 */
+export function exportDoc() {
+  const { groups, total } = collect();
+  return {
+    설명: EXPORT_GUIDE,
+    "뽑은 날": new Date().toISOString().slice(0, 10),
+    "글 수": total,
+    화면: groups
+      .filter((g) => g.items.length)
+      .map((g) => ({
+        묶음: GROUP_KO[g.type] ?? g.type,
+        이름: g.name,
+        ...(g.route ? { 경로: g.route } : {}),
+        "하는 일": g.desc ?? "",
+        ...(g.routeNames ? { "쓰는 화면": g.routeNames } : {}),
+        글: g.items.map((it) => ({
+          종류: it.label,
+          위치: where(it),
+          ...(it.placeholders?.length ? { "그대로 둘 자리": it.placeholders } : {}),
+          원본: it.text,
+          수정: "",
+        })),
+      })),
+  };
+}
+
+/** "components/x.tsx:12 · Foo" → { file, line, func } */
+function parseWhere(s) {
+  const m = typeof s === "string" ? s.match(/^(.+):(\d+) · (.+)$/) : null;
+  return m ? { file: `src/${m[1]}`, line: Number(m[2]), func: m[3] } : null;
+}
+
+/** 밖에서 고친 JSON 의 "수정"을 edits.json 에 더한다 (코드에 넣기는 따로) */
+export function importDoc(doc) {
+  if (!doc || !Array.isArray(doc.화면)) throw new Error("화면 글 JSON 이 아니에요: '화면' 목록이 없어요");
+  const files = DIRS.flatMap((d) => walk(path.join(SRC, d)));
+  const byText = new Map();
+  for (const f of files) {
+    for (const s of stringsOf(f)) {
+      if (!byText.has(s.text)) byText.set(s.text, []);
+      byText.get(s.text).push(s);
+    }
+  }
+  const edits = loadEdits();
+  const loaded = [];
+  const skipped = [];
+  const taken = new Set();
+  let asked = 0;
+  for (const g of doc.화면) {
+    for (const row of Array.isArray(g?.글) ? g.글 : []) {
+      const edited = row?.수정;
+      const original = row?.원본;
+      if (typeof edited !== "string" || edited.trim() === "" || edited === original) continue;
+      asked++;
+      const skip = (reason) => skipped.push({ screen: g.이름, where: row.위치 ?? "", original: original ?? "", edited, reason });
+      if (typeof original !== "string") {
+        skip("'원본' 칸이 없어요");
+        continue;
+      }
+      let cands = byText.get(original) ?? [];
+      if (!cands.length) {
+        skip("지금 코드에서 이 원본 글을 찾지 못했어요 (원본 칸을 고쳤거나, 파일을 뽑은 뒤 코드가 바뀌었어요)");
+        continue;
+      }
+      const loc = parseWhere(row.위치);
+      if (cands.length > 1) {
+        if (!loc) {
+          skip(`같은 글이 코드에 ${cands.length}곳 있어요. '위치' 칸을 지우지 말아 주세요`);
+          continue;
+        }
+        const same = cands.filter((s) => s.file === loc.file && s.func === loc.func);
+        if (same.length) cands = same;
+        else {
+          const sameFile = cands.filter((s) => s.file === loc.file);
+          if (sameFile.length) cands = sameFile;
+        }
+        cands = [...cands].sort((a, b) => Math.abs(a.line - loc.line) - Math.abs(b.line - loc.line));
+      }
+      const s = cands[0];
+      if (s.kind === "template" && placeholders(s.text).join("\u0000") !== placeholders(edited).join("\u0000")) {
+        skip(`\${…} 자리는 그대로 두어야 해요: ${placeholders(s.text).join(" ")}`);
+        continue;
+      }
+      if (taken.has(s.id)) {
+        skip("같은 자리의 글을 두 번 고쳤어요. 하나만 남겨 주세요");
+        continue;
+      }
+      taken.add(s.id);
+      edits[s.id] = { file: s.file, line: s.line, func: s.func, original: s.text, edited };
+      loaded.push({ file: s.file, line: s.line, original: s.text, edited });
+    }
+  }
+  const saved = saveEdits(edits);
+  return { asked, loaded, skipped, editsCount: Object.keys(saved).length };
 }

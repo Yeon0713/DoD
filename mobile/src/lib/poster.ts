@@ -10,6 +10,9 @@ export const THEME_STYLE: Record<Theme, { bg: string; text: string; sub: string;
   brand: { bg: "bg-brand", text: "text-brand-ink", sub: "text-brand-soft", canvasBg: "#6f4220", canvasText: "#fff8f0", canvasSub: "#f2e4d4" },
 };
 
+/** 로고 뒤 둥근 판 색. 로고는 바탕을 지운 그림이라 어두운 띠 위에서는 밝은 판에 얹고, 밝은 띠에는 그대로 얹는다 */
+export const LOGO_CHIP: Record<Theme, string | null> = { dark: "#fff8f0", light: null, brand: "#fff8f0" };
+
 /** 포스터 큰 글자는 두 줄 안에 들어가게 업종 이름으로 쓴다 (예: "곱창 한 판", "국수 한 그릇"). h는 lib/cards.ts happening() 결과 */
 export function defaultHeadline(h: { kind: "GAME" | "EVENT" | null; label: string } | null, s: StoreSettings) {
   const food = foodPhrase(s.category);
@@ -26,7 +29,7 @@ export function defaultHeadline(h: { kind: "GAME" | "EVENT" | null; label: strin
 }
 
 /** 승인 날 만들어 둔 포스터(메뉴, 글자, 색). 서버 PATCH /api/posters가 생기기 전까지 이 기기(drafts)에 둔다. */
-export type KeptPoster = { menuIdx: number; headline: string | null; storeLine: string | null; theme: Theme };
+export type KeptPoster = { menuIdx: number; headline: string | null; storeLine: string | null; theme: Theme; jobId?: string; image?: string };
 
 export function readKept(saved: Record<string, string>, key: string): KeptPoster | null {
   const raw = saved[key];

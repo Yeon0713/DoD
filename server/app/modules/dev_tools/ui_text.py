@@ -6,6 +6,8 @@
 - data  : 화면별 글, edits.json 에 저장해 둔 수정, 원본을 못 찾은 수정
 - save  : 수정을 mobile/scripts/ui-text/edits.json 에 저장
 - apply : 저장하고 앱 코드(mobile/src)의 글을 바꾼 뒤 타입 검사(tsc)
+- export: 밖에서 고치는 JSON (화면별 모든 원본 + 빈 "수정" 칸)
+- import: 밖에서 고친 JSON 의 "수정"을 원본 글로 자리를 찾아 edits.json 에 더하기
 """
 
 import json
@@ -20,7 +22,7 @@ MOBILE = REPO / "mobile"
 CLI = MOBILE / "scripts" / "ui-text" / "cli.mjs"
 
 # apply 는 코드를 바꾼 뒤 tsc 까지 돌려서 오래 걸릴 수 있다
-TIMEOUT_SECONDS = {"data": 60, "save": 30, "apply": 180}
+TIMEOUT_SECONDS = {"data": 60, "save": 30, "apply": 180, "export": 60, "import": 60}
 
 
 def run(command: str, body: dict | None = None) -> dict:

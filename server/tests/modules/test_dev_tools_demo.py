@@ -61,7 +61,13 @@ def test_demo_go_moves_server_clock_and_reset_brings_it_back(monkeypatch):
     monkeypatch.setattr(settings, "dev_clock_enabled", True)
     forgotten = []
     monkeypatch.setattr(store_snapshot_cache, "forget", forgotten.append)
-    monkeypatch.setattr(store_snapshot_cache, "get_snapshot", lambda store_id: SimpleNamespace(computed_at=now_seoul()))
+    asked = {}
+
+    def fake_snapshot(store_id, **options):
+        asked.update(options)
+        return SimpleNamespace(computed_at=now_seoul())
+
+    monkeypatch.setattr(store_snapshot_cache, "get_snapshot", fake_snapshot)
     client = TestClient(create_app())
     try:
         response = client.post("/api/dev_tools/demo_go", json={"store_id": "s001", "at": "2026-11-09T21:35:00+09:00"})
@@ -69,6 +75,7 @@ def test_demo_go_moves_server_clock_and_reset_brings_it_back(monkeypatch):
         target = dt.datetime(2026, 11, 9, 21, 35, tzinfo=SEOUL)
         assert abs((now_seoul() - target).total_seconds()) < 5
         assert forgotten == ["s001"]  # 앞 결과 없이 다시 계산해야 늘 같은 화면이 나온다
+        assert asked == {"wait_for_drafts": False, "polish": False}  # CLOVA 를 기다리지 않고, 문장 다듬기는 기본으로 끈다
 
         assert client.post("/api/dev_tools/demo_clock_reset").status_code == 200
         assert clock_shift() == dt.timedelta(0)

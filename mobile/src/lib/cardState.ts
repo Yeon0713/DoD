@@ -28,6 +28,14 @@ export function resetCardState() {
   state.replace({});
 }
 
+/** 테스트 계정별로 보관했다가 되살릴 때 (lib/testAccount.ts) */
+export function cardStateSnapshot(): Record<string, CardStatus> {
+  return state.read();
+}
+export function restoreCardState(saved: Record<string, CardStatus>) {
+  state.replace(saved);
+}
+
 export function useCardState(): Store {
   return state.useValue();
 }

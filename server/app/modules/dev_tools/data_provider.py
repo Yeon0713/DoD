@@ -123,8 +123,17 @@ def stores() -> list[dict]:
 # ── 분석 ──
 
 
+def _kept_snapshot(store_id: str):
+    """보관해 둔 계산 결과. 한 번도 계산하지 않은 가게만 지금 계산한다.
+
+    분석·알림 타임라인 탭은 보기만 하므로, 10분이 지났다고 다시 계산하거나 CLOVA 를 부르지 않는다.
+    다시 계산은 탭의 '다시 계산' 버튼(recompute)으로 한다.
+    """
+    return store_snapshot_cache.cached_snapshot(store_id) or store_snapshot_cache.get_snapshot(store_id)
+
+
 def analysis(store_id: str) -> dict:
-    snapshot = store_snapshot_cache.get_snapshot(store_id)
+    snapshot = _kept_snapshot(store_id)
     today = snapshot.computed_at.date()
 
     daily: dict[dt.date, dict] = defaultdict(lambda: {"sales": 0, "labor": 0, "profit": 0})
@@ -201,7 +210,7 @@ def analysis(store_id: str) -> dict:
 
 
 def timeline(store_id: str, days_before: int, days_after: int) -> dict:
-    snapshot = store_snapshot_cache.get_snapshot(store_id)
+    snapshot = _kept_snapshot(store_id)
     now = now_seoul()
     if snapshot.plan is None:
         return {"store": {"store_id": store_id, "name": snapshot.store["name"]}, "now": now.isoformat(timespec="minutes"),
@@ -257,6 +266,7 @@ def timeline(store_id: str, days_before: int, days_after: int) -> dict:
     settings_now = snapshot.settings
     return {
         "store": {"store_id": store_id, "name": snapshot.store["name"]},
+        "computed_at": _iso(snapshot.computed_at),  # 보관해 둔 계산의 시각 (화면에 "n시 계산" 으로 보인다)
         "now": now.isoformat(timespec="minutes"),
         "slots": settings_now.slots.model_dump() if settings_now else None,
         "rules": [
@@ -295,7 +305,7 @@ def ai_quality(limit: int) -> dict:
 
 
 def system(boot_id: str) -> dict:
-    from app.modules.auth.test_accounts import TEST_ACCOUNTS
+    from app.modules.auth.test_accounts import all_accounts, where_it_goes
 
     store_ids = read_store_db.list_store_ids()
     return {
@@ -335,9 +345,8 @@ def system(boot_id: str) -> dict:
             for sid in store_ids
         ],
         "test_accounts": [
-            {"login_id": a["login_id"], "password": a["password"], "scenario": a.get("scenario", ""),
-             "linked_store": registered_stores.store_for_owner(f"naver:{a['profile']['id']}")}
-            for a in TEST_ACCOUNTS
+            {"login_id": a["login_id"], "password": a["password"], **where_it_goes(a)}
+            for a in all_accounts()
         ],
     }
 
@@ -364,16 +373,18 @@ def _require_dev_clock() -> None:
         raise ApiError(400, "DEV_CLOCK_OFF", "시연 단계를 열려면 서버 시계를 옮겨야 해요. server/.env 에 DEV_CLOCK_ENABLED=true 를 넣고 서버를 다시 켜 주세요.")
 
 
-def demo_go(store_id: str, at: dt.datetime) -> dict:
+def demo_go(store_id: str, at: dt.datetime, polish: bool = False) -> dict:
     """서버 시계를 at 으로 맞추고 그 가게를 처음부터 다시 계산해 둔다 (앱이 열리자마자 그 시각의 카드를 받게).
 
     반복 불만은 앞 결과를 이어 쓰므로, 보관한 결과를 지우고 계산해야 시계를 앞뒤로 옮겨도 늘 같은 화면이 나온다.
+    CLOVA 답글 초안은 기다리지 않는다 (이미 써 둔 초안은 바로 쓰고, 처음 보는 리뷰의 초안은 뒤에서 써서 채운다).
+    카드 문장 다듬기는 polish=True 일 때만 맡긴다.
     """
     _require_dev_clock()
     real_now = now_seoul() - clock_shift()
     set_clock_shift(to_seoul(at) - real_now)
     store_snapshot_cache.forget(store_id)
-    snapshot = store_snapshot_cache.get_snapshot(store_id)
+    snapshot = store_snapshot_cache.get_snapshot(store_id, wait_for_drafts=False, polish=polish)
     return {"now": now_seoul().isoformat(timespec="minutes"), "clock_shift_minutes": int(clock_shift().total_seconds() // 60),
             "computed_at": _iso(snapshot.computed_at)}
 

@@ -27,6 +27,7 @@ FEATURE_NAMES = {
     "polish:calendar_reason": "달력 이유 다듬기",
     "polish:plan_card": "카드 문구 다듬기",
     "polish:notice": "알림 글 다듬기",
+    "poster_ment": "포스터 멘트 추천",
     "other": "기타",
 }
 

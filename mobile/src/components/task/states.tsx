@@ -28,7 +28,7 @@ export function useWaitStage(waiting: boolean) {
   return waiting ? stage : 0;
 }
 
-/** "새 할 일 확인 중" 옆에서 천천히 도는 아이콘 */
+/** "새로 준비한 것 확인 중" 옆에서 천천히 도는 아이콘 */
 function Spinner() {
   const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -49,7 +49,7 @@ export function Checking() {
   return (
     <View className="h-7 flex-row items-center gap-1 rounded-full bg-brand-soft px-2.5" accessibilityLiveRegion="polite">
       <Spinner />
-      <Text className="text-small text-ink-2">새 할 일 확인 중</Text>
+      <Text className="text-small text-ink-2">새로 준비한 것 확인 중</Text>
     </View>
   );
 }
@@ -70,7 +70,7 @@ function SkeletonCard() {
 /** 06-8 (0.3초부터), 06-8c (3초 넘음), 06-8d (10초 넘음). header는 화면마다 다르다. */
 export function Loading({ stage, onRetry, header }: { stage: number; onRetry: () => void; header: ReactNode }) {
   if (stage === 0) return <>{header}</>;
-  const say = stage === 1 ? "새 할 일을\n확인하고 있어요" : stage === 2 ? "조금만 기다려 주세요\n하나도 빠짐없이 모을게요" : "생각보다 오래 걸려요\n다시 불러와 볼까요?";
+  const say = stage === 1 ? "도나가 새로 준비한 것을 확인하고 있어요" : stage === 2 ? "조금만 기다려 주세요\n하나도 빠짐없이 모을게요" : "생각보다 오래 걸려요\n다시 불러와 볼까요?";
   return (
     <>
       {header}
@@ -105,7 +105,7 @@ export function Offline({ onRetry, header }: { onRetry: () => void; header: Reac
       <View className="flex-1 items-center justify-center">
         <DonnaImage img="q-laptop" size={196} />
         <Text className="mt-3 text-center text-display text-ink">{"인터넷이\n잠시 끊겼어요"}</Text>
-        <Text className="mt-2 text-center text-body text-ink-2">할 일은 그대로 있어요</Text>
+        <Text className="mt-2 text-center text-body text-ink-2">준비해 둔 것은 그대로 있어요</Text>
       </View>
       <PrimaryButton onPress={onRetry}>다시 불러오기</PrimaryButton>
     </>

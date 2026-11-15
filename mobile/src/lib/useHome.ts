@@ -5,13 +5,14 @@ import { USE_MOCK } from "./api";
 import { useCardState } from "./cardState";
 import { devFlags } from "./dev";
 import { drafts, prefs } from "./localStore";
+import { onServerClockChange } from "./storage";
 import { nowFrom } from "./time";
 import { findPersona, findScene } from "@/mocks/personas";
 import { buildTodayCards, type CardScope } from "./todayCards";
 import { useHomeData } from "./useHomeData";
 
 /**
- * 실제 서버 모드에서 시계를 따라가게 하는 값. 1분마다, 그리고 앱으로 돌아올 때 하나씩 오른다.
+ * 실제 서버 모드에서 시계를 따라가게 하는 값. 1분마다, 앱으로 돌아올 때, 서버 시계를 옮겼을 때 하나씩 오른다.
  * 탭 화면은 한 번 뜨면 계속 살아 있어서, 이게 없으면 앱을 켜 둔 채로는 알림 시각이 되어도 새 카드가 나오지 않고
  * 미뤄 둔 카드도 돌아오지 않는다. 고정 샘플 모드는 개발 화면에서 고른 가상 시각만 쓴다.
  */
@@ -23,9 +24,12 @@ function useClockTick(enabled: boolean): number {
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active") setTick((t) => t + 1);
     });
+    // 서버 시계를 옮기면(시험 날짜, 테스트 계정) 바로 다시 읽는다
+    const off = onServerClockChange(() => setTick((t) => t + 1));
     return () => {
       clearInterval(id);
       sub.remove();
+      off();
     };
   }, [enabled]);
   return tick;
@@ -39,10 +43,8 @@ export function useHome() {
   // 개발 화면에서 가상 시각을 바꾸면 다시 계산한다. 모아 보기에서 연 카드가 있으면 그 카드가 온 시각을 지금으로 본다.
   const devNow = f.cardNow ?? f.now;
   const tick = useClockTick(!USE_MOCK);
-  const now = useMemo(() => {
-    void tick; // 시계가 가면 지금을 다시 읽는다
-    return nowFrom(devNow);
-  }, [devNow, tick]);
+  // 시계가 가면(tick) 지금을 다시 읽는다. React Compiler 가 쓰지 않는 값을 의존값에서 빼므로 tick 을 인자로 넘긴다
+  const now = useMemo(() => nowFrom(devNow, tick), [devNow, tick]);
   // 목업 검토: 한 주 모아 보기가 먼저, 아니면 고른 매장 시나리오의 카드만
   const allWeek = USE_MOCK && f.allWeek;
   const persona = USE_MOCK && !allWeek ? findPersona(f.persona) : null;

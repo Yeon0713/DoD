@@ -22,7 +22,7 @@ export function DoneScreen() {
     return (
       <SubPage title="끝낸 일" backHref="/">
         <View className="flex-1 items-center justify-center">
-          <Text className="text-center text-body text-ink-2">{data ? "이 일은 오늘 끝낸 일에 없어요" : ""}</Text>
+          <Text className="text-center text-body text-ink-2">{data ? "오늘 확인한 것에 없어요" : ""}</Text>
         </View>
       </SubPage>
     );

@@ -1,0 +1,3183 @@
+{
+ "_설명": "초옹장(s005) 시험 주간 2026-10-05(월)~10-11(일). 팀 목업 파일을 고치지 않고 서버가 겹쳐 읽는다. 만드는 법과 넣은 것은 make_s005.py, docs/test-week.md",
+ "store_id": "s005",
+ "week": {
+  "start": "2026-10-05",
+  "end": "2026-10-11"
+ },
+ "weather": [
+  {
+   "date": "2026-10-06",
+   "temp_max": 17.0,
+   "temp_min": 11.0,
+   "precip_mm": 18.0
+  },
+  {
+   "date": "2026-10-07",
+   "temp_max": 12.5,
+   "temp_min": 6.0,
+   "precip_mm": 0.0
+  },
+  {
+   "date": "2026-10-08",
+   "temp_max": 9.0,
+   "temp_min": 2.5,
+   "precip_mm": 0.0
+  },
+  {
+   "date": "2026-10-09",
+   "temp_max": 8.0,
+   "temp_min": 1.0,
+   "precip_mm": 0.0
+  },
+  {
+   "date": "2026-10-10",
+   "temp_max": 9.5,
+   "temp_min": 2.0,
+   "precip_mm": 0.0
+  },
+  {
+   "date": "2026-10-11",
+   "temp_max": 9.0,
+   "temp_min": 3.0,
+   "precip_mm": 2.0
+  }
+ ],
+ "events": [
+  {
+   "event_id": 9001,
+   "name": "남양 성지 음악회",
+   "kind": "local_festival",
+   "starts_at": "2026-09-19T11:00:00+09:00",
+   "ends_at": "2026-09-20T20:00:00+09:00",
+   "lat": 37.2088,
+   "lng": 126.8296,
+   "distance_km": 0.3
+  },
+  {
+   "event_id": 9002,
+   "name": "남양 가을 축제",
+   "kind": "local_festival",
+   "starts_at": "2026-10-10T11:00:00+09:00",
+   "ends_at": "2026-10-11T20:00:00+09:00",
+   "lat": 37.2088,
+   "lng": 126.8296,
+   "distance_km": 0.3
+  }
+ ],
+ "orders": [
+  {
+   "order_id": 9000006,
+   "ordered_at": "2026-09-19T11:06:47+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00006",
+   "total_amount": 29000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000011,
+   "ordered_at": "2026-09-19T11:18:20+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 25000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000018,
+   "ordered_at": "2026-09-19T11:27:28+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 11000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000019,
+   "ordered_at": "2026-09-19T11:29:40+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00019",
+   "total_amount": 25000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000005,
+   "ordered_at": "2026-09-19T11:29:41+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000014,
+   "ordered_at": "2026-09-19T11:31:36+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00014",
+   "total_amount": 11000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000003,
+   "ordered_at": "2026-09-19T11:32:35+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000020,
+   "ordered_at": "2026-09-19T11:38:13+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 37000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000012,
+   "ordered_at": "2026-09-19T11:52:32+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 66000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000001,
+   "ordered_at": "2026-09-19T11:53:35+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 51000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000010,
+   "ordered_at": "2026-09-19T12:23:35+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000002,
+   "ordered_at": "2026-09-19T12:27:14+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 60000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    }
+   ]
+  },
+  {
+   "order_id": 9000007,
+   "ordered_at": "2026-09-19T12:30:50+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00007",
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000009,
+   "ordered_at": "2026-09-19T12:33:26+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 58000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000008,
+   "ordered_at": "2026-09-19T12:35:22+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00008",
+   "total_amount": 43000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000004,
+   "ordered_at": "2026-09-19T12:44:28+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000017,
+   "ordered_at": "2026-09-19T12:58:34+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000016,
+   "ordered_at": "2026-09-19T13:22:23+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00016",
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000013,
+   "ordered_at": "2026-09-19T13:25:20+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 46000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000015,
+   "ordered_at": "2026-09-19T13:39:50+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000036,
+   "ordered_at": "2026-09-19T17:13:20+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 9000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000022,
+   "ordered_at": "2026-09-19T17:25:24+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00022",
+   "total_amount": 28000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 1,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000032,
+   "ordered_at": "2026-09-19T17:32:35+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 29000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000035,
+   "ordered_at": "2026-09-19T17:37:49+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000025,
+   "ordered_at": "2026-09-19T17:52:51+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 38000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000031,
+   "ordered_at": "2026-09-19T18:08:21+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00031",
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000024,
+   "ordered_at": "2026-09-19T18:11:43+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 18000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000029,
+   "ordered_at": "2026-09-19T18:37:47+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000021,
+   "ordered_at": "2026-09-19T18:44:12+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000028,
+   "ordered_at": "2026-09-19T19:09:03+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 26000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000030,
+   "ordered_at": "2026-09-19T19:10:05+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000033,
+   "ordered_at": "2026-09-19T19:13:51+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 15000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000027,
+   "ordered_at": "2026-09-19T19:36:24+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000037,
+   "ordered_at": "2026-09-19T19:50:09+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00037",
+   "total_amount": 21000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000034,
+   "ordered_at": "2026-09-19T19:52:14+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00034",
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000023,
+   "ordered_at": "2026-09-19T19:56:46+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 38000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000026,
+   "ordered_at": "2026-09-19T19:58:03+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00026",
+   "total_amount": 36000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000049,
+   "ordered_at": "2026-09-20T11:12:02+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000038,
+   "ordered_at": "2026-09-20T11:21:20+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 42000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000050,
+   "ordered_at": "2026-09-20T11:46:36+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000039,
+   "ordered_at": "2026-09-20T11:48:47+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00039",
+   "total_amount": 15000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000040,
+   "ordered_at": "2026-09-20T12:13:24+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00040",
+   "total_amount": 48000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000043,
+   "ordered_at": "2026-09-20T12:15:14+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 41000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 2,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000052,
+   "ordered_at": "2026-09-20T12:22:53+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 42000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000055,
+   "ordered_at": "2026-09-20T12:49:55+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000057,
+   "ordered_at": "2026-09-20T12:49:59+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 55000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000056,
+   "ordered_at": "2026-09-20T12:51:13+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00056",
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000042,
+   "ordered_at": "2026-09-20T12:52:49+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00042",
+   "total_amount": 51000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000044,
+   "ordered_at": "2026-09-20T12:52:58+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000045,
+   "ordered_at": "2026-09-20T13:00:58+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 24000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000051,
+   "ordered_at": "2026-09-20T13:16:49+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00051",
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000047,
+   "ordered_at": "2026-09-20T13:27:01+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000041,
+   "ordered_at": "2026-09-20T13:45:40+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00041",
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000048,
+   "ordered_at": "2026-09-20T13:46:20+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000046,
+   "ordered_at": "2026-09-20T13:47:16+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00046",
+   "total_amount": 47000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    }
+   ]
+  },
+  {
+   "order_id": 9000053,
+   "ordered_at": "2026-09-20T13:53:39+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000054,
+   "ordered_at": "2026-09-20T13:55:05+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 43000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000074,
+   "ordered_at": "2026-09-20T17:03:57+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 11000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000071,
+   "ordered_at": "2026-09-20T17:18:37+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000064,
+   "ordered_at": "2026-09-20T17:21:37+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00064",
+   "total_amount": 9000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000072,
+   "ordered_at": "2026-09-20T17:22:05+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000061,
+   "ordered_at": "2026-09-20T18:00:12+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000065,
+   "ordered_at": "2026-09-20T18:15:23+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00065",
+   "total_amount": 47000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000058,
+   "ordered_at": "2026-09-20T18:15:27+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 1,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000060,
+   "ordered_at": "2026-09-20T18:17:52+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 28000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000070,
+   "ordered_at": "2026-09-20T18:26:53+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00070",
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000068,
+   "ordered_at": "2026-09-20T18:31:45+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 32000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000063,
+   "ordered_at": "2026-09-20T18:32:53+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 39000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000066,
+   "ordered_at": "2026-09-20T18:41:18+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000062,
+   "ordered_at": "2026-09-20T18:42:12+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 33000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 2,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000059,
+   "ordered_at": "2026-09-20T18:44:59+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 55000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000069,
+   "ordered_at": "2026-09-20T18:59:06+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00069",
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000073,
+   "ordered_at": "2026-09-20T19:24:53+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 51000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000067,
+   "ordered_at": "2026-09-20T19:42:53+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00067",
+   "total_amount": 43000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 1,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000087,
+   "ordered_at": "2026-10-10T11:02:13+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000089,
+   "ordered_at": "2026-10-10T11:06:43+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00089",
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000088,
+   "ordered_at": "2026-10-10T11:26:52+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000080,
+   "ordered_at": "2026-10-10T11:29:39+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00080",
+   "total_amount": 11000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000078,
+   "ordered_at": "2026-10-10T11:30:14+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00078",
+   "total_amount": 26000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000092,
+   "ordered_at": "2026-10-10T11:33:44+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000081,
+   "ordered_at": "2026-10-10T11:33:48+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000077,
+   "ordered_at": "2026-10-10T11:49:27+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000090,
+   "ordered_at": "2026-10-10T12:09:03+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00090",
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000094,
+   "ordered_at": "2026-10-10T12:19:41+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 36000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000084,
+   "ordered_at": "2026-10-10T12:23:36+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00084",
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000082,
+   "ordered_at": "2026-10-10T12:45:01+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 2,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000083,
+   "ordered_at": "2026-10-10T12:53:49+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 44000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000091,
+   "ordered_at": "2026-10-10T12:54:35+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00091",
+   "total_amount": 36000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000076,
+   "ordered_at": "2026-10-10T13:05:29+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 57000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000093,
+   "ordered_at": "2026-10-10T13:08:52+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 70000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 1,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000079,
+   "ordered_at": "2026-10-10T13:27:11+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00079",
+   "total_amount": 45000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    }
+   ]
+  },
+  {
+   "order_id": 9000085,
+   "ordered_at": "2026-10-10T13:34:29+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 18000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000075,
+   "ordered_at": "2026-10-10T13:37:01+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000086,
+   "ordered_at": "2026-10-10T13:58:13+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000107,
+   "ordered_at": "2026-10-10T17:06:54+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00107",
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000109,
+   "ordered_at": "2026-10-10T17:15:12+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000108,
+   "ordered_at": "2026-10-10T17:31:04+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000102,
+   "ordered_at": "2026-10-10T17:46:01+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000100,
+   "ordered_at": "2026-10-10T18:18:48+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 14,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000096,
+   "ordered_at": "2026-10-10T18:20:19+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00096",
+   "total_amount": 46000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 1,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000101,
+   "ordered_at": "2026-10-10T18:33:34+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 40000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000111,
+   "ordered_at": "2026-10-10T18:45:14+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000105,
+   "ordered_at": "2026-10-10T18:45:34+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 2,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000106,
+   "ordered_at": "2026-10-10T19:02:43+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000097,
+   "ordered_at": "2026-10-10T19:08:05+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 21000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000110,
+   "ordered_at": "2026-10-10T19:12:28+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00110",
+   "total_amount": 11000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000095,
+   "ordered_at": "2026-10-10T19:12:37+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00095",
+   "total_amount": 23000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000098,
+   "ordered_at": "2026-10-10T19:24:54+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00098",
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000104,
+   "ordered_at": "2026-10-10T19:37:31+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 16000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 2,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000103,
+   "ordered_at": "2026-10-10T19:48:59+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000099,
+   "ordered_at": "2026-10-10T19:55:00+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000130,
+   "ordered_at": "2026-10-11T11:20:36+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 47000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000117,
+   "ordered_at": "2026-10-11T11:23:56+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 2,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000116,
+   "ordered_at": "2026-10-11T11:25:47+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 33000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000123,
+   "ordered_at": "2026-10-11T11:47:45+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 27000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000125,
+   "ordered_at": "2026-10-11T11:50:53+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 47000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    }
+   ]
+  },
+  {
+   "order_id": 9000128,
+   "ordered_at": "2026-10-11T11:56:55+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 62000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 2,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000112,
+   "ordered_at": "2026-10-11T11:57:26+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 33000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000127,
+   "ordered_at": "2026-10-11T11:57:40+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 52000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000120,
+   "ordered_at": "2026-10-11T12:04:19+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 50000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000115,
+   "ordered_at": "2026-10-11T12:10:39+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 42000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 2,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000124,
+   "ordered_at": "2026-10-11T12:14:32+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 19000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000113,
+   "ordered_at": "2026-10-11T12:26:24+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000114,
+   "ordered_at": "2026-10-11T12:54:19+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000119,
+   "ordered_at": "2026-10-11T12:57:54+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 39000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000122,
+   "ordered_at": "2026-10-11T13:03:55+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 51000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000129,
+   "ordered_at": "2026-10-11T13:21:35+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 58000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 2,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000118,
+   "ordered_at": "2026-10-11T13:31:36+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00118",
+   "total_amount": 12000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000121,
+   "ordered_at": "2026-10-11T13:40:06+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 45000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 2,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000126,
+   "ordered_at": "2026-10-11T13:49:26+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000131,
+   "ordered_at": "2026-10-11T13:57:38+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00131",
+   "total_amount": 32000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    }
+   ]
+  },
+  {
+   "order_id": 9000147,
+   "ordered_at": "2026-10-11T17:05:03+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00147",
+   "total_amount": 37000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000134,
+   "ordered_at": "2026-10-11T17:13:41+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 43000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000145,
+   "ordered_at": "2026-10-11T17:14:42+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 45000,
+   "items": [
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 2,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000135,
+   "ordered_at": "2026-10-11T17:43:58+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 15000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    }
+   ]
+  },
+  {
+   "order_id": 9000140,
+   "ordered_at": "2026-10-11T18:00:33+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00140",
+   "total_amount": 71000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 2,
+     "unit_price": 18000
+    },
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 2,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000139,
+   "ordered_at": "2026-10-11T18:20:19+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 31000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 2,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 1,
+     "quantity": 1,
+     "unit_price": 11000
+    }
+   ]
+  },
+  {
+   "order_id": 9000137,
+   "ordered_at": "2026-10-11T18:51:58+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 1,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 18,
+     "quantity": 1,
+     "unit_price": 2000
+    }
+   ]
+  },
+  {
+   "order_id": 9000144,
+   "ordered_at": "2026-10-11T19:00:23+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 19000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000141,
+   "ordered_at": "2026-10-11T19:04:43+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 34000,
+   "items": [
+    {
+     "menu_id": 2,
+     "quantity": 2,
+     "unit_price": 11000
+    },
+    {
+     "menu_id": 12,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  },
+  {
+   "order_id": 9000148,
+   "ordered_at": "2026-10-11T19:05:17+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 18000,
+   "items": [
+    {
+     "menu_id": 8,
+     "quantity": 1,
+     "unit_price": 18000
+    }
+   ]
+  },
+  {
+   "order_id": 9000138,
+   "ordered_at": "2026-10-11T19:05:37+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00138",
+   "total_amount": 17000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    }
+   ]
+  },
+  {
+   "order_id": 9000136,
+   "ordered_at": "2026-10-11T19:09:39+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 41000,
+   "items": [
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    },
+    {
+     "menu_id": 15,
+     "quantity": 2,
+     "unit_price": 4000
+    }
+   ]
+  },
+  {
+   "order_id": 9000132,
+   "ordered_at": "2026-10-11T19:21:37+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 30000,
+   "items": [
+    {
+     "menu_id": 10,
+     "quantity": 1,
+     "unit_price": 15000
+    },
+    {
+     "menu_id": 13,
+     "quantity": 1,
+     "unit_price": 7000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000143,
+   "ordered_at": "2026-10-11T19:22:40+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 20000,
+   "items": [
+    {
+     "menu_id": 4,
+     "quantity": 1,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000142,
+   "ordered_at": "2026-10-11T19:53:05+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00142",
+   "total_amount": 9000,
+   "items": [
+    {
+     "menu_id": 7,
+     "quantity": 1,
+     "unit_price": 9000
+    }
+   ]
+  },
+  {
+   "order_id": 9000146,
+   "ordered_at": "2026-10-11T19:55:22+09:00",
+   "channel": "delivery",
+   "customer_key": "cx_00146",
+   "total_amount": 58000,
+   "items": [
+    {
+     "menu_id": 5,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 2,
+     "unit_price": 12000
+    },
+    {
+     "menu_id": 11,
+     "quantity": 1,
+     "unit_price": 8000
+    },
+    {
+     "menu_id": 16,
+     "quantity": 2,
+     "unit_price": 8000
+    }
+   ]
+  },
+  {
+   "order_id": 9000133,
+   "ordered_at": "2026-10-11T19:56:14+09:00",
+   "channel": "hall",
+   "customer_key": null,
+   "total_amount": 22000,
+   "items": [
+    {
+     "menu_id": 6,
+     "quantity": 1,
+     "unit_price": 10000
+    },
+    {
+     "menu_id": 3,
+     "quantity": 1,
+     "unit_price": 12000
+    }
+   ]
+  }
+ ],
+ "reviews": [
+  {
+   "review_id": 900001,
+   "order_id": 14853,
+   "customer_key": "c5_0104",
+   "written_at": "2026-09-06T19:40:00+09:00",
+   "rating": 5,
+   "content": "들깨옹심이 늘 먹던 그 맛이에요. 다음 달에도 또 시킬게요!",
+   "complaint_type": null
+  },
+  {
+   "review_id": 900002,
+   "order_id": null,
+   "customer_key": null,
+   "written_at": "2026-10-05T19:10:00+09:00",
+   "rating": 2,
+   "content": "국물이 너무 짜요. 예전 맛이 아니네요.",
+   "complaint_type": "taste"
+  },
+  {
+   "review_id": 900003,
+   "order_id": null,
+   "customer_key": null,
+   "written_at": "2026-10-06T12:40:00+09:00",
+   "rating": 2,
+   "content": "칼국수 면이 다 퍼졌어요. 맛이 변했어요.",
+   "complaint_type": "taste"
+  },
+  {
+   "review_id": 900004,
+   "order_id": null,
+   "customer_key": null,
+   "written_at": "2026-10-06T18:30:00+09:00",
+   "rating": 1,
+   "content": "옹심이가 덜 익었고 국물도 싱거워요.",
+   "complaint_type": "taste"
+  }
+ ],
+ "reservations": [
+  {
+   "external_id": "naver-1001",
+   "kind": "RESERVATION",
+   "at": "2026-10-06T12:00:00+09:00",
+   "people": 4,
+   "name": "김*진",
+   "memo": "창가 자리 부탁드려요",
+   "status": "CONFIRMED"
+  },
+  {
+   "external_id": "naver-1002",
+   "kind": "RESERVATION",
+   "at": "2026-10-08T18:30:00+09:00",
+   "people": 15,
+   "name": "이*호",
+   "memo": "부서 회식이에요. 수육 미리 준비 부탁드려요",
+   "status": "REQUESTED"
+  },
+  {
+   "external_id": "naver-1003",
+   "kind": "GROUP_ORDER",
+   "at": "2026-10-09T11:30:00+09:00",
+   "people": 20,
+   "name": "박*연",
+   "memo": "포장 단체 주문 (초계국수 10, 장칼국수 10)",
+   "status": "CONFIRMED"
+  },
+  {
+   "external_id": "naver-1004",
+   "kind": "RESERVATION",
+   "at": "2026-11-20T18:00:00+09:00",
+   "people": 12,
+   "name": "최*아",
+   "memo": "동창 모임이에요",
+   "status": "REQUESTED"
+  }
+ ]
+}

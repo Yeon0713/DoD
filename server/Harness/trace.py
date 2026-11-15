@@ -4,9 +4,12 @@
 CLOVA 호출 자체(토큰, 비용, 통과/버림)는 기존 clova_usage_log.record_call 로도 남겨 개발자 대시보드 'AI 비용'에 보인다.
 
 저장 위치: server/db/app_data/harness_trace.db (db/app_data 는 git 에 올라가지 않는다)
-kind: llm(CLOVA 호출), tool(조회 도구), submit(제출과 판정), fallback(물러나기), cache(캐시에서 꺼냄), end(끝)
+kind: start(시작, name = 맡은 일 id), llm(CLOVA 호출), tool(조회 도구), submit(제출과 판정), fallback(물러나기),
+      cache(캐시에서 꺼냄), end(끝)
+기존 서버와 음성 백엔드(server/voice)가 같은 파일에 쓴다. 개발자 대시보드 '에이전트' 탭이 recent_runs 로 둘 다 읽는다.
 """
 
+import datetime as dt
 import json
 import sqlite3
 import threading
@@ -70,3 +73,44 @@ def steps_of(run_id: str) -> list[dict]:
             "SELECT * FROM steps WHERE run_id = ? OR parent_run_id = ? ORDER BY id", (run_id, run_id)
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+RUNNING_WINDOW_SECONDS = 300  # 끝난 줄 없이 이보다 오래 조용한 실행은 '멈춤'으로 본다 (서버가 꺼졌거나 오류)
+
+
+def _outcome(rows: list[dict]) -> str:
+    """실행 하나의 결과: accepted(에이전트 통과) | cache | fallback(기존 단일 호출로 물러남) | failed | running."""
+    for row in reversed(rows):
+        if row["kind"] == "cache":
+            return "cache"
+        if row["kind"] == "end" and row["name"] == "accepted":
+            return "accepted"
+        if row["kind"] == "fallback":
+            return "fallback" if row["name"] == "ok" else "failed"
+    return "running"
+
+
+def recent_runs(limit: int = 100, scan_rows: int = 5000) -> list[dict]:
+    """최근 실행들 (최근 것 먼저). 실행마다 에이전트, 가게, 맡은 일, 시작·마지막 시각, CLOVA 호출 수, 결과."""
+    with _db() as conn:
+        rows = [dict(r) for r in conn.execute("SELECT * FROM steps ORDER BY id DESC LIMIT ?", (scan_rows,)).fetchall()]
+    by_run: dict[str, list[dict]] = {}
+    for row in reversed(rows):
+        by_run.setdefault(row["run_id"], []).append(row)
+    now_shifted, now_real = now_seoul(), dt.datetime.now(now_seoul().tzinfo)
+    runs = []
+    for run_id, steps in by_run.items():
+        start = next((s for s in steps if s["kind"] == "start"), steps[0])
+        outcome = _outcome(steps)
+        last_at = dt.datetime.fromisoformat(steps[-1]["at"])
+        if outcome == "running" and min(abs((now_shifted - last_at).total_seconds()), abs((now_real - last_at).total_seconds())) > RUNNING_WINDOW_SECONDS:
+            outcome = "stalled"
+        rejected = sum(1 for s in steps if s["kind"] == "submit" and '"accepted": false' in (s["detail"] or ""))
+        runs.append({
+            "run_id": run_id, "parent_run_id": start["parent_run_id"], "agent": start["agent"], "store_id": start["store_id"],
+            "task": start["name"] if start["kind"] == "start" else None, "started_at": steps[0]["at"], "last_at": steps[-1]["at"],
+            "llm_calls": sum(1 for s in steps if s["kind"] == "llm"), "tools": sum(1 for s in steps if s["kind"] == "tool"),
+            "rejections": rejected, "outcome": outcome, "last_step": f"{steps[-1]['kind']} {steps[-1]['name'] or ''}".strip(),
+        })
+    runs.sort(key=lambda r: r["last_at"], reverse=True)
+    return runs[:limit]

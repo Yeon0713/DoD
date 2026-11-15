@@ -11,6 +11,9 @@ GET  /api/dev_tools/ai_quality?limit=50     CLOVA 통과·버림, 최근 호출
 GET  /api/dev_tools/system                  설정 스위치, 키 유무, 계산 시간, 테스트 계정
 POST /api/dev_tools/recompute?store_id=     그 가게 다시 계산
 POST /api/dev_tools/polish                  문장 다듬기 켜기/끄기 {"enabled": true}
+GET  /api/dev_tools/agents                  에이전트: 하네스 스위치, 지금 도는 실행, 최근 실행, 에이전트별 통계 (기존 서버 + 음성 백엔드)
+GET  /api/dev_tools/agents/run?run_id=      에이전트: 실행 하나의 단계 (supervisor 아래 일꾼 실행 포함)
+POST /api/dev_tools/agents/mode             에이전트: 하네스 ↔ 기존 단일 호출 {"enabled": true}
 GET  /api/dev_tools/demo_steps?store_id=    시연: Figma UC01~UC16 단계 (그 가게 시연 기간에서 찾은 시각과 앱 화면)
 POST /api/dev_tools/demo_go                 시연: 서버 시계를 그 단계 시각으로 맞추고 가게를 다시 계산 {"store_id", "at"}
 POST /api/dev_tools/demo_clock_reset        시연: 서버 시계를 실제 시각으로
@@ -93,6 +96,21 @@ def recompute(store_id: str | None = STORE):
 @router.post("/polish", summary="문장 다듬기 켜기/끄기")
 def polish(body: PolishSwitch):
     return data_provider.set_polish(body.enabled)
+
+
+@router.get("/agents", summary="에이전트: 스위치, 지금 도는 실행, 최근 실행")
+def agents(limit: int = Query(80, ge=1, le=500)):
+    return data_provider.agents(limit)
+
+
+@router.get("/agents/run", summary="에이전트: 실행 하나의 단계")
+def agent_run(run_id: str):
+    return data_provider.agent_run(run_id)
+
+
+@router.post("/agents/mode", summary="에이전트: 하네스 ↔ 기존 단일 호출")
+def agent_mode(body: PolishSwitch):
+    return data_provider.set_agent_harness(body.enabled)
 
 
 @router.get("/demo_steps", summary="시연: Figma UC01~UC16 단계")

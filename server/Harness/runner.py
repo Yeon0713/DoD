@@ -43,6 +43,7 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
     user = spec.user_message(task, ctx)
     log = partial(trace.record, run_id=ctx.run_id, parent_run_id=ctx.parent_run_id, agent=spec.name, store_id=ctx.store_id)
 
+    log(step=0, kind="start", name=task_id)  # 개발자 대시보드가 '지금 도는 실행'과 맡은 일을 이 줄로 안다
     key = cache_key(spec, task, ctx, system, user)
     cached = cache.get(key)
     if isinstance(cached, Proposal):

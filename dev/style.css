@@ -281,3 +281,14 @@ mark { background: #ffe58a; }
   .ut-nav { position: static; max-height: 240px; }
   .ut-row { grid-template-columns: 1fr; }
 }
+
+/* 에이전트 탭 */
+.mode-switch { display: inline-flex; border: 1px solid var(--line, #e5e5ea); border-radius: 999px; overflow: hidden; }
+.mode-switch button { border: none; background: transparent; padding: 8px 16px; font-size: 13px; cursor: pointer; color: var(--ink-2); }
+.mode-switch button.on { background: var(--brand); color: #fff; font-weight: 600; }
+.tag.run { background: var(--blue-soft); color: var(--blue); animation: pulse 1.4s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.run-steps { margin: 6px 0 4px; padding: 8px 10px; background: var(--surface); border-radius: 8px; font-size: 12px; display: grid; gap: 3px; }
+.run-steps .step { display: grid; grid-template-columns: 34px 64px 150px 1fr; gap: 8px; align-items: baseline; }
+.run-steps .step.child { padding-left: 16px; }
+.run-steps .detail { color: var(--ink-3); word-break: break-all; }

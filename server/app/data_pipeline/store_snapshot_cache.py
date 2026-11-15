@@ -6,6 +6,7 @@
   3. 분석 결과를 계획 엔진 입력으로 바꿔 계획 엔진을 돌린다          (analysis_to_plan_inputs, make_plan)
      리뷰 답글은 지금 한 주(지난 토요일 11:00 ~ 이번 토요일 11:00) 몫만 남긴다  (keep_this_week_replies)
   4. 이번 한 주 리뷰 답글과 재주문 인사 초안을 CLOVA X 로 쓴다         (review_reply_writer)
+     에이전트 하네스 스위치(AGENT_HARNESS_ENABLED)가 켜져 있으면 대신 계산 뒤 에이전트가 뒤에서 쓴다 (Harness/app_bridge.py)
   5. 화면에 보일 문장을 CLOVA X 로 다듬도록 뒤에서 맡긴다            (sentence_polish)
   6. 메뉴판 카드마다 배치안을 붙인다(CLOVA 는 뒤에서, 실패해도 나머지는 그대로)  (menu_board.for_snapshot)
 
@@ -36,6 +37,7 @@ from app.data_pipeline.reservation_effect import apply_reservations
 from app.data_pipeline.analysis_to_plan_inputs import build_plan_inputs, build_store_settings, to_calendar_cell
 from app.data_pipeline.db_rows_to_analysis_inputs import build_analysis_inputs, inputs_until
 from app.menu_board.for_snapshot import MenuBoardCard, snapshot_menu_boards
+from app.menu_board.menu_candidates import candidates_in_background
 from app.planner.data_shapes import CalendarCell, PlanResult, Review, StoreSettings
 from app.planner.priority_and_grouping import group_into_batches
 from app.planner.rule_review_reply import current_reply_week_start
@@ -43,6 +45,7 @@ from app.planner.make_plan import make_plan
 from app.planner.notification_time_helpers import KOREAN_WEEKDAYS
 from app.review_reply_writer.write_reply_with_clova import cached_drafts, write_drafts
 from app.sentence_polish import polish_with_clova
+from Harness import app_bridge
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +156,11 @@ def reset_store(store_id: str) -> None:
         _snapshots.pop(store_id, None)
 
 
+def clear_snapshots() -> None:
+    """보관한 계산 결과만 지운다 (고친 설정은 둔다). 에이전트 하네스 스위치를 바꿀 때 (Harness/app_bridge.py)."""
+    _snapshots.clear()
+
+
 def clear_all() -> None:
     """보관한 결과와 고친 설정을 모두 지운다 (테스트용)."""
     _snapshots.clear()
@@ -191,13 +199,16 @@ def _compute(
         ]
         by_id = {review.review_id: review for review in reviews}
         menus = [menu.name for menu in inputs.menus]
-        if wait_for_drafts:
+        if app_bridge.enabled():  # 에이전트 하네스: 써 둔 초안만 채우고, 나머지는 계산 뒤 에이전트가 뒤에서 쓴다
+            draft_texts = app_bridge.known_drafts(store_id, [item.plan_id for item in reply_items])
+        elif wait_for_drafts:
             draft_texts = write_drafts(reply_items, by_id, store, menus)
         else:
             draft_texts = cached_drafts(reply_items, by_id, store)
             later = (reply_items, by_id, store, menus)
 
-    menu_boards = snapshot_menu_boards(store_id, store, inputs, settings, plan, parts.planner_calendar)
+    lookup = app_bridge.menu_lookup if app_bridge.enabled() else candidates_in_background
+    menu_boards = snapshot_menu_boards(store_id, store, inputs, settings, plan, parts.planner_calendar, lookup)
 
     snapshot = StoreSnapshot(
         store_id=store_id,
@@ -220,6 +231,8 @@ def _compute(
         _request_polish(snapshot)
     if later:
         _draft_executor.submit(_fill_drafts, snapshot, later)
+    if plan is not None:
+        app_bridge.start(snapshot, [item.plan_id for item in reply_items])  # 스위치가 꺼져 있으면 아무것도 하지 않는다
     seconds = (now_seoul() - started).total_seconds()
     _compute_seconds[store_id] = round(seconds, 2)
     logger.info("%s 가게 분석과 계획을 %.1f초 만에 다시 계산했다", store_id, seconds)

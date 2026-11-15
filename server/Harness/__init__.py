@@ -1,7 +1,8 @@
 """도나 에이전트 하네스. 설계: jh/agent_harness_design.md
 
 LLM 기능을 CLOVA X function calling 에이전트로 돌리는 틀이다. 기존 서버 코드(app/)는 import 만 하고 고치지 않는다.
-아직 실제 서버 흐름(스냅샷 계산, 화면 API)에는 연결되지 않았다. 연결은 store_snapshot_cache 등에서 아래 입구를 부르면 된다.
+v0.2.0 음성 백엔드(server/voice/)가 runner, 검사기, LLM 검토(reply_critic)를 가져다 쓴다 (docs/v0.2.0-voice-agent-handoff.md).
+기존 서버 흐름(스냅샷 계산, 화면 API)에는 아직 연결되지 않았다. 연결은 store_snapshot_cache 등에서 아래 입구를 부르면 된다.
 
 입구
   runner.run(spec, task, ctx)                      에이전트 하나를 돌려 Proposal(제안) 또는 None 을 받는다

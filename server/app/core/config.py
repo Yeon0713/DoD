@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     naver_login_callback_url: str = "http://localhost:8000/api/auth/naver/callback"
     # 카드 문장을 CLOVA X 로 사장님 말투로 다듬을지. 키가 없으면 켜 있어도 원래 문장을 쓴다
     sentence_polish_enabled: bool = True
+    # LLM 기능(답글 초안, 반복 불만, 메뉴판·포스터)을 에이전트 하네스(server/Harness)로 돌릴지. false 면 예전 단일 호출만.
+    # 개발자 대시보드 '에이전트' 탭에서 바꿀 수 있다 (서버를 다시 켜면 이 값으로 돌아간다)
+    agent_harness_enabled: bool = False
 
     # 네이버 클라우드 API (콘솔 > 마이페이지 > 인증키 관리). SENS 도 이 키를 쓴다.
     ncloud_access_key: str = ""

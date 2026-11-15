@@ -274,7 +274,7 @@ export interface PosterSuggest {
   situation: { date: string; kind: "EVENT" | "GAME" | "WEEKEND"; title: string; lines: string[]; weather_tags: string[] };
   ments: PosterMent[];
   /** CLOVA: CLOVA 가 쓴 멘트, BASIC: CLOVA 를 못 써서 정해 둔 문장 */
-  ment_source: "CLOVA" | "BASIC";
+  ment_source: "CLOVA" | "BASIC" | "AGENT"; // AGENT: 에이전트 하네스(campaign_agent)가 낸 문구
   styles: { key: string; label: string }[];
   has_logo: boolean;
   engine: { engine: string; ready: boolean; note: string };

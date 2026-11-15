@@ -1,0 +1,89 @@
+{
+  "store": {
+    "id": "s001",
+    "name": "도나네 곱창 역삼점",
+    "category": "곱창",
+    "open_time": "10:00",
+    "close_time": "22:00",
+    "closed_weekdays": [],
+    "location": {"lat": 37.5006, "lng": 127.0364},
+    "timezone": "Asia/Seoul",
+    "menus": [
+      {"id": "m1", "name": "곱창전골", "price": 32000},
+      {"id": "m2", "name": "소곱창 구이", "price": 18000},
+      {"id": "m3", "name": "막창 구이", "price": 17000},
+      {"id": "m4", "name": "볶음밥", "price": 3000}
+    ],
+    "facts": []
+  },
+  "reservations": [
+    {"id": "rs_0031", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 2},
+    {"id": "rs_0032", "starts_at": "2026-11-17T18:30:00+09:00", "party_size": 4},
+    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 12},
+    {"id": "rs_0034", "starts_at": "2026-11-17T19:30:00+09:00", "party_size": 3},
+    {"id": "rs_0035", "starts_at": "2026-11-17T20:00:00+09:00", "party_size": 2}
+  ],
+  "events": [
+    {"id": "ev_0007", "name": "강남 페스티벌", "starts_at": "2026-11-17T18:00:00+09:00", "ends_at": "2026-11-17T22:00:00+09:00", "distance_m": 800}
+  ],
+  "games": [
+    {"id": "gm_0012", "name": "한국시리즈", "sport": "baseball", "starts_at": "2026-11-17T18:30:00+09:00", "ends_at": "2026-11-17T21:30:00+09:00"},
+    {"id": "gm_0013", "name": "한국시리즈", "sport": "baseball", "starts_at": "2026-11-20T18:30:00+09:00", "ends_at": "2026-11-20T21:30:00+09:00"}
+  ],
+  "weather": [
+    {"date": "2026-11-17", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": 3, "temp_max": 12},
+    {"date": "2026-11-18", "rain_mm": 0.0, "rain_chance": 0.2, "temp_min": 2, "temp_max": 11},
+    {"date": "2026-11-19", "rain_mm": 12.0, "rain_chance": 0.8, "temp_min": 4, "temp_max": 9},
+    {"date": "2026-11-20", "rain_mm": 0.0, "rain_chance": 0.3, "temp_min": 1, "temp_max": 10},
+    {"date": "2026-11-21", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": 0, "temp_max": 11},
+    {"date": "2026-11-22", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": 1, "temp_max": 12},
+    {"date": "2026-11-23", "rain_mm": 0.0, "rain_chance": 0.2, "temp_min": 2, "temp_max": 11}
+  ],
+  "reviews": [
+    {"id": "rv_0412", "platform": "baemin", "rating": 1, "order_channel": "delivery", "written_at": "2026-11-16T21:40:00+09:00",
+     "text": "배달이 너무 늦어서 다 식어서 왔어요. 곱창은 맛있는데 아쉽네요."},
+    {"id": "rv_0405", "platform": "baemin", "rating": 2, "order_channel": "delivery", "written_at": "2026-11-13T19:20:00+09:00",
+     "text": "주문하고 한 시간 넘게 기다렸어요. 배달이 너무 늦어요."},
+
+    {"id": "rv_0409", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-16T12:10:00+09:00",
+     "text": "곱창전골 국물이 진하고 정말 맛있어요. 사장님도 친절하세요."},
+    {"id": "rv_0410", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-16T19:05:00+09:00",
+     "text": "곱창전골 국물이 끝내줘요. 양도 넉넉해서 좋았어요."},
+    {"id": "rv_0408", "platform": "naver", "rating": 4, "order_channel": "hall", "written_at": "2026-11-15T20:30:00+09:00",
+     "text": "소곱창 구이가 고소하고 맛있어요. 직원분들이 친절해요."},
+
+    {"id": "rv_0390", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-10T12:30:00+09:00",
+     "text": "국물이 진해서 해장으로 최고예요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "해장으로 찾아 주셔서 감사해요!", "reply_posted_at": "2026-11-10T15:00:00+09:00"},
+    {"id": "rv_0391", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-10T19:40:00+09:00",
+     "text": "곱창전골 국물 맛이 정말 좋아요. 친절하게 맞아 주셨어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "좋게 봐 주셔서 감사해요!", "reply_posted_at": "2026-11-11T10:00:00+09:00"},
+    {"id": "rv_0392", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-11T13:00:00+09:00",
+     "text": "양이 푸짐하고 국물도 맛있어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "맛있게 드셔 주셔서 감사해요!", "reply_posted_at": "2026-11-11T16:00:00+09:00"},
+    {"id": "rv_0393", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-11T20:10:00+09:00",
+     "text": "직원분들이 친절해서 기분 좋게 먹었어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "기분 좋게 드셨다니 기뻐요!", "reply_posted_at": "2026-11-12T10:00:00+09:00"},
+    {"id": "rv_0394", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-12T18:50:00+09:00",
+     "text": "국물이 깊고 진해요. 또 올게요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "또 뵐게요, 감사해요!", "reply_posted_at": "2026-11-13T10:00:00+09:00"},
+    {"id": "rv_0395", "platform": "baemin", "rating": 4, "order_channel": "delivery", "written_at": "2026-11-12T21:00:00+09:00",
+     "text": "막창 구이가 맛있고 양도 넉넉해요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "맛있게 드셔 주셔서 감사해요!", "reply_posted_at": "2026-11-13T10:30:00+09:00"},
+    {"id": "rv_0396", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-13T12:20:00+09:00",
+     "text": "전골 국물이 생각나서 또 왔어요. 사장님이 친절하세요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "다시 찾아 주셔서 감사해요!", "reply_posted_at": "2026-11-13T15:00:00+09:00"},
+    {"id": "rv_0397", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-14T19:30:00+09:00",
+     "text": "국물 맛이 좋아서 밥까지 볶아 먹었어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "볶음밥까지 드셨다니 기뻐요!", "reply_posted_at": "2026-11-15T10:00:00+09:00"},
+    {"id": "rv_0398", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-14T20:45:00+09:00",
+     "text": "친절하고 깔끔해서 좋았어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "좋게 봐 주셔서 감사해요!", "reply_posted_at": "2026-11-15T10:10:00+09:00"},
+    {"id": "rv_0399", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-15T13:10:00+09:00",
+     "text": "곱창전골 국물이 진하고 양도 푸짐해요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "맛있게 드셔 주셔서 감사해요!", "reply_posted_at": "2026-11-15T16:00:00+09:00"},
+    {"id": "rv_0400", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-16T13:30:00+09:00",
+     "text": "볶음밥까지 맛있게 잘 먹었어요.", "reply_status": "posted", "reply_by": "owner",
+     "reply_text": "감사해요, 또 들러 주세요!", "reply_posted_at": "2026-11-16T16:00:00+09:00"}
+  ]
+}

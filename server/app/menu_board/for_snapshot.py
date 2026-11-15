@@ -13,7 +13,7 @@ import logging
 
 from app.analysis.input_shapes import AnalysisInputs
 from app.data_pipeline.menu_original_order import original_menu_order
-from app.menu_board.assemble import MenuBoardCard, assemble_menu_board_cards
+from app.menu_board.assemble import Lookup, MenuBoardCard, assemble_menu_board_cards
 from app.menu_board.menu_candidates import candidates_in_background
 from app.planner.data_shapes import CalendarCell, PlanResult, StoreSettings
 
@@ -27,8 +27,10 @@ def snapshot_menu_boards(
     settings: StoreSettings | None,
     plan: PlanResult | None,
     calendar: list[CalendarCell],
+    lookup: Lookup = candidates_in_background,
 ) -> dict[str, MenuBoardCard]:
-    """메뉴판 카드 plan_id → 배치안. store_row: DB 가게 정보 한 줄. calendar: calendar_for_planner 결과."""
+    """메뉴판 카드 plan_id → 배치안. store_row: DB 가게 정보 한 줄. calendar: calendar_for_planner 결과.
+    lookup: LLM 후보 조회. 기본은 기존 단일 호출, 에이전트 하네스를 켜면 campaign_agent 결과 (Harness/app_bridge.menu_lookup)."""
     if plan is None:
         logger.info("%s 가게: 계획 엔진 결과가 없어 메뉴판 배치안을 만들지 않았다", store_id)
         return {}
@@ -39,7 +41,7 @@ def snapshot_menu_boards(
     try:
         store = {"store_id": store_id, "name": store_row["name"], "category": store_row["category"]}
         original = original_menu_order(store_id)
-        return assemble_menu_board_cards(calendar, cards, inputs, settings, store, original, candidates_in_background)
+        return assemble_menu_board_cards(calendar, cards, inputs, settings, store, original, lookup)
     except Exception:
         logger.exception("%s 가게: 메뉴판 배치안 계산이 실패해 배치안을 비워 둔다", store_id)
         return {}

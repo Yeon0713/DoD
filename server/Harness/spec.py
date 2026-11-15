@@ -9,12 +9,11 @@ import datetime as dt
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Literal, Protocol
 
 import httpx
 
 from app.core.clova import Post
-from app.data_pipeline.store_snapshot_cache import StoreSnapshot
 from Harness.grounding import Evidence
 from Harness.trace import new_run_id
 
@@ -34,11 +33,19 @@ class CallBudget:
             return True
 
 
+class StoreView(Protocol):
+    """하네스가 가게 데이터에서 꼭 쓰는 것. 기존 StoreSnapshot 과 음성 백엔드(voice)의 가게 보기가 모두 맞춘다.
+    그 밖의 칸은 각 에이전트의 도구가 읽는다."""
+
+    store_id: str
+    store: dict  # 가게 한 줄. name, category 를 쓴다
+
+
 @dataclass
 class RunContext:
     """실행 맥락. 도구는 여기서만 가게를 알아서, 모델이 다른 가게를 조회할 수 없다."""
 
-    snapshot: StoreSnapshot
+    snapshot: StoreView
     now: dt.datetime
     run_id: str = field(default_factory=new_run_id)
     parent_run_id: str | None = None

@@ -18,6 +18,7 @@ from app.core.error_response import ApiError
 from app.data_pipeline import store_logo
 from app.data_pipeline.store_selection import store_id_param
 from app.data_pipeline.store_snapshot_cache import get_snapshot
+from Harness import app_bridge
 from app.poster_ai import image_engine, jobs, ment, situation
 from app.poster_ai.prompt import STYLES, PosterChoice
 
@@ -39,7 +40,12 @@ def engine():
 @router.get("/suggest", summary="상황과 멘트 추천")
 def suggest(plan_id: str, store_id: str = Depends(store_id_param)):
     s = _situation(store_id, plan_id)
-    ments, source = ment.suggest(s)
+    # 에이전트 하네스를 켰고 campaign_agent 가 이미 멘트를 냈으면 그것을 쓴다 (메뉴판과 주제가 맞는다). 아니면 기존 단일 호출
+    agent_ments = app_bridge.poster_ments(store_id, plan_id) if app_bridge.enabled() else None
+    if agent_ments:
+        ments, source = [ment.Ment(**m) for m in agent_ments], "AGENT"
+    else:
+        ments, source = ment.suggest(s)
     return {
         "situation": {"date": s.date.isoformat(), "kind": s.kind, "title": s.title, "lines": s.lines(), "weather_tags": s.weather_tags},
         "ments": [m.to_dict() for m in ments],

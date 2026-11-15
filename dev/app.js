@@ -874,6 +874,118 @@ function onUiTextInput(target) {
 
 // ── 탭 전환, 버튼 ──
 
+// ── 탭: 에이전트 (server/Harness) ──
+// 하네스 ↔ 기존 단일 호출 스위치, 지금 도는 실행, 에이전트별 통계, 최근 실행(단계 펼치기).
+// 기록은 기존 서버와 음성 백엔드가 같이 쓰는 harness_trace.db 에서 읽어 두 서버의 실행이 모두 보인다. 이 탭을 보는 동안 5초마다 새로 그린다.
+
+const agentView = { open: new Set(), steps: {} };
+const OUTCOME_TAG = {
+  accepted: '<span class="tag ok">통과</span>',
+  cache: '<span class="tag">캐시</span>',
+  fallback: '<span class="tag warn">단일 호출로 물러남</span>',
+  failed: '<span class="tag bad">실패</span>',
+  running: '<span class="tag run">도는 중</span>',
+  stalled: '<span class="tag bad">멈춤</span>',
+};
+const KIND_KO = { start: "시작", llm: "CLOVA", tool: "도구", submit: "제출", end: "끝", fallback: "물러나기", cache: "캐시" };
+
+function agentStepsHtml(runId) {
+  const steps = agentView.steps[runId];
+  if (!steps) return `<div class="run-steps"><span class="muted">불러오는 중…</span></div>`;
+  if (!steps.length) return `<div class="run-steps"><span class="muted">기록이 없어요</span></div>`;
+  return `<div class="run-steps">${steps.map((s) => `<div class="step ${s.run_id !== runId ? "child" : ""}">
+      <span class="mono muted">${s.step}</span><span>${esc(KIND_KO[s.kind] ?? s.kind)}</span>
+      <span class="mono">${esc(s.run_id !== runId ? `↳ ${s.agent}` : s.name ?? "")}${s.run_id !== runId && s.name ? ` · ${esc(s.name)}` : ""}</span>
+      <span class="detail">${esc(s.detail ?? "")}</span></div>`).join("")}</div>`;
+}
+
+function agentRunRow(r) {
+  const open = agentView.open.has(r.run_id);
+  const seconds = Math.max(0, (new Date(r.last_at) - new Date(r.started_at)) / 1000);
+  return `<div class="call"><div class="call-head">
+      <span class="mono">${esc(time(r.started_at))}</span><b>${esc(r.agent_name)}</b>
+      <span class="tag ${r.server === "음성 백엔드" ? "blue" : "brand"}">${esc(r.server)}</span>
+      ${r.store_id ? `<span class="tag">${esc(r.store_id)}</span>` : ""}
+      ${OUTCOME_TAG[r.outcome] ?? esc(r.outcome)}
+      <span class="muted small mono">${esc(r.task ?? "")}</span>
+      <span class="muted small">CLOVA ${r.llm_calls}번 · 도구 ${r.tools}번 · 거절 ${r.rejections}번 · ${seconds.toFixed(1)}초${r.outcome === "running" ? ` · 지금 ${esc(r.last_step)}` : ""}</span>
+      <button class="btn-outline small" data-run="${esc(r.run_id)}">${open ? "단계 접기" : "단계 보기"}</button>
+    </div>${open ? agentStepsHtml(r.run_id) : ""}</div>`;
+}
+
+async function renderAgents() {
+  const a = await api(`${API}/agents?limit=60`);
+  await Promise.all([...agentView.open].map(async (id) => {
+    agentView.steps[id] = (await api(`${API}/agents/run?run_id=${encodeURIComponent(id)}`)).steps;
+  }));
+  const jobs = a.bridge.stores.filter((s) => s.job && s.job.state);
+  const keyNote = a.clova_key ? "" : `<div class="note">CLOVA 키가 없어서 어느 쪽이든 CLOVA 를 부르지 않고 기본 문장을 써요 (server/.env 의 CLOVA_STUDIO_API_KEY).</div>`;
+  return `
+    ${keyNote}
+    <div class="card"><h2>LLM 방식</h2>
+      <div class="control-row"><div><b>${a.enabled ? "에이전트 하네스" : "기존 단일 호출"} 사용 중</b>
+        <div class="desc">하네스: 가게 계산이 끝나면 뒤에서 답글 초안(reply_agent), 반복 불만(complaint_agent), 7일 안 메뉴판·포스터(campaign_agent),
+        충돌 있는 알림 묶음(supervisor)을 돌려요. 에이전트가 실패하면 기존 단일 호출로 물러나요.<br>
+        단일 호출: 예전처럼 답글 초안(write_drafts), 메뉴 후보(menu_candidates), 포스터 멘트(ment.suggest)를 한 번씩 물어요.<br>
+        바꾸면 보관한 계산을 지우고 다음 요청부터 바뀐 방식으로 계산해요. 서버를 다시 켜면 .env 의 AGENT_HARNESS_ENABLED 로 돌아가요.
+        음성 백엔드(:8100)는 따로 VOICE_AGENT_* 로 켜고 꺼요.</div></div>
+        <div class="control-actions"><div class="mode-switch">
+          <button data-agent-mode="on" class="${a.enabled ? "on" : ""}">에이전트 하네스</button>
+          <button data-agent-mode="off" class="${a.enabled ? "" : "on"}">기존 단일 호출</button>
+        </div></div></div>
+    </div>
+    <div class="stats">
+      ${stat("지금 도는 실행", num(a.running.length), "끝난 줄 없이 5분 안에 움직인 실행", true)}
+      ${stat("최근 실행", num(a.recent.length), "supervisor 아래 일꾼 실행은 단계 보기에")}
+      ${stat("에이전트 통과", num(a.stats.reduce((n, s) => n + s.accepted, 0)), "검사를 통과한 제안")}
+      ${stat("물러남·실패", num(a.stats.reduce((n, s) => n + s.fallback + s.failed, 0)), "기존 단일 호출 또는 기본 문장")}
+    </div>
+    <div class="card"><h2>지금 도는 에이전트</h2>
+      ${a.running.length ? a.running.map(agentRunRow).join("") : '<div class="empty">지금 도는 에이전트가 없어요</div>'}
+    </div>
+    ${jobs.length ? `<div class="card"><h2>기존 서버 가게별 작업 <span class="muted">가게 계산이 끝날 때마다 뒤에서 한 번씩</span></h2>
+      ${table(["가게", "상태", "진행", "지금", "제안 (에이전트 / 물러남)", "충돌 조율"], jobs.map((s) => [
+        esc(s.store_id),
+        esc({ queued: "기다림", running: "도는 중", done: "끝", failed: "실패" }[s.job.state] ?? s.job.state),
+        `<span class="num">${s.job.done ?? 0} / ${s.job.total ?? 0}</span>`,
+        `<span class="mono small">${esc(s.job.current ?? "-")}</span>`,
+        `<span class="num">${s.proposals.filter((p) => p.source === "AGENT").length} / ${s.proposals.filter((p) => p.source !== "AGENT").length}</span>`,
+        s.batches.length ? s.batches.map((b) => `${esc(b.slot_at.slice(5))} ${esc(b.headline ?? "")} <span class="muted small">${esc(b.conflicts.join("; "))}</span>`).join("<br>") : '<span class="muted">충돌 없음</span>',
+      ]))}</div>` : ""}
+    <div class="card"><h2>에이전트별 <span class="muted">최근 기록 기준</span></h2>
+      ${table(["에이전트", "서버", "실행", "통과", "캐시", "물러남", "실패", "도는 중", "통과율", "실행당 CLOVA"], a.stats.map((s) => [
+        `${esc(s.agent_name)} <span class="muted small mono">${esc(s.agent)}</span>`, esc(s.server),
+        `<span class="num">${s.runs}</span>`, `<span class="num">${s.accepted}</span>`, `<span class="num">${s.cache}</span>`,
+        `<span class="num">${s.fallback}</span>`, `<span class="num">${s.failed}</span>`, `<span class="num">${s.running}</span>`,
+        `<div class="bar-track" style="width:100px"><div class="bar-fill ok" style="width:${pct(s.accepted + s.cache, s.runs)}%"></div></div><span class="muted small">${pct(s.accepted + s.cache, s.runs)}%</span>`,
+        `<span class="num">${s.runs ? (s.llm_calls / s.runs).toFixed(1) : "-"}</span>`,
+      ]))}
+    </div>
+    <div class="card"><h2>최근 실행</h2>
+      ${a.recent.length ? a.recent.map(agentRunRow).join("") : '<div class="empty">아직 에이전트를 돌린 기록이 없어요</div>'}
+    </div>`;
+}
+
+async function onAgentsClick(button) {
+  const { agentMode, run } = button.dataset;
+  if (agentMode) {
+    button.disabled = true;
+    await api(`${API}/agents/mode`, { method: "POST", body: JSON.stringify({ enabled: agentMode === "on" }) });
+    toast(agentMode === "on" ? "에이전트 하네스로 바꿈" : "기존 단일 호출로 바꿈");
+  }
+  if (run) {
+    if (agentView.open.has(run)) agentView.open.delete(run);
+    else agentView.open.add(run);
+  }
+  content.innerHTML = await renderAgents();
+}
+
+// 에이전트 탭을 보는 동안 5초마다 조용히 새로 그린다 (지금 도는 실행이 바뀌는 것을 보려고)
+setInterval(async () => {
+  if (state.tab !== "agents" || document.hidden) return;
+  try { content.innerHTML = await renderAgents(); } catch {}
+}, 5000);
+
 const RENDER = {
   demo: renderDemo,
   status: renderStatus,
@@ -881,6 +993,7 @@ const RENDER = {
   analysis: renderAnalysis,
   timeline: renderTimeline,
   ai: renderAi,
+  agents: renderAgents,
   controls: renderControls,
   uitext: renderUiText,
 };
@@ -953,6 +1066,15 @@ content.addEventListener("click", async (e) => {
   if (button.closest("[data-uitext]")) {
     try {
       await onUiTextClick(button);
+    } catch (error) {
+      toast(error.message);
+      button.disabled = false;
+    }
+    return;
+  }
+  if (button.dataset.agentMode || button.dataset.run) {
+    try {
+      await onAgentsClick(button);
     } catch (error) {
       toast(error.message);
       button.disabled = false;

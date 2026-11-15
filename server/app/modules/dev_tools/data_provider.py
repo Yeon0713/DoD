@@ -316,6 +316,7 @@ def system(boot_id: str) -> dict:
             "DEV_TOOLS_ENABLED": settings.dev_tools_enabled,
             "DEV_CLOCK_ENABLED": settings.dev_clock_enabled,
             "SENTENCE_POLISH_ENABLED": settings.sentence_polish_enabled,
+            "AGENT_HARNESS_ENABLED": settings.agent_harness_enabled,
             "DEMO_STORE_DATA": settings.demo_store_data,
         },
         "values": {
@@ -363,6 +364,54 @@ def recompute(store_id: str) -> dict:
 def set_polish(enabled: bool) -> dict:
     settings.sentence_polish_enabled = enabled
     return {"SENTENCE_POLISH_ENABLED": enabled}
+
+
+# ── 에이전트 (server/Harness) ──
+
+AGENT_NAMES = {
+    "reply_agent": "리뷰 응대", "reply_agent_rewrite": "답글 다시 쓰기", "complaint_agent": "반복 불만 원인",
+    "campaign_agent": "상황 마케팅", "supervisor": "알림 묶음 조율",
+    "voice_reply": "음성 · 답글", "voice_improve_tip": "음성 · 고칠 점", "voice_intent": "음성 · 뜻 판정",
+}
+
+
+def agents(limit: int) -> dict:
+    """하네스 스위치, 기존 서버의 가게별 에이전트 작업, 실행 기록(기존 서버와 음성 백엔드가 같이 쓰는 harness_trace.db)."""
+    from Harness import app_bridge, trace
+
+    runs = trace.recent_runs(limit=500)
+    for run in runs:
+        run["agent_name"] = AGENT_NAMES.get(run["agent"], run["agent"])
+        run["server"] = "음성 백엔드" if run["agent"].startswith("voice") else "기존 서버"
+    top = [r for r in runs if not r["parent_run_id"]]  # supervisor 아래 일꾼 실행은 단계 보기에서 함께 보인다
+    stats: dict[str, dict] = {}
+    for run in top:
+        row = stats.setdefault(run["agent"], {"agent": run["agent"], "agent_name": run["agent_name"], "server": run["server"], "runs": 0,
+                                              "accepted": 0, "cache": 0, "fallback": 0, "failed": 0, "running": 0, "llm_calls": 0})
+        row["runs"] += 1
+        row["llm_calls"] += run["llm_calls"]
+        key = run["outcome"] if run["outcome"] in ("accepted", "cache", "fallback", "running") else "failed"
+        row[key] += 1
+    return {
+        "enabled": app_bridge.enabled(),
+        "clova_key": bool(settings.clova_studio_api_key),
+        "bridge": app_bridge.status(),
+        "running": [r for r in runs if r["outcome"] == "running"],
+        "recent": top[:limit],
+        "stats": sorted(stats.values(), key=lambda r: -r["runs"]),
+    }
+
+
+def agent_run(run_id: str) -> dict:
+    from Harness import trace
+
+    return {"run_id": run_id, "steps": trace.steps_of(run_id)}
+
+
+def set_agent_harness(enabled: bool) -> dict:
+    from Harness import app_bridge
+
+    return app_bridge.set_enabled(enabled)
 
 
 # ── 시연 (Figma UC01~UC16) ──

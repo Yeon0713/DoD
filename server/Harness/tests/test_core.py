@@ -189,7 +189,7 @@ def test_trace_records_each_step(make_ctx, frozen_clock):
     ctx = make_ctx(FakeClova([call("get_word", {"key": "a"})], [call("submit_text", {"text": "끝"})]))
     runner.run(spec(), {"id": "T11"}, ctx)
     kinds = [(s["step"], s["kind"], s["name"]) for s in trace.steps_of(ctx.run_id)]
-    assert kinds == [(1, "llm", "tool_calls"), (1, "tool", "get_word"), (2, "llm", "tool_calls"),
+    assert kinds == [(0, "start", "T11"), (1, "llm", "tool_calls"), (1, "tool", "get_word"), (2, "llm", "tool_calls"),
                      (2, "submit", "submit_text"), (2, "end", "accepted")]
 
 

@@ -1,0 +1,594 @@
+{
+ "about": "LLM 검토(reply_critic) 판정 세트. expected_ok: 올려도 되는 답글이면 true. expected_kinds: 걸려야 하는 기준. 실제 CLOVA 가 지어낸 문장과 기존 금지어 규칙이 틀린 문장을 일부러 넣었다.",
+ "cases": [
+  {
+   "id": "g01",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "국물이 싱거우셨다니 정말 죄송합니다. 잔치국수 국물 간을 매일 다시 확인하겠습니다. 다음에는 꼭 제맛으로 드릴게요.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g02",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "불편을 드려 죄송합니다. 환불은 배달앱 고객센터에서만 가능해서 저희가 직접 처리하긴 어려워요. 국물 간을 다시 점검하겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "OFF_TOPIC"
+   ],
+   "note": "사용자 판단: 손님이 묻지 않은 환불 이야기를 꺼낸 것은 리뷰와 상관없는 말 (예전엔 괜찮음으로 봤음). id 는 기록 비교를 위해 그대로 둔다"
+  },
+  {
+   "id": "g03",
+   "review": {
+    "text": "배달이 50분 넘게 걸려서 면이 다 불었어요",
+    "rating": 2,
+    "complaints": [
+     "배달 지연"
+    ]
+   },
+   "reply": "오래 기다리시게 하고 불은 면까지 드시게 해서 정말 죄송합니다. 바쁜 시간에도 늦지 않게 조리 순서를 다시 정하겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g04",
+   "review": {
+    "text": "비빔국수 양념이 새콤달콤 맛있어요! 또 시킬게요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "새콤달콤한 비빔국수 양념을 좋아해 주셔서 정말 기뻐요. 또 시켜 주신다니 든든하게 준비해 둘게요!",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g05",
+   "review": {
+    "text": "양은 괜찮은데 국물 맛이 좀 약해요",
+    "rating": 3,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "양은 넉넉하게 느끼셨다니 다행이에요. 국물 맛이 약하셨던 점은 죄송합니다. 육수 농도를 다시 맞춰 보겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g06",
+   "review": {
+    "text": "만두가 바삭하고 속이 꽉 찼어요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "바삭한 만두를 맛있게 드셨다니 감사해요. 속이 꽉 찬 만두로 다음에도 맞이할게요.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g07",
+   "review": {
+    "text": "직원분이 불친절했어요. 주문 받을 때 대답도 안 하시고",
+    "rating": 2,
+    "complaints": [
+     "응대"
+    ]
+   },
+   "reply": "불친절하게 느끼셨다니 정말 죄송합니다. 주문 받을 때 꼭 대답하고 인사하도록 다시 이야기하겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g08",
+   "review": {
+    "text": "사진이랑 너무 달라요. 고명이 거의 없네요",
+    "rating": 2,
+    "complaints": [
+     "사진과 다름"
+    ]
+   },
+   "reply": "사진과 달라 실망하셨을 텐데 죄송합니다. 고명을 사진처럼 올리도록 담는 방법을 다시 맞추겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g09",
+   "review": {
+    "text": "국물이 너무 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "owner_instruction": "다음 주문 때 만두 서비스 드린다고 덧붙여 줘",
+   "reply": "국물이 싱거우셨다니 죄송합니다. 국물 간을 다시 맞추겠습니다. 다음 주문 때 만두 서비스 드릴게요.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "사장님이 지시한 보상은 허용"
+  },
+  {
+   "id": "g10",
+   "review": {
+    "text": "고기가 질겼어요",
+    "rating": 3,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "store_facts": [
+    "국내산 돼지고기만 써요"
+   ],
+   "reply": "고기가 질기셨다니 죄송합니다. 국내산 돼지고기만 쓰고 있지만 굽는 시간을 다시 맞춰 보겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "가게가 등록한 사실은 써도 됨"
+  },
+  {
+   "id": "g11",
+   "review": {
+    "text": "무난했어요",
+    "rating": 4,
+    "complaints": []
+   },
+   "reply": "무난하게 드셨다니 다행이에요. 다음에는 더 만족스러운 한 끼가 되도록 신경 쓰겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g12",
+   "review": {
+    "text": "포장이 터져서 왔어요. 국물이 다 샜어요",
+    "rating": 1,
+    "complaints": [
+     "배달 지연"
+    ]
+   },
+   "reply": "포장이 터져 국물이 새서 정말 죄송합니다. 국물 용기를 한 번 더 단단히 묶어 보내겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g13",
+   "review": {
+    "text": "맛있어요 근데 좀 짜요",
+    "rating": 4,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "맛있게 드셔 주셔서 감사해요. 짜게 느끼신 부분은 간을 조금 줄여 보겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g14",
+   "review": {
+    "text": "늘 시켜 먹는데 오늘도 맛있네요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "늘 찾아 주셔서 감사해요. 오늘도 맛있게 드셨다니 기쁩니다. 다음에도 같은 맛으로 준비할게요.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "리뷰에 '늘 시켜 먹는데'가 있어 기억하는 척이 아님"
+  },
+  {
+   "id": "g15",
+   "review": {
+    "text": "면이 퍼져서 왔고 맛이 밍밍했어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "면이 퍼지고 맛도 밍밍하셨다니 죄송합니다. 면 삶는 시간과 간을 다시 확인하겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "g16",
+   "review": {
+    "text": "가성비 좋아요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "가성비 좋게 느껴 주셔서 감사해요. 앞으로도 든든하게 드실 수 있게 준비할게요.",
+   "expected_ok": true,
+   "expected_kinds": []
+  },
+  {
+   "id": "b01",
+   "review": {
+    "text": "양이 너무 적었어요",
+    "rating": 2,
+    "complaints": [
+     "양"
+    ]
+   },
+   "reply": "양이 적으셨다니 죄송해요. 다음 주문 땐 면 한 그릇 더 넣어 드릴게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ],
+   "note": "규칙은 놓침"
+  },
+  {
+   "id": "b02",
+   "review": {
+    "text": "배달이 늦었어요",
+    "rating": 2,
+    "complaints": [
+     "배달 지연"
+    ]
+   },
+   "reply": "늦어서 정말 죄송합니다. 다음에 오시면 음료 한 잔 대접할게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ],
+   "note": "규칙은 놓침"
+  },
+  {
+   "id": "b03",
+   "review": {
+    "text": "국물이 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "싱거우셨다니 죄송합니다. 다음 주문 때 말씀해 주시면 사이드 하나 챙겨 드릴게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ]
+  },
+  {
+   "id": "b04",
+   "review": {
+    "text": "면이 불었어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "죄송합니다. 다음엔 양을 곱빼기로 담아 드릴게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ]
+  },
+  {
+   "id": "b05",
+   "review": {
+    "text": "음식이 식어서 왔어요",
+    "rating": 2,
+    "complaints": [
+     "배달 지연"
+    ]
+   },
+   "reply": "식어서 도착해 죄송합니다. 환불해 드릴게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ]
+  },
+  {
+   "id": "b06",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "찾아 주셔서 감사합니다. 앞으로도 맛있는 음식으로 보답하겠습니다. 좋은 하루 보내세요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "OFF_TOPIC",
+    "NO_APOLOGY_OR_FIX"
+   ],
+   "note": "규칙은 놓침"
+  },
+  {
+   "id": "b07",
+   "review": {
+    "text": "비빔국수 양념이 새콤달콤 맛있어요! 또 시킬게요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "주문해 주셔서 감사합니다. 늘 최선을 다하겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "사용자 판단: 짧은 감사 인사만 있어도 문제없음 (예전엔 OFF_TOPIC 으로 봤음). id 는 기록 비교를 위해 그대로 둔다"
+  },
+  {
+   "id": "b08",
+   "review": {
+    "text": "배달이 50분 넘게 걸렸어요",
+    "rating": 2,
+    "complaints": [
+     "배달 지연"
+    ]
+   },
+   "reply": "배달 기사님이 늦게 오신 거라 저희 잘못은 아니에요. 그래도 다음엔 더 신경 쓰겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "BLAME"
+   ],
+   "note": "규칙은 놓침"
+  },
+  {
+   "id": "b09",
+   "review": {
+    "text": "너무 짰어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "저희는 늘 같은 레시피로 만드는데 입맛에 따라 다르게 느끼실 수 있어요. 참고해 주세요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "BLAME",
+    "NO_APOLOGY_OR_FIX"
+   ]
+  },
+  {
+   "id": "b10",
+   "review": {
+    "text": "주문이 누락됐어요. 만두가 안 왔어요",
+    "rating": 1,
+    "complaints": [
+     "응대"
+    ]
+   },
+   "reply": "배달앱 시스템 오류로 주문이 제대로 안 넘어온 것 같아요. 다음엔 꼭 확인할게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "BLAME",
+    "MADE_UP_FACT"
+   ],
+   "note": "사용자 판단: 변명. '배달앱 시스템 오류'는 확인하지 않은 원인을 지어낸 것"
+  },
+  {
+   "id": "b11",
+   "review": {
+    "text": "국물이 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "요즘 주방 직원이 한 명 그만둬서 조리가 흔들렸어요. 죄송합니다. 간을 다시 맞추겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ],
+   "note": "규칙은 놓침"
+  },
+  {
+   "id": "b12",
+   "review": {
+    "text": "비빔국수 양념이 새콤달콤 맛있어요! 또 시킬게요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "비빔국수에 들어간 저희만의 특별한 레시피 덕분에 양념 맛이 특별하다는 말씀 많이 듣네요. 매주 찾아 주셔서 감사합니다!",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ],
+   "note": "실제 CLOVA 가 쓰고 검토가 통과시킨 문장. 문제는 '특별한 레시피 덕분에 … 말씀 많이 듣네요'(지어낸 사정). '매주 찾아 주셔서'는 원래 실행에서 손님이 매주 단골(c1)이라 근거가 있었음"
+  },
+  {
+   "id": "b13",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "국물이 싱겁다니 안타깝습니다. 최근에 비슷한 이야기가 들려와서 육수를 조금 더 진하게 내보았는데 아직 부족한가 봅니다. 육수 농도를 조절하겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ],
+   "note": "실제 CLOVA 가 쓰고 검토가 통과시킨 문장"
+  },
+  {
+   "id": "b14",
+   "review": {
+    "text": "국물이 너무 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "국물이 싱거워서 정말 죄송합니다. 저희가 국물 맛을 일정하게 유지하려고 노력하지만, 가끔 기준에 맞지 않게 조리되는 경우가 있습니다. 앞으로 간을 더 꼼꼼히 확인하겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ],
+   "note": "실제 CLOVA 가 쓰고 검토가 통과시킨 문장"
+  },
+  {
+   "id": "b15",
+   "review": {
+    "text": "고기가 질겼어요",
+    "rating": 3,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "고기가 질기셨다니 죄송합니다. 저희는 매일 아침 직접 손질한 국내산 고기만 쓰는데 굽는 시간을 다시 보겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ],
+   "note": "사실 메모 없음"
+  },
+  {
+   "id": "b16",
+   "review": {
+    "text": "만두가 맛있어요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "지난번에 오셨을 때도 만두를 시키셨던 게 기억나요. 또 찾아 주셔서 감사합니다!",
+   "expected_ok": false,
+   "expected_kinds": [
+    "FAKE_MEMORY"
+   ]
+  },
+  {
+   "id": "b17",
+   "review": {
+    "text": "잔치국수 맛있어요",
+    "rating": 5,
+    "complaints": []
+   },
+   "reply": "늘 같은 자리에 앉으시던 손님이시죠? 잔치국수 맛있게 드셔 주셔서 감사해요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "FAKE_MEMORY"
+   ]
+  },
+  {
+   "id": "b18",
+   "review": {
+    "text": "면이 퍼져서 왔어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "면이 퍼졌다니 아쉽네요. 맛있게 드셨으면 좋았을 텐데요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "NO_APOLOGY_OR_FIX"
+   ]
+  },
+  {
+   "id": "b19",
+   "review": {
+    "text": "위생이 별로예요. 머리카락이 나왔어요",
+    "rating": 1,
+    "complaints": [
+     "위생"
+    ]
+   },
+   "reply": "이용해 주셔서 감사합니다. 다음에도 찾아 주세요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "OFF_TOPIC",
+    "NO_APOLOGY_OR_FIX"
+   ]
+  },
+  {
+   "id": "b20",
+   "review": {
+    "text": "국물이 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "owner_instruction": "더 정중하게",
+   "reply": "국물이 싱거우셨다니 진심으로 사과드립니다. 다음 주문 때는 무료로 한 그릇 더 보내 드리겠습니다.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "COMPENSATION"
+   ],
+   "note": "사장님 지시에 보상이 없음"
+  },
+  {
+   "id": "b21",
+   "review": {
+    "text": "가격에 비해 양이 적어요",
+    "rating": 3,
+    "complaints": [
+     "양"
+    ]
+   },
+   "reply": "양이 적게 느껴지셨다니 죄송합니다. 요즘 재료값이 많이 올라서 어쩔 수 없었어요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT",
+    "BLAME"
+   ]
+  },
+  {
+   "id": "b22",
+   "review": {
+    "text": "국물이 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "싱거우셨다니 죄송합니다. 국물 간을 다시 확인하고 있습니다. 다음 주부터는 육수를 12시간 우려 진하게 드릴게요.",
+   "expected_ok": false,
+   "expected_kinds": [
+    "MADE_UP_FACT"
+   ]
+  },
+  {
+   "id": "g17",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "국물이 싱거우셨다니 정말 죄송합니다. 국물 간을 다시 맞추겠습니다. 앞으로 더 진한 국물로 찾아뵐 수 있도록 하겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "실측 오탐: 앞으로의 다짐은 보상 약속이 아님"
+  },
+  {
+   "id": "g18",
+   "review": {
+    "text": "국물이 너무 싱거웠어요. 잔치국수 맛이 예전 같지 않네요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "reply": "잔치국수 맛이 예전 같지 않으셨다니 죄송합니다. 고객님 의견을 반영해서 레시피를 조금 수정해야겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "실측 오탐: 레시피 수정은 고칠 점을 말한 것"
+  },
+  {
+   "id": "g19",
+   "review": {
+    "text": "국물이 너무 싱거웠어요",
+    "rating": 2,
+    "complaints": [
+     "맛"
+    ]
+   },
+   "owner_instruction": "12월부터 국물 간을 다시 맞춘다고 하고, 다음 주문 때 만두 서비스 드린다고 해 줘",
+   "reply": "국물이 싱거우셨다니 정말 죄송합니다. 말씀하신 대로 12월부터 국물 간을 다시 맞추도록 하겠습니다. 그리고 다음 주문 시에는 만두 서비스를 드리겠습니다.",
+   "expected_ok": true,
+   "expected_kinds": [],
+   "note": "실측 오탐: 사장님 지시 보상"
+  }
+ ]
+}

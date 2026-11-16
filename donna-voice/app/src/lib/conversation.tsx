@@ -2,7 +2,7 @@ import { usePathname, useRouter } from 'expo-router';
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 
-import { api, Home, Turn } from './api';
+import { api, Home, Notice, Turn } from './api';
 import { useSession } from './session';
 import { voice } from './voice';
 
@@ -25,10 +25,12 @@ type Convo = {
   voiceState: VoiceState;
   /** 받아쓴 말 (듣기 알약에 보인다) */
   heard: string;
-  /** 지금 말하려면 "도나야"로 시작해야 하는지. 칩에 부르는 말을 붙여 보여 주는 데 쓴다 */
-  callFirst: boolean;
-  /** 사장님이 말했거나 칩을 눌렀을 때 */
-  send: (text: string, source?: 'voice' | 'chip', confidence?: number, addressed?: boolean) => void;
+  /** 도나 알림 (D-05, D-23). 소리 한 번만 내고 말하지 않는다 */
+  notice: Notice | null;
+  /** 사장님이 말했을 때 (v0.2.1부터 칩이 없다) */
+  send: (text: string, confidence?: number, addressed?: boolean) => void;
+  /** 손으로 한 일을 마치고 돌아왔을 때 도나가 한마디 한다 (D-02: 인스타를 연결했어요) */
+  announce: (headline: string, text: string) => void;
   reloadHome: () => void;
   /** 읽기를 멈추고 홈으로 */
   reset: () => void;
@@ -81,7 +83,6 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   const open = turnOpen || followOpen;
   const openRef = useRef(open);
   openRef.current = open;
-  const callFirst = micOn && !turnOpen;
   const voiceState: VoiceState = busy ?? (micOn ? (open ? 'listening' : 'standby') : 'mic_off');
 
   const closeFollow = useCallback(() => {
@@ -183,7 +184,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       const finished = await speakAll(t.say, my);
       if (finished) openFollow();
       // 한 단계를 다 말하고 사장님이 가만히 있으면 다음 단계로 넘어간다. 물어본 뒤에는 대답을 기다린다.
-      const briefingStep = t.type === 'answer' && t.briefing && !t.expects_reply && /^(briefing|permission)\./.test(t.intent);
+      const briefingStep = t.type === 'answer' && !!t.briefing && !t.expects_reply && !/^detail\./.test(t.intent);
       if (finished && briefingStep) {
         clearAuto();
         autoTimer.current = setTimeout(() => {
@@ -201,16 +202,17 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    (text: string, source: 'voice' | 'chip' = 'voice', confidence = 1, addressed = false) => {
+    (text: string, confidence = 1, addressed = false) => {
       const clean = text.trim();
       if (!clean) return;
       clearAuto();
+      setNotice(null);
       const my = ++token.current;
       voice.cancelSpeech();
       setHeard(clean);
       setBusy('waiting');
       api
-        .turn({ text: clean, source, confidence, addressed, lastTurnId: lastTurnId.current })
+        .turn({ text: clean, confidence, addressed, lastTurnId: lastTurnId.current })
         .then((t) => {
           if (token.current === my) void handle(t);
         })
@@ -283,7 +285,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       }
       const addressed = called || justCalled.current;
       justCalled.current = false;
-      send(text, 'voice', confidence, addressed);
+      send(text, confidence, addressed);
     },
     [answerCall, openFollow, send],
   );
@@ -323,9 +325,45 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     (window as any).__donna = { say: (text: string) => hearRef.current(text, 0.9), reset };
   }, [reset]);
 
+  // 도나 알림: 홈에 있고 도나가 조용할 때 몇 초마다 본다. 알림 소리만 한 번 내고, 말은 사장님이 물을 때 한다.
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const quiet = busy === null && pathname === '/';
+  useEffect(() => {
+    if (!quiet) return;
+    const id = setInterval(() => {
+      api
+        .notices()
+        .then(({ notices }) => {
+          if (!notices.length) return;
+          setNotice(notices[notices.length - 1]);
+          setTurn(null);
+          if (soundRef.current) voice.chime();
+          reloadHome();
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(id);
+  }, [quiet, reloadHome]);
+
+  const announce = useCallback(
+    (headline: string, text: string) => {
+      const my = ++token.current;
+      const t: Turn = {
+        turn_id: `local_${Date.now()}`, type: 'answer', intent: 'local.announce', owner_said: null, briefing: null,
+        headline, say: [{ text, caption: null, focus: [] }], cards: [], expects_reply: false,
+      };
+      setNotice(null);
+      setCaption(null);
+      setFocus([]);
+      setTurn(t);
+      void speakAll(t.say, my).then((done) => done && openFollow());
+    },
+    [speakAll, openFollow],
+  );
+
   const value = useMemo<Convo>(
-    () => ({ home, homeFailed, turn, caption, focus, progress, voiceState, heard, callFirst, send, reloadHome, reset }),
-    [home, homeFailed, turn, caption, focus, progress, voiceState, heard, callFirst, send, reloadHome, reset],
+    () => ({ home, homeFailed, turn, caption, focus, progress, voiceState, heard, notice, send, announce, reloadHome, reset }),
+    [home, homeFailed, turn, caption, focus, progress, voiceState, heard, notice, send, announce, reloadHome, reset],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -1,7 +1,6 @@
-// 대화 줄기를 이루는 부품: 게이지바, 사장님 말풍선, 도나의 말, 할 수 있는 말 칩.
-import { Pressable, StyleSheet, View } from 'react-native';
+// 대화 줄기를 이루는 부품: 게이지바, 사장님 말풍선, 도나의 말. (v0.2.1부터 할 수 있는 말 칩은 없다)
+import { StyleSheet, View } from 'react-native';
 
-import { useLayout } from '@/lib/layout';
 import { colors, radius, space } from '@/theme/tokens';
 
 import { Txt } from './Txt';
@@ -49,30 +48,6 @@ export function DonnaLine({ headline, caption }: { headline: string; caption?: s
   );
 }
 
-/**
- * 지금 할 수 있는 말. 따옴표가 든 테두리 칩이고, 내가 보낼 말이라 오른쪽에 둔다. 눌러도 된다.
- * call: 부르고 나서 해야 하는 말이면 "도나야, "를 붙여 보여 준다 (칩에 적힌 대로 말하면 되게).
- */
-export function Chips({ items, onPick, call }: { items: string[]; onPick: (text: string) => void; call?: boolean }) {
-  const { scale } = useLayout();
-  if (!items.length) return null;
-  return (
-    <View style={styles.chips}>
-      {items.map((t) => (
-        <Pressable
-          key={t}
-          onPress={() => onPick(t)}
-          accessibilityRole="button"
-          accessibilityLabel={`${call ? '도나야, ' : ''}${t} 라고 말하기`}
-          style={({ pressed }) => [styles.chip, { height: Math.round(44 * scale) }, pressed && { backgroundColor: colors.brandSoft }]}
-        >
-          <Txt variant="label" color="ink2">{`“${call ? '도나야, ' : ''}${t}”`}</Txt>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   gauge: { flexDirection: 'row', gap: space.s4 },
   gaugeCell: { flex: 1, height: 6, borderRadius: 3 },
@@ -88,14 +63,4 @@ const styles = StyleSheet.create({
   line: { flexDirection: 'row', gap: space.s12 },
   bar: { width: 3, borderRadius: 2, backgroundColor: colors.brand },
   lineText: { flex: 1, gap: space.s4 },
-  chips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'flex-end', gap: space.s8 },
-  chip: {
-    paddingHorizontal: space.s16,
-    borderRadius: radius.pill,
-    backgroundColor: colors.paper,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

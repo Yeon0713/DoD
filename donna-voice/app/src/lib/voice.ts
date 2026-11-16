@@ -36,6 +36,28 @@ export const voice = {
   sttSupported: () => !!RecognitionCtor,
   ttsSupported: () => !!win?.speechSynthesis,
 
+  /** 도나 알림 소리 한 번 (D-05, D-23). 말은 하지 않는다. */
+  chime() {
+    const Ctx = win?.AudioContext ?? win?.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      const ctx = new Ctx();
+      [880, 1175].forEach((freq: number, i: number) => {
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+        o.frequency.value = freq;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + i * 0.14);
+        g.gain.exponentialRampToValueAtTime(0.15, ctx.currentTime + i * 0.14 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.14 + 0.3);
+        o.connect(g).connect(ctx.destination);
+        o.start(ctx.currentTime + i * 0.14);
+        o.stop(ctx.currentTime + i * 0.14 + 0.32);
+      });
+    } catch {
+      // 소리를 못 내도 화면의 알림은 그대로 보인다
+    }
+  },
+
   /** 마이크를 써도 되는지 묻는다 (E-03 → E-04). */
   async requestMic(): Promise<MicResult> {
     if (!RecognitionCtor || !win?.navigator?.mediaDevices?.getUserMedia) return 'unsupported';

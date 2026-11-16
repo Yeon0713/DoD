@@ -5,6 +5,7 @@ import { Image, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, Ellipse, RadialGradient, Stop } from 'react-native-svg';
 
+import { media } from '@/lib/api';
 import { useConversation, VoiceState } from '@/lib/conversation';
 import { useLayout } from '@/lib/layout';
 import { useSession } from '@/lib/session';
@@ -132,24 +133,34 @@ function deviceDate() {
   return `${d.getMonth() + 1}월 ${d.getDate()}일 ${DAYS[d.getDay()]}요일`;
 }
 
-/** 위쪽: 왼쪽에 날짜와 그 아래 매장 이름, 오른쪽에 소리. */
+/** 위쪽 (v0.2.1 확정 포맷): 왼쪽에 가게 로고와 매장 이름, 그 아래 날짜. 오른쪽에 소리. 아래에 가게 상태 줄. */
 export function Header() {
   const { home } = useConversation();
   const { sound, setSound } = useSession();
   const { margin, scale, wide, contentMax } = useLayout();
   const insets = useSafeAreaInsets();
   const onHome = usePathname() === '/';
-  // 날짜와 매장 이름은 아래 내용(게이지바, 도나 말의 세로 선, 카드)과 같은 왼쪽 선에서 시작한다.
+  // 로고는 아래 내용(가게 상태 줄, 게이지바, 도나 말의 세로 선, 카드)과 같은 왼쪽 선에서 시작한다.
+  const logo = media(home?.store.logo_url);
+  const box = Math.round(48 * scale);
+  const status = home?.store_status;
   return (
     <View style={[styles.header, { paddingTop: Math.max(insets.top, space.s16) + space.s8, paddingHorizontal: margin }]}>
       <View style={[styles.headerInner, !wide && { maxWidth: contentMax }, wide && !onHome && { maxWidth: 960 }]}>
-      <View style={{ flex: 1, gap: space.s4 }}>
-        <Txt variant="label" color="ink2">
-          {home?.date_label ?? deviceDate()}
-        </Txt>
-        <Txt variant="title" numberOfLines={1}>
-          {home?.store.name ?? ' '}
-        </Txt>
+      <View style={styles.store}>
+        <View style={[styles.logo, { width: box, height: box }]}>
+          {logo ? <Image source={{ uri: logo }} style={{ width: box, height: box }} resizeMode="cover" accessibilityLabel={`${home?.store.name} 로고`} /> : (
+            <Txt variant="title" color="brand">{home?.store.name?.[0] ?? ' '}</Txt>
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          <Txt variant="title" numberOfLines={1}>
+            {home?.store.name ?? ' '}
+          </Txt>
+          <Txt variant="label" color="ink2">
+            {home?.date_label ?? deviceDate()}
+          </Txt>
+        </View>
       </View>
       <Pressable
         onPress={() => setSound(!sound)}
@@ -161,6 +172,27 @@ export function Header() {
         <Icon name={sound ? 'volume' : 'volumeOff'} size={Math.round(24 * scale)} color={sound ? 'ink2' : 'ink3'} />
       </Pressable>
       </View>
+      {status ? (
+        <View style={[styles.statusWrap, !wide && { maxWidth: contentMax }, wide && !onHome && { maxWidth: 960 }]}>
+          <StoreStatus status={status} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** 가게 상태 줄: 점과 "영업 전/영업 중/영업 끝", 여는 시각이나 닫는 시각. 영업시간에서 바로 나온다. */
+export function StoreStatus({ status }: { status: { state: 'before_open' | 'open' | 'closed'; label: string; detail: string } }) {
+  const open = status.state === 'open';
+  return (
+    <View style={styles.status} accessibilityLabel={`${status.label}, ${status.detail}`}>
+      <View style={[styles.statusDot, open ? { backgroundColor: colors.brand } : { borderWidth: 2, borderColor: colors.ink3 }]} />
+      <Txt variant="label" color={open ? 'brand' : 'ink'} style={{ fontFamily: 'NotoSansKR_700Bold' }}>
+        {status.label}
+      </Txt>
+      <Txt variant="label" color="ink2" numberOfLines={1} style={{ flexShrink: 1 }}>
+        {status.detail}
+      </Txt>
     </View>
   );
 }
@@ -216,8 +248,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: space.s16, borderRadius: radius.pill,
     backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line,
   },
-  header: { paddingBottom: space.s24, alignItems: 'center' },
+  header: { paddingBottom: space.s16, alignItems: 'center' },
   headerInner: { width: '100%', flexDirection: 'row', alignItems: 'center' },
+  store: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: space.s12 },
+  logo: { borderRadius: radius.tile, borderWidth: 1, borderColor: colors.line, overflow: 'hidden', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surface },
+  statusWrap: { width: '100%', marginTop: space.s12 },
+  status: { flexDirection: 'row', alignItems: 'center', gap: space.s8, paddingVertical: 10, paddingHorizontal: space.s16, borderRadius: radius.tile, backgroundColor: colors.brandSoft },
+  statusDot: { width: 10, height: 10, borderRadius: 5 },
   // 아이콘(24)의 오른쪽 끝이 오른쪽 여백 선에 오도록, 손이 닿는 칸(44)을 10만큼 밖으로 뺀다.
   soundBtn: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: -10 },
   tabs: { backgroundColor: colors.surface, borderTopWidth: 1, borderTopColor: colors.line, paddingTop: space.s8 },

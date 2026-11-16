@@ -1,26 +1,33 @@
-"""도나 v0.2.0 백엔드 목업.
+"""도나 v0.2.1 백엔드 목업.
 
-계약은 docs/v0.2.0-voice-agent-handoff.md 를 따른다. 에이전트 대신 규칙과 고정 데이터로 답한다.
+계약은 docs/v0.2.0-voice-agent-handoff.md (17장 v0.2.1 화면 포맷)를 따른다. 에이전트 대신 규칙과 고정 데이터로 답한다.
+화면과 문장은 Figma `v0.2.1 : 디자인개선`의 하루 시나리오(D-01 ~ D-33)와 알바생 앱(F-01 ~ F-09)을 따른다.
 주소: http://localhost:8100  (기존 서버 8000 과 겹치지 않는다)
 """
 from __future__ import annotations
 
 import datetime as dt
 import re
+from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from . import briefing as br
-from .data import KST, STATE, WEEKDAYS, at, date_label, log, now, reset
+from . import requests as rq
+from .data import KST, STATE, WEEKDAYS, at, clock_label, date_label, log, new_id, now, reset
+from .staff import router as staff_router
 
-app = FastAPI(title="DONNA v0.2.0 mock backend", version="0.2.0")
+app = FastAPI(title="DONNA v0.2.1 mock backend", version="0.2.1")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:8090", "http://127.0.0.1:8090"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parents[1] / "static"), name="static")
+app.include_router(staff_router)
 
 
 def _store(store_id: str | None) -> None:
@@ -33,11 +40,22 @@ def health() -> dict:
     return {"status": "ok", "now": now().isoformat()}
 
 
-# ---------- 홈 ----------
+# ---------- 홈 (D-07) ----------
 @app.get("/v1/home")
 def get_home(store_id: str | None = None) -> dict:
     _store(store_id)
     return br.home()
+
+
+# ---------- 도나 알림 (D-05, D-23) ----------
+@app.get("/v1/notices")
+def get_notices(store_id: str | None = None) -> dict:
+    """사장님 앱이 몇 초마다 본다. 아직 안 본 알림만 준다. 도나는 소리만 내고 말하지 않는다."""
+    _store(store_id)
+    fresh = [n for n in STATE["notices"] if n.get("for") == "owner" and not n.get("seen")]
+    for n in fresh:
+        n["seen"] = True
+    return {"notices": [{"id": n["id"], "kind": n["kind"], "text": n["text"], "time_label": clock_label(dt.datetime.fromisoformat(n["at"]))} for n in fresh]}
 
 
 # ---------- 말 한 번에 답 한 번 ----------
@@ -45,9 +63,9 @@ def _norm(text: str) -> str:
     return re.sub(r"[^0-9a-z가-힣]", "", (text or "").lower())
 
 
-YES = ("응", "그래", "좋아", "네", "어그", "그렇게", "해줘", "맡길게", "부탁")
-NO = ("아니", "됐어", "내가볼", "싫어", "하지마", "안돼")
-DOMAIN = ("도나", "리뷰", "예약", "일정", "답글", "브리핑", "매출", "손님")
+YES = ("응", "그래", "좋아", "네", "어그", "그렇게", "해줘", "맡길게", "부탁", "올려")
+NO = ("아니", "됐어", "내가볼", "싫어", "하지마", "안돼", "나중")
+DOMAIN = ("도나", "리뷰", "예약", "일정", "답글", "브리핑", "매출", "손님", "알바", "인스타", "매뉴얼")
 # 부르는 말. 앱이 떼고 보내지만, 붙은 채로 와도 알아듣는다.
 CALL = re.compile(r"^(도나[야아]?|돈아야?|또나야)")
 
@@ -55,7 +73,7 @@ CALL = re.compile(r"^(도나[야아]?|돈아야?|또나야)")
 def classify(text: str, event: str | None, sess: dict, addressed: bool = False) -> tuple[str, str | None]:
     """(intent, 다듬은 말). 규칙만 쓴다. 에이전트가 붙으면 이 함수가 F8(뜻 알아듣기)이 된다.
 
-    addressed: "도나야"로 불러서 했거나 칩을 누른 말. 이런 말은 모르더라도 ignore 하지 않는다.
+    addressed: "도나야"로 불러서 한 말. 이런 말은 모르더라도 ignore 하지 않는다.
     """
     if event == "auto_next":
         return "briefing.next", None
@@ -65,11 +83,25 @@ def classify(text: str, event: str | None, sess: dict, addressed: bool = False) 
         t = CALL.sub("", t, count=1)
     if not t:
         return ("unknown", text) if addressed else ("not_for_donna", None)
-    if sess.get("awaiting"):
+    said = re.sub(r"^\s*(도나[야아]?|돈아야?|또나야)[\s,]*", "", text).strip()
+    # 브리핑 안에서 도나가 물어본 것 (허락, 인스타에 올릴까요)
+    ask = sess.get("awaiting")
+    if ask == "permission":
         if any(t.startswith(w) or w in t for w in NO):
             return "permission.no", "아니, 내가 볼게"
         if any(t.startswith(w) or w in t for w in YES):
             return "permission.yes", "응, 그렇게 해"
+    if ask == "instagram":
+        if "다음사진" in t or ("다음" in t and "사진" in t):
+            return "instagram.next_photo", "다음 사진"
+        if "올려" in t or t in ("응", "그래", "좋아"):
+            return "instagram.post", "올려"
+        if "나중" in t or t.startswith("아니"):
+            return "instagram.later", "나중에"
+    # 브리핑 밖의 요청 (알바생, 예약, 매뉴얼, 인스타, 설정)
+    req = rq.classify(t, said, sess)
+    if req:
+        return req, said
     if "그만" in t or t in ("홈", "홈으로", "처음화면", "처음으로"):
         return "stop", "그만"
     if "처음부터" in t:
@@ -84,7 +116,7 @@ def classify(text: str, event: str | None, sess: dict, addressed: bool = False) 
         return "detail.show", "화면에 보여 줘"
     if "매출" in t or "얼마팔" in t:
         return "navigate.sales", "매출 보여 줘"
-    if "달력" in t or "이번주" in t or "이번달" in t or "언제바" in t:
+    if "달력" in t or "이번주" in t or "이번달" in t:
         return "navigate.week", "이번 주 일정 보여 줘"
     if "설정" in t:
         return "navigate.settings", "설정 보여 줘"
@@ -102,42 +134,53 @@ def classify(text: str, event: str | None, sess: dict, addressed: bool = False) 
 
 
 def _session(session_id: str) -> dict:
-    return STATE["sessions"].setdefault(session_id, {"step": 0, "detail": None, "awaiting": False, "current": None})
+    return STATE["sessions"].setdefault(session_id, {"idx": 0, "detail": None, "awaiting": None, "current": None, "pending": None, "slide": 1})
 
 
 def _enter(sess: dict, step: dict) -> dict:
-    sess["step"] = step["briefing"]["step"]
+    sess["idx"] = step["index"]
     sess["current"] = step
     sess["detail"] = None
-    sess["awaiting"] = step["type"] == "ask_permission"
+    sess["awaiting"] = "permission" if step["type"] == "ask_permission" else "instagram" if step.get("ask", {}).get("key") == "instagram_post" else None
+    sess["slide"] = 1
     return dict(step)
 
 
 def _empty(kind: str) -> dict:
-    return {"type": kind, "briefing": None, "headline": None, "say": [], "cards": [], "suggestions": [], "expects_reply": False}
+    return {"type": kind, "briefing": None, "headline": None, "say": [], "cards": [], "expects_reply": False}
 
 
-def handle(intent: str, sess: dict) -> dict:
+def _finish(sess: dict, posted: bool = False) -> dict:
+    sess.update(idx=0, current=None, detail=None, awaiting=None)
+    log("owner", "오늘 일정 브리핑을 들었어요", "o_heard")
+    return br.end(posted)
+
+
+def _next(sess: dict, prefix: list[dict] | None = None, caption: str | None = None) -> dict:
+    nxt = br.next_step(sess["idx"]) if sess["idx"] else br.build_step(1)
+    out = _enter(sess, nxt) if nxt else _finish(sess)
+    if prefix:
+        out["say"] = prefix + list(out["say"])
+    if caption:
+        out["say"] = [dict(out["say"][0], caption=caption)] + list(out["say"][1:])
+    return out
+
+
+def handle(intent: str, sess: dict, said: str | None) -> dict:
     cur = sess.get("current")
     if intent in ("briefing.start", "briefing.restart"):
+        STATE["morning_done"] = [] if intent == "briefing.restart" else STATE["morning_done"]
         return _enter(sess, br.build_step(1))
     if intent == "briefing.next":
         if sess["awaiting"] and cur:
             return dict(cur)  # 물어본 것에 대답을 못 받았으면 다시 묻는다
-        nxt = br.next_step(sess["step"]) if sess["step"] else br.build_step(1)
-        if nxt:
-            return _enter(sess, nxt)
-        sess.update(step=0, current=None, detail=None, awaiting=False)
-        log("owner", "오늘 일정 브리핑을 들었어요", "o_heard")
-        return br.end()
+        return _next(sess)
     if intent == "briefing.repeat":
         if not cur:
             return _empty("not_understood")
         out = dict(cur)
         out["headline"] = "다시 말씀드릴게요"
         out["say"] = [{"text": "다시 말씀드릴게요.", "caption": None, "focus": []}] + list(cur["say"])
-        if cur["type"] != "ask_permission":
-            out["suggestions"] = ["다음", "그만"]
         return out
     if intent.startswith("briefing.jump."):
         key = intent.rsplit(".", 1)[1]
@@ -145,7 +188,7 @@ def handle(intent: str, sess: dict) -> dict:
         if step:
             return _enter(sess, step)
         out = _empty("answer")
-        out.update(headline="지금은 알려 드릴 게 없어요", say=[{"text": "지금은 알려 드릴 게 없어요.", "caption": None, "focus": []}], suggestions=["오늘 일정 브리핑해 줘"])
+        out.update(headline="지금은 알려 드릴 게 없어요", say=[{"text": "지금은 알려 드릴 게 없어요.", "caption": None, "focus": []}])
         return out
     if intent == "detail.show":
         d = br.detail(cur) if cur else None
@@ -153,7 +196,7 @@ def handle(intent: str, sess: dict) -> dict:
             if not cur:
                 return _empty("not_understood")
             out = dict(cur)
-            out["say"] = [{"text": "이 내용은 더 보여 드릴 게 없어요.", "caption": "더 보여 드릴 게 없어요.", "focus": []}]
+            out["say"] = [{"text": "이 내용은 더 보여 드릴 게 없어요.", "caption": None, "focus": []}]
             return out
         sess["detail"] = d
         return dict(d)
@@ -162,38 +205,46 @@ def handle(intent: str, sess: dict) -> dict:
         if not d:
             return _empty("not_understood")
         out = dict(d)
-        out.update(type="answer", say=br.read_detail(d), suggestions=["돌아가기", "다음"])
+        out.update(type="answer", say=br.read_detail(d) or d["say"])
         return out
     if intent == "detail.back":
         if not cur:
             return _empty("not_understood")
         sess["detail"] = None
         out = dict(cur)
-        last = [s["caption"] for s in cur["say"] if s.get("caption")]
-        out["say"] = [{"text": "브리핑으로 돌아왔어요.", "caption": last[-1] if last else None, "focus": []}]
+        out["say"] = [{"text": "브리핑으로 돌아왔어요.", "caption": None, "focus": []}]
         return out
     if intent in ("permission.yes", "permission.no"):
         yes = intent == "permission.yes"
         STATE["settings"]["negative_review_auto_reply"] = yes
-        sess["awaiting"] = False
+        sess["awaiting"] = None
         log("owner", "아쉬운 리뷰는 도나가 바로 답하게 맡겼어요" if yes else "아쉬운 리뷰는 직접 보기로 했어요", "o_perm")
-        first = (
-            {"text": "네, 앞으로는 제가 바로 답할게요.", "caption": "앞으로는 제가 바로 답할게요.", "focus": []}
-            if yes
-            else {"text": "네, 아쉬운 리뷰는 제가 답하지 않고 알려만 드릴게요.", "caption": "제가 답하지 않고 알려만 드릴게요.", "focus": []}
-        )
-        nxt = br.next_step(sess["step"])
-        if nxt:
-            out = _enter(sess, nxt)
-            out["say"] = [first] + list(nxt["say"])
-            return out
-        sess.update(step=0, current=None, detail=None)
-        log("owner", "오늘 일정 브리핑을 들었어요", "o_heard")
-        out = br.end()
-        out["say"] = [first] + out["say"]
+        if yes:
+            r = br.post_reply_now()
+            if r:
+                br.morning("negative")
+                step = {"index": sess["idx"], "type": "answer", "briefing": cur["briefing"] if cur else None, "expects_reply": False, **br.replied_answer(r)}
+                sess["current"] = step
+                out = dict(step)
+                out["say"] = [{"text": "네, 앞으로는 제가 바로 답할게요.", "caption": None, "focus": []}] + list(out["say"])
+                return out
+            return _next(sess, [{"text": "네, 앞으로는 제가 바로 답할게요.", "caption": None, "focus": []}])
+        return _next(sess, [{"text": "네, 아쉬운 리뷰는 제가 답하지 않고 알려만 드릴게요.", "caption": None, "focus": []}])
+    if intent == "instagram.next_photo":
+        sess["slide"] = sess.get("slide", 1) % STATE["instagram"]["slides"] + 1
+        d = br.insta_preview(sess["slide"])
+        sess["detail"] = d
+        return d
+    if intent == "instagram.post":
+        br.post_instagram()
+        log("owner", "인스타에 인기 메뉴를 올렸어요", "o_insta")
+        return _finish(sess, posted=True)
+    if intent == "instagram.later":
+        out = _finish(sess)
+        out["say"] = [{"text": "내일 브리핑에서 다시 여쭤볼게요.", "caption": None, "focus": []}] + list(out["say"])
         return out
     if intent == "stop":
-        sess.update(step=0, current=None, detail=None, awaiting=False)
+        sess.update(idx=0, current=None, detail=None, awaiting=None, pending=None)
         return _empty("stop")
     if intent.startswith("navigate."):
         tab = intent.split(".", 1)[1]
@@ -204,7 +255,13 @@ def handle(intent: str, sess: dict) -> dict:
         return out
     if intent == "unknown":
         return _empty("not_understood")
-    return _empty("ignore")
+    if intent == "not_for_donna":
+        return _empty("ignore")
+    # 브리핑 밖의 요청
+    out = rq.handle(intent, said or "", sess)
+    if out.get("continue_briefing"):
+        return _next(sess, [out["prefix"]], out["caption"])
+    return out
 
 
 @app.post("/v1/turn")
@@ -216,28 +273,39 @@ def post_turn(body: dict = Body(...)) -> dict:
     sess = _session(body.get("session_id") or "default")
     utt = body.get("utterance") or {}
     intent, canon = classify(utt.get("text", ""), body.get("event"), sess, bool(utt.get("addressed")))
-    out = handle(intent, sess)
+    out = handle(intent, sess, canon)
     STATE["turn_seq"] += 1
-    resp = {"turn_id": f"t_{STATE['turn_seq']:04d}", "intent": intent, "owner_said": canon if utt else None}
-    resp.update({k: v for k, v in out.items() if k not in ("detail_review_id", "detail_scheduled")})
+    said = rq.short_said(canon or "") if utt and intent not in ("pending.yes", "pending.no") else None
+    resp = {"turn_id": f"t_{STATE['turn_seq']:04d}", "intent": intent, "owner_said": (said or canon) if utt else None}
+    resp.update({k: v for k, v in out.items() if k not in ("detail_scheduled", "index", "focus_rest", "continue_briefing")})
     if rid:
         STATE["requests"][rid] = resp
     return resp
+
+
+# ---------- 인스타 연결 (D-01, D-02) ----------
+@app.post("/v1/instagram/connect")
+def instagram_connect(body: dict = Body(default={})) -> dict:
+    """인스타 화면에서 "허용"을 누르고 돌아왔을 때 (목업: 바로 연결됨)."""
+    STATE["instagram"]["connected"] = True
+    return {"connected": True, "say": "인스타를 연결했어요. 다음엔 메뉴 사진을 확인해 주세요."}
 
 
 # ---------- 설정 ----------
 @app.get("/v1/settings")
 def get_settings(store_id: str | None = None) -> dict:
     _store(store_id)
+    s = STATE["store"]
     return {
         "negative_review_auto_reply": STATE["settings"]["negative_review_auto_reply"],
-        "store": {"id": STATE["store"]["id"], "name": STATE["store"]["name"]},
-        "open_time_label": "오전 10시",
-        "close_time_label": "밤 10시",
+        "store": {"id": s["id"], "name": s["name"]},
+        "open_time_label": clock_label(dt.time(*map(int, s["open_time"].split(":")))),
+        "close_time_label": clock_label(dt.time(*map(int, s["close_time"].split(":")))),
         "briefing_time_label": "오전 9시",
         "platforms": [
             {"key": "naver", "name": "네이버 플레이스", "connected": True},
             {"key": "baemin", "name": "배달의민족", "connected": True},
+            {"key": "instagram", "name": "인스타그램", "connected": STATE["instagram"]["connected"]},
         ],
     }
 
@@ -263,21 +331,16 @@ PLAN_LABEL = {"event": "행사", "game": "경기", "group_reservation": "단체 
 # 짧은 이름은 태블릿 달력 칸(폭 80 안팎)에 들어가게 한글 다섯 자 안팎으로 적는다.
 WEEK_PLAN: dict[int, tuple[list[tuple], str | None]] = {
     0: ([], None),
-    1: ([("event", "강남 페스티벌", "페스티벌", 18, 0), ("game", "한국시리즈", "한국시리즈", 18, 30),
-         ("group_reservation", "단체 손님 열두 분", "단체 12명", 19, 0)],
-        None),
+    1: ([("group_reservation", "단체 손님 열두 분", "단체 12명", 12, 0), ("weather", "오후 2시부터 비", "비", 14, 0)], None),
     2: ([], None),
-    3: ([("weather", "하루 종일 비", "비", None, 0)],
-        "비 오는 날엔 전골을 많이 찾으세요. 전골 재료를 넉넉히 준비하세요"),
-    4: ([("game", "한국시리즈", "한국시리즈", 18, 30)],
-        "경기가 끝나는 밤 9시 뒤에 손님이 몰려요. 그때를 준비하세요"),
-    5: ([("group_reservation", "단체 손님 여덟 분", "단체 8명", 19, 0)], None),
+    3: ([("weather", "하루 종일 비", "비", None, 0)], None),
+    4: ([], None),
+    5: ([], None),
     6: ([], None),
 }
 # 이번 주 밖의 날 (목업). 월요일에서 며칠 뒤인지로 적는다.
 LATER_PLAN: dict[int, tuple[list[tuple], str | None]] = {
-    9: ([("group_reservation", "단체 손님 열 분", "단체 10명", 19, 0)], None),
-    11: ([("game", "한국시리즈", "한국시리즈", 18, 30)], None),
+    9: ([("group_reservation", "단체 손님 열 분", "단체 10명", 12, 0)], None),
 }
 
 
@@ -399,7 +462,6 @@ def get_week(store_id: str | None = None) -> dict:
         "say": say,
         "scheduled": [{k: it[k] for k in ("id", "day_label", "time_label", "post_at", "reason", "text")} for it in STATE["scheduled"]],
         "past": STATE["past"],
-        "suggestions": ["오늘 일정 브리핑해 줘"],
     }
 
 
@@ -462,11 +524,10 @@ def get_sales(store_id: str | None = None) -> dict:
                  "compare_text": f"지난주 이맘때보다 {_won(abs(wdiff))} {'많아요' if wdiff >= 0 else '적어요'}",
                  "direction": "up" if wdiff >= 0 else "down"},
         "top_menus": {"label": "어제 잘 팔린 메뉴", "unit": "개", "items": [
-            {"id": "m_1", "label": "곱창전골", "count": 38},
-            {"id": "m_2", "label": "소곱창 구이", "count": 27},
-            {"id": "m_3", "label": "볶음밥", "count": 21},
+            {"id": "m_1", "label": "들깨옹심이메밀칼국수", "count": 38},
+            {"id": "m_2", "label": "멸치옹심이메밀칼국수", "count": 27},
+            {"id": "m_3", "label": "들깨옹심이", "count": 21},
         ]},
-        "suggestions": ["오늘 일정 브리핑해 줘"],
     }
 
 
@@ -522,8 +583,40 @@ def dev_state() -> dict:
         "now": now().isoformat(),
         "settings": STATE["settings"],
         "reviews": STATE["reviews"],
-        "sessions": {k: {"step": v["step"], "awaiting": v["awaiting"], "detail": bool(v["detail"])} for k, v in STATE["sessions"].items()},
+        "sessions": {k: {"idx": v["idx"], "awaiting": v["awaiting"], "pending": (v.get("pending") or {}).get("kind")} for k, v in STATE["sessions"].items()},
+        "tasks": STATE["tasks"],
+        "staff": STATE["staff"],
+        "instagram": STATE["instagram"],
+        "reservations": STATE["reservations"],
     }
+
+
+@app.post("/v1/dev/story")
+def dev_story(body: dict = Body(default={})) -> dict:
+    """손님이 스토리에 매장을 태그함 (D-21). 서비스 드리기는 사장님이 보기 전에 알바생 화면에 먼저 올라간다."""
+    handle_ = body.get("handle", "namyang_foodie")
+    STATE["instagram"]["story_mentions"].append({"handle": handle_, "at": now().isoformat()})
+    tk = {"id": new_id("tk"), "title": "스토리 손님께 서비스 드리기", "short": "스토리 손님 서비스", "phase": "open", "repeat": "today",
+          "must_confirm": False, "kind": "do", "sent_at": now().isoformat(), "owner_words": None, "to": "all",
+          "done": {}, "confirmed": {}, "canceled": False, "note": "인스타 스토리에 매장을 태그한 손님"}
+    STATE["tasks"].append(tk)
+    STATE["notices"].append({"id": new_id("nt"), "for": "owner", "kind": "story", "at": now().isoformat(), "seen": False,
+                             "text": "손님이 스토리에 올려 주셨어요"})
+    return {"ok": True, "task_id": tk["id"]}
+
+
+@app.post("/v1/dev/unconfirmed")
+def dev_unconfirmed(body: dict = Body(default={})) -> dict:
+    """"확인 필요"를 30분이 지나도 안 누른 사람 알림 (D-23)."""
+    t = next((x for x in reversed(STATE["tasks"]) if x["must_confirm"] and not x["canceled"]), None)
+    if not t:
+        return {"ok": False}
+    for s in STATE["staff"]:
+        if s["joined"] and s["in_at"] and s["id"] not in t["confirmed"]:
+            STATE["notices"].append({"id": new_id("nt"), "for": "owner", "kind": "unconfirmed", "at": now().isoformat(), "seen": False,
+                                     "text": f"{s['call']} 씨가 {t['short'].replace(' 확인', '')} 안내를 안 봤어요"})
+            return {"ok": True, "staff_id": s["id"]}
+    return {"ok": False}
 
 
 _ = at  # 목업 데이터에서 쓰는 도우미를 다시 내보낸다

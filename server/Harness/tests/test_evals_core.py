@@ -166,10 +166,30 @@ def test_tools_mode_request_turns_thinking_off_and_forces_submit():
     assert body["thinking"] == {"effort": "none"}  # 추론을 끈다 (function calling 과 같이 쓸 수 없다)
     assert body["toolChoice"] == {"type": "function", "function": {"name": "submit_judgement"}}
     assert body["tools"][0]["function"]["parameters"]["properties"]["ok"]["enum"] == ["예", "아니오", "판단 불가"]
-    assert body["maxTokens"] >= 1024 and body["temperature"] == 0.3
+    assert "maxTokens" not in body and body["maxCompletionTokens"] >= 1024 and body["temperature"] == 0.3
     with sqlite3.connect(clova_usage_log.LOG_PATH) as conn:
         rows = conn.execute("SELECT feature, model FROM calls").fetchall()
     assert rows == [("eval_judge:fact", "HCX-007")] * 3
+
+
+def test_reasoning_model_uses_max_completion_tokens_and_keeps_old_shape_for_others():
+    tools = [{"type": "function", "function": {"name": "x"}}]
+    ask = [{"role": "user", "content": "u"}]
+    fake = FakeClova("가", "나", "다", "라")
+    clova_tools.chat_with_tools(ask, tools, feature="t", store_id=None, max_tokens=300, post=fake, model="HCX-007")
+    clova_tools.chat_with_tools(ask, tools, feature="t", store_id=None, max_tokens=300, post=fake, model="HCX-007",
+                                thinking_effort="none")
+    clova_tools.chat_with_tools(ask, [], feature="t", store_id=None, max_tokens=4000, post=fake, model="HCX-007",
+                                thinking_effort="low")
+    clova_tools.chat_with_tools(ask, tools, feature="t", store_id=None, max_tokens=300, post=fake)  # 기본 모델 HCX-005
+    without_effort, with_none, reasoning, default = fake.requests
+
+    for body in (without_effort, with_none):  # 도구를 보내면 thinking 을 언제나 끈다 (빼면 기본 low 라 400)
+        assert "maxTokens" not in body and body["maxCompletionTokens"] == 1024
+        assert body["thinking"] == {"effort": "none"} and body["tools"] == tools
+    assert "maxTokens" not in reasoning and reasoning["maxCompletionTokens"] == 4000
+    assert reasoning["thinking"] == {"effort": "low"} and "tools" not in reasoning and "toolChoice" not in reasoning
+    assert default["maxTokens"] == 1024 and "maxCompletionTokens" not in default and "thinking" not in default
 
 
 def test_thinking_mode_request_has_no_tools_and_reads_trailing_json():

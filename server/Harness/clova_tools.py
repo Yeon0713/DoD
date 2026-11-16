@@ -15,9 +15,15 @@
 평가 심판(Harness/evals/judge.py)이 쓰는 선택 인자. 넘기지 않으면 예전과 똑같이 보낸다.
   - model: 주소에 넣을 모델 (기본 settings.clova_studio_model)
   - thinking_effort: 추론 모델(HCX-007)의 thinking.effort. "none" 이면 추론을 끈 채 도구를 쓴다.
-    그 밖의 값이면 추론을 켜는 요청이라 도구를 함께 보낼 수 없고(tools 는 비워야 한다), maxTokens 대신
-    maxCompletionTokens(추론 + 답, 최대 32,768)를 보낸다 (CLOVA Studio 문서: 추론은 function calling 과 같이 쓸 수 없다)
+    그 밖의 값이면 추론을 켜는 요청이라 도구를 함께 보낼 수 없다(tools 는 비워야 한다).
   - log_prefix: 사용 기록 feature 앞에 붙이는 말 (기본 "agent:")
+
+추론 모델(REASONING_MODELS, 지금은 HCX-007) 요청 모양 (CLOVA Studio 추론 문서)
+  - maxTokens 를 쓸 수 없다. effort 와 상관없이 maxCompletionTokens(추론 + 답, 최대 32,768)를 보낸다.
+    도구를 보내는 요청은 function calling 하한(1024) 이상으로 둔다.
+  - thinking 을 빼면 기본 effort 가 low(추론 켜짐)라 도구와 같이 보내면 400 이다. 그래서 도구를 보낼 때는
+    thinking.effort 를 언제나 "none" 으로 적는다.
+  - HCX-005 등 다른 모델의 요청 모양은 예전과 같다 (maxTokens, thinking 없음).
 """
 
 import json
@@ -38,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 MIN_MAX_TOKENS = 1024
 MAX_COMPLETION_TOKENS = 32768  # 추론 모델 한도 (추론 + 답)
+REASONING_MODELS = ("HCX-007",)  # maxTokens 대신 maxCompletionTokens 를 쓰는 모델 (이름이 이것으로 시작하면)
 
 _local = threading.local()  # 이 스레드가 마지막으로 남긴 사용 기록 id
 
@@ -67,6 +74,10 @@ class ToolReply:
                 for c in self.tool_calls
             ]
         return message
+
+
+def is_reasoning_model(model: str) -> bool:
+    return model.startswith(REASONING_MODELS)
 
 
 def is_enabled() -> bool:
@@ -146,6 +157,7 @@ def chat_with_tools(
     """
     if not is_enabled():
         return None
+    model = model or settings.clova_studio_model
     reasoning = thinking_effort not in (None, "none")
     if reasoning and tools:
         raise ValueError("추론(thinking)을 켠 요청에는 도구를 보낼 수 없어요")
@@ -157,12 +169,16 @@ def chat_with_tools(
         "temperature": temperature,
         "topP": 0.8,
     }
-    if thinking_effort is not None:
+    if is_reasoning_model(model) or reasoning:
+        limit = max(max_tokens, MIN_MAX_TOKENS) if tools else max_tokens
+        del body["maxTokens"]
+        body["maxCompletionTokens"] = min(limit, MAX_COMPLETION_TOKENS)
+    if is_reasoning_model(model) and tools:
+        body["thinking"] = {"effort": "none"}  # 빼면 기본이 추론 켜짐(low)이라 도구와 같이 쓸 수 없다
+    elif thinking_effort is not None:
         body["thinking"] = {"effort": thinking_effort}
-    if reasoning:
-        del body["tools"], body["toolChoice"], body["maxTokens"]
-        body["maxCompletionTokens"] = min(max_tokens, MAX_COMPLETION_TOKENS)
-    model = model or settings.clova_studio_model
+    if reasoning or (is_reasoning_model(model) and not tools):
+        del body["tools"], body["toolChoice"]
     feature = f"{log_prefix}{feature}"
     request_text = _last_text(messages)
     for attempt in range(limiter.RATE_LIMIT_RETRIES + 1):

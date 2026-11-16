@@ -22,13 +22,21 @@
 방식 (mode)
   tools     (기본) 추론을 끄고(thinking.effort = none) submit_judgement 도구를 강제한다. quote_judge 와 같은 모양.
             HCX-007 은 thinking 을 보내지 않으면 기본이 추론 켜짐(low)이라 function calling 과 부딪힌다.
-            그래서 effort none 을 명시해서 보낸다. (CLOVA Studio 문서 2026-11-17 확인. 실제 요청 확인 결과는 아래 MODE_CHECK 에 적는다)
+            그래서 effort none 을 명시해서 보낸다. 추론 모델은 effort none 이어도 maxTokens 를 쓸 수 없어 maxCompletionTokens 로
+            보낸다 (clova_tools 가 모델 이름으로 정한다). (CLOVA Studio 문서 2026-11-17 확인. 실제 요청 결과는 아래 MODE_CHECK)
   thinking  추론을 켜고(effort THINKING_EFFORT) 도구 없이 JSON 하나만 답하게 한다. 답 끝의 JSON 을 읽고, 모양이 틀리면 한 번 더,
             또 틀리면 판단 불가. 추론 글은 저장하지 않고 토큰 수만 적는다. 추론 모델은 maxTokens 대신 maxCompletionTokens 를
             쓰고(최대 32,768, 추론과 답을 합친 수), function calling·stop 을 같이 쓸 수 없다.
   어느 방식을 쓸지는 심판 검증(변형 세트 놓침·오거절, 사람 표본 일치)으로 정하고 result.json 의 config.judge_mode 에 적는다.
 
-MODE_CHECK: 실제 HCX-007 요청으로 tools 방식(effort none + 도구 강제)이 되는지는 아직 확인하지 않았다.
+MODE_CHECK (실제 HCX-007 요청, 2026-11-17): 두 방식 모두 된다.
+  - tools, toolChoice 강제: thinking {"effort": "none"}, maxCompletionTokens 1024, tools 있음 → 200, submit_judgement 호출,
+    3.7초, 토큰 입력 760 / 출력 87 (추론 토큰 없음)
+  - thinking: effort medium, maxCompletionTokens 16384, tools·toolChoice 없음 → 200, 끝에 JSON 하나, 11.7초,
+    토큰 입력 865 / 출력 678 (그중 추론 615)
+  같은 가짜 답글("저희는 매일 아침 육수를 직접 끓여요.")에 두 방식 모두 fact 아니오와 같은 문구를 냈다.
+  처음의 400(40000 Bad Request)은 요청 모양이 아니라 주소 때문이었다. CLOVA_STUDIO_BASE_URL 끝에 '/' 가 있으면
+  '…ntruss.com//v3/…' 가 되어 모든 요청이 400 이다. maxTokens 를 보낸 HCX-007 요청은 그 주소 문제 때문에 따로 확인되지 않았다.
 
 모델은 settings.eval_judge_model (기본 HCX-007). B 의 검토기(HCX-005)와 다른 모델이다.
 호출이 400/404 로 MODEL_ERROR_LIMIT 번 이어서 실패하면 JudgeModelError 를 낸다. 조용히 다른 모델로 바꾸지 않는다.

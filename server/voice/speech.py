@@ -40,9 +40,11 @@ def daypart(hour: int) -> str:
 
 
 def clock_label(moment: dt.datetime) -> str:
-    """'저녁 6시', '저녁 6시 30분', '오전 11시'."""
+    """'저녁 6시', '저녁 6시 반', '오전 11시 15분'. 30분은 사장님이 말하는 대로 '반'이라고 쓴다 (Figma v0.2.1)."""
     hour = moment.hour % 12 or 12
     text = f"{daypart(moment.hour)} {hour}시"
+    if moment.minute == 30:
+        return f"{text} 반"
     return f"{text} {moment.minute}분" if moment.minute else text
 
 

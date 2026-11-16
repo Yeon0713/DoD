@@ -23,7 +23,7 @@ def test_d2_no_reviews_waiting_skips_steps_2_and_3():
     donna = prepared(payload)
     donna.turn("오늘 일정 브리핑해 줘")
     d2 = donna.turn("다음")
-    assert d2["briefing"]["step"] == 4  # 게이지바가 한꺼번에 세 칸 찬다
+    assert d2["briefing"]["step"] == 3  # 리뷰 칸을 건너뛰어 게이지바가 한꺼번에 두 칸 찬다
     d3 = donna.turn("다음")  # 예약할 좋은 리뷰도 없어 5단계도 건너뛴다
     assert d3["type"] == "end"
     assert "p_reviews" not in [r["id"] for r in donna.home()["cards"][0]["rows"]]
@@ -41,7 +41,7 @@ def test_d3_no_scheduled_replies_goes_to_end():
         if response["type"] == "end":
             break
         steps.append(response["briefing"]["step"])
-    assert steps == [1, 2, 4]
+    assert steps == [1, 2, 3]
 
 
 def test_d4_every_response_fits_the_screen():

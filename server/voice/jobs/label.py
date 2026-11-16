@@ -40,7 +40,26 @@ def classify(text: str, rating: int) -> tuple[str, str]:
     return "positive", STRENGTH_TOPICS.get(found[0], "other") if found else "other"
 
 
+def retell(text: str) -> str | None:
+    """손님이 한 문장으로 짧게 쓴 리뷰는 그 말을 그대로 옮긴다: '면이 불어서 왔어요.' → '면이 불어서 왔대요'.
+    주제 사전보다 정확하다 ('면이 불어서'를 '배달이 늦었대요'로 바꾸지 않는다). 옮길 수 없으면 None."""
+    body = text.strip().rstrip(".!~ ")
+    if not body or any(mark in body for mark in ".!?\n"):
+        return None
+    if body.endswith(("어요", "아요")):
+        told = body[:-2] + "대요"
+    elif body.endswith("이에요"):
+        told = body[:-3] + "이래요"
+    elif body.endswith("예요"):
+        told = body[:-2] + "래요"
+    else:
+        return None
+    return told if width.fits(told, "review.summary") else None
+
+
 def summarize(text: str, sentiment: str, topic: str) -> str:
+    if sentiment == "negative" and (told := retell(text)):
+        return told
     if sentiment == "negative":
         if topic == "delivery" and "식" in text:
             return width.fit("review.summary", "배달이 늦어 음식이 식었대요", NEGATIVE_SUMMARIES[topic])

@@ -18,7 +18,7 @@ LIMITS = {
     "bars.label": 12,
     "scheduled.text": 13,
     "reason.label": 8,
-    "time_label": 4.5,
+    "time_label": 6,  # v0.2.1 예약 카드는 '오전 10시 반'까지 들어간다 (D-13)
     "day_label": 1,
 }
 MAX_ITEMS = {"rows": 4, "bars": 3, "scheduled": 3, "suggestions": 2}

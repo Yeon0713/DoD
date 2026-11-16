@@ -17,6 +17,7 @@ from voice.context import VoiceStore, run_context
 INTENTS = [
     "briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
     "detail.show", "detail.read", "detail.back", "permission.yes", "permission.no", "stop", "question", "unknown", "not_for_donna",
+    "navigate.sales", "navigate.week", "navigate.settings",
 ]
 JUMP_TARGETS = ["schedule", "reviews", "negative", "positive", "scheduling"]
 

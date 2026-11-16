@@ -3,6 +3,8 @@
 리뷰가 들어와도 앱에는 아무것도 보내지 않는다. 백엔드만 알고 있다가(나누기, 허락받았으면 바로 답하기) 브리핑 때 말한다.
 """
 
+import json
+
 from fastapi import APIRouter, Body
 
 from voice import clock, config, repo
@@ -31,6 +33,10 @@ def load_fixtures(payload: dict) -> dict:
         repo.save_review(label.label({"reply_status": "none", **raw, "store_id": store_id}))
     if "settings" in payload:
         repo.save_settings(store_id, payload["settings"])
+    if "sales" in payload:  # 포스 매출 (매출 탭). 목업 단계라 fixtures 가 곧 포스에서 받은 것이다
+        repo.put("sales", store_id, store_id, payload["sales"])
+    for item in payload.get("activity", []):  # 지난 날 한 일 (일정 탭)
+        repo.put("activity", f"{store_id}:{item['at'][:10]}:{item['id']}", store_id, item)
     queue.schedule_prepare(store_id)
     return {"store_id": store_id, "reviews": len(payload.get("reviews", []))}
 
@@ -47,8 +53,36 @@ def add_review(body: dict) -> dict:
     return review
 
 
+def fixture(name: str) -> dict:
+    """fixtures/<name>.json (예: s005_choongjang)."""
+    path = config.FIXTURES / f"{name}.json"
+    if not path.exists() or path.parent != config.FIXTURES:
+        raise FileNotFoundError(name)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def seed(name: str, *, fresh: bool) -> dict:
+    """시연 가게 하나를 시연할 수 있는 상태로: 시계를 그 파일의 demo.now 로 맞추고, (fresh 거나 가게가 없으면) 데이터를 넣고,
+    브리핑을 바로 준비한다 (문 열기 한 시간 전보다 일찍이어도). 답글을 에이전트가 쓰느라 1 ~ 2분 걸릴 수 있다."""
+    payload = fixture(name)
+    if payload.get("demo", {}).get("now"):
+        clock.set_now(clock.parse(payload["demo"]["now"]))
+    store_id = payload["store"]["id"]
+    result = {"store_id": store_id, "loaded": False}
+    if fresh or repo.store(store_id) is None:
+        result = {**load_fixtures(payload), "loaded": True}
+    queue.run_due()
+    if briefing.current(store_id) is None:
+        briefing.prepare(store_id)
+    return {**result, "now": clock.iso(clock.now())}
+
+
 @router.post("/fixtures")
 def post_fixtures(payload: dict = Body(...)):
+    """데이터를 통째로 넣는다. {"fixture": "s005_choongjang"} 처럼 이름만 주면 그 파일로 처음부터 다시 시작한다
+    (시계를 demo.now 로 맞추고 브리핑까지 준비한다)."""
+    if set(payload) == {"fixture"}:
+        return seed(payload["fixture"], fresh=True)
     return load_fixtures(payload)
 
 

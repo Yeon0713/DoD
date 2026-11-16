@@ -8,7 +8,8 @@ from pydantic import BaseModel
 class Utterance(BaseModel):
     text: str
     confidence: float = 1.0
-    source: Literal["voice", "chip"] = "voice"
+    source: Literal["voice"] = "voice"  # v0.2.1 부터 칩이 없다
+    addressed: bool = False  # "도나야"로 불러서 한 말 (부르는 말은 앱이 떼고 보낸다). 가게 말로 넘기지 않는다
     started_at: str | None = None
     ended_at: str | None = None
 

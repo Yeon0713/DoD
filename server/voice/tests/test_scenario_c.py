@@ -12,7 +12,7 @@ def test_c1_repeat(donna: Donna):
     first = at_step_one(donna)
     c1 = donna.turn("다시 말해 줘")
     assert c1["type"] == "answer" and c1["briefing"]["step"] == 1 and c1["headline"] == "다시 말씀드릴게요"
-    assert c1["say"] == first["say"] and c1["suggestions"] == ["다음", "그만"]
+    assert c1["say"][0]["text"] == "다시 말씀드릴게요." and c1["say"][1:] == first["say"] and "suggestions" not in c1
 
 
 def test_c2_typo(donna: Donna):
@@ -32,7 +32,7 @@ def test_c3_c4_not_for_donna_is_ignored(donna: Donna):
 def test_c5_c6_not_understood_and_stop(donna: Donna):
     at_step_one(donna)
     c5 = donna.turn("그거 뭐였지 그 저기")
-    assert c5["type"] == "not_understood" and c5["say"] == [] and c5["suggestions"] == []
+    assert c5["type"] == "not_understood" and c5["say"] == [] and "suggestions" not in c5
     c6 = donna.turn("그만")
     assert c6["type"] == "stop" and c6["intent"] == "stop" and c6["cards"] == []
 
@@ -55,14 +55,31 @@ def test_c9_same_request_id_same_response(donna: Donna):
     assert a == b
     nxt = donna.turn("다음", request_id="req_next")
     again = donna.turn("다음", request_id="req_next")  # 통신이 끊겨 다시 보낸 경우
-    assert nxt == again and nxt["briefing"]["step"] == 2
-    assert donna.turn("다음")["briefing"]["step"] == 3  # 두 번 넘어가지 않았다
+    assert nxt == again and nxt["briefing"]["step_key"] == "reviews"
+    assert donna.turn("다음")["briefing"]["step_key"] == "negative"  # 두 번 넘어가지 않았다
 
 
-def test_chips_send_the_same_request(donna: Donna):
+def test_no_chips_in_v021(donna: Donna):
+    """v0.2.1 부터 칩이 없다. 칩으로 보낸 요청은 받지 않는다."""
     at_step_one(donna)
-    chip = donna.turn("다음", source="chip")
-    assert chip["briefing"]["step"] == 2 and chip["owner_said"] == "다음"
+    donna.turn("다음", source="chip", expect=422)
+
+
+def test_addressed_speech_is_never_ignored(donna: Donna):
+    """"도나야"로 부른 말은 손님·직원에게 한 말로 넘기지 않는다."""
+    at_step_one(donna)
+    assert donna.turn("3번 테이블 치워 줘")["type"] == "ignore"
+    assert donna.turn("3번 테이블 치워 줘", addressed=True)["type"] == "not_understood"
+    assert donna.turn("손님 다음", addressed=True)["type"] != "ignore"
+
+
+def test_navigate_opens_tabs(donna: Donna):
+    sales = donna.turn("매출 어때")
+    assert sales["type"] == "navigate" and sales["tab"] == "sales" and sales["intent"] == "navigate.sales" and sales["briefing"] is None
+    week = donna.turn("이번 주 보여 줘")
+    assert week["tab"] == "week" and week["say"][0]["text"].startswith("이번 주는")
+    assert donna.turn("설정 열어 줘")["tab"] == "settings"
+    assert donna.turn("이번 주 비 와?")["intent"] == "question"  # 묻는 말은 탭을 열지 않는다
 
 
 def test_briefing_turns_never_call_clova(donna: Donna):

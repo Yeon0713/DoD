@@ -13,7 +13,7 @@ from fastapi.testclient import TestClient
 from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
-from voice import clock, config, context
+from voice import clock, config, context, tts
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
 
@@ -38,6 +38,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(limiter, "sleep", lambda seconds: None)
     monkeypatch.setattr(runner, "clock", lambda: 0.0)
     monkeypatch.setattr(context, "post", NoClova())
+    monkeypatch.setattr(config, "DEMO_FIXTURE", "")  # 켤 때 시연 가게를 넣지 않는다
+    monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
     cache.clear()
     clock.set_now(None)
     yield
@@ -93,16 +95,16 @@ class Donna:
         return self.client.patch("/v1/settings", json={"store_id": "s001", "negative_review_auto_reply": value}).json()
 
     def turn(self, text: str | None = None, *, event: str | None = None, request_id: str | None = None, source: str = "voice",
-             **context_fields) -> dict:
+             addressed: bool = False, expect: int = 200, **context_fields) -> dict:
         self.number += 1
         body = {
             "request_id": request_id or f"req_{self.number:04d}", "store_id": "s001", "session_id": self.session_id,
             "client_time": "2026-11-17T09:02:11+09:00",
-            "utterance": None if text is None else {"text": text, "confidence": 1.0 if source == "chip" else 0.93, "source": source},
+            "utterance": None if text is None else {"text": text, "confidence": 0.93, "source": source, "addressed": addressed},
             "event": event, "context": {"last_turn_id": None, "donna_was_speaking": False, "heard_until": None, **context_fields},
         }
         response = self.client.post("/v1/turn", json=body)
-        assert response.status_code == 200, response.text
+        assert response.status_code == expect, response.text
         return response.json()
 
 

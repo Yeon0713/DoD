@@ -1,0 +1,100 @@
+{
+  "_comment": "초옹장(s005, 김호찬 사장님) 시연 데이터. Figma 'v0.2.1 : 디자인개선' 하루 시나리오와 같은 가게, 메뉴, 리뷰다. demo.now 는 서버를 켤 때 맞추는 시연 시각이다.",
+  "demo": {"now": "2026-11-17T09:02:00+09:00"},
+  "store": {
+    "id": "s005",
+    "name": "초옹장",
+    "category": "칼국수",
+    "open_time": "10:30",
+    "close_time": "20:30",
+    "closed_weekdays": [],
+    "address": "경기 화성시 남양읍",
+    "location": {"lat": 37.2098, "lng": 126.8226},
+    "timezone": "Asia/Seoul",
+    "logo_url": "/static/logos/s005.png",
+    "menus": [
+      {"id": "m_1", "name": "들깨옹심이메밀칼국수", "price": 11000, "photo_url": "/static/menus/deulkkae-ongsimi-memil-kalguksu.png"},
+      {"id": "m_2", "name": "멸치옹심이메밀칼국수", "price": 10000, "photo_url": "/static/menus/myeolchi-ongsimi-memil-kalguksu.png"},
+      {"id": "m_3", "name": "들깨옹심이", "price": 11000, "photo_url": "/static/menus/deulkkae-ongsimi.png"},
+      {"id": "m_4", "name": "새뱅이 장칼국수", "price": 10000, "photo_url": "/static/menus/saebaengi-jangkalguksu.png"}
+    ],
+    "rain_menu": "옹심이",
+    "strengths": [
+      {"key": "soup", "pattern": "들깨|국물|고소", "label": "고소한 들깨 국물", "headline": "들깨 국물을 좋아하세요", "keep_tip": "들깨는 지금처럼 그날 아침에 갈아 주세요"},
+      {"key": "chewy", "pattern": "쫀득|쫄깃", "label": "쫀득한 옹심이", "headline": "옹심이를 좋아하세요", "keep_tip": "옹심이는 지금처럼 쫀득하게 빚어 주세요"}
+    ],
+    "facts": []
+  },
+  "settings": {"negative_review_auto_reply": null},
+  "reservations": [
+    {"id": "rs_0031", "starts_at": "2026-11-17T12:00:00+09:00", "party_size": 12},
+    {"id": "rs_0032", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 4},
+    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 2},
+    {"id": "rs_0034", "starts_at": "2026-11-18T18:00:00+09:00", "party_size": 3},
+    {"id": "rs_0035", "starts_at": "2026-11-18T19:00:00+09:00", "party_size": 2},
+    {"id": "rs_0036", "starts_at": "2026-11-26T12:00:00+09:00", "party_size": 10}
+  ],
+  "events": [],
+  "games": [],
+  "weather": [
+    {"date": "2026-11-16", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": 2, "temp_max": 12, "label": "맑음"},
+    {"date": "2026-11-17", "rain_mm": 6.0, "rain_chance": 0.7, "rain_from": 14, "temp_min": 3, "temp_max": 11, "label": "비"},
+    {"date": "2026-11-18", "rain_mm": 0.0, "rain_chance": 0.3, "temp_min": 2, "temp_max": 10, "label": "흐림"},
+    {"date": "2026-11-19", "rain_mm": 12.0, "rain_chance": 0.8, "temp_min": 3, "temp_max": 9, "label": "비"},
+    {"date": "2026-11-20", "rain_mm": 0.0, "rain_chance": 0.2, "temp_min": 0, "temp_max": 8, "label": "구름"},
+    {"date": "2026-11-21", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": -1, "temp_max": 7, "label": "맑음"},
+    {"date": "2026-11-22", "rain_mm": 0.0, "rain_chance": 0.1, "temp_min": -2, "temp_max": 6, "label": "맑음"},
+    {"date": "2026-11-23", "rain_mm": 0.0, "rain_chance": 0.2, "temp_min": -1, "temp_max": 7, "label": "구름"}
+  ],
+  "reviews": [
+    {"id": "rv_0412", "platform": "baemin", "rating": 2, "order_channel": "delivery", "written_at": "2026-11-16T21:40:00+09:00", "text": "면이 불어서 왔어요."},
+    {"id": "rv_0410", "platform": "naver", "rating": 2, "order_channel": "hall", "written_at": "2026-11-16T13:10:00+09:00", "text": "옹심이가 조금 퍼져 있었어요."},
+    {"id": "rv_0401", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-15T20:05:00+09:00", "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요."},
+    {"id": "rv_0405", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-15T12:30:00+09:00", "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요."},
+    {"id": "rv_0409", "platform": "baemin", "rating": 4, "order_channel": "delivery", "written_at": "2026-11-16T19:45:00+09:00", "text": "양이 넉넉해서 든든했어요."},
+    {"id": "rv_0380", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-10T12:20:00+09:00", "text": "들깨 국물이 진하고 고소해요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "진한 들깨 국물 좋아해 주셔서 감사해요.", "reply_posted_at": "2026-11-10T15:00:00+09:00"},
+    {"id": "rv_0383", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-10T18:40:00+09:00", "text": "옹심이가 쫀득쫀득 맛있어요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "쫀득한 옹심이 그대로 준비해 둘게요.", "reply_posted_at": "2026-11-11T09:00:00+09:00"},
+    {"id": "rv_0386", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-11T12:10:00+09:00", "text": "국물이 고소하고 옹심이도 쫄깃해요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "고소하게 드셨다니 기뻐요. 또 주문해 주세요.", "reply_posted_at": "2026-11-11T15:00:00+09:00"},
+    {"id": "rv_0388", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-11T19:30:00+09:00", "text": "양이 많아서 둘이 나눠 먹었어요. 맛있어요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "넉넉하게 드셨다니 다행이에요. 또 오세요.", "reply_posted_at": "2026-11-12T09:00:00+09:00"},
+    {"id": "rv_0390", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-12T12:45:00+09:00", "text": "들깨 향이 고소하고 옹심이도 쫀득해서 자주 와요.", "reply_status": "posted", "reply_by": "owner", "reply_text": "자주 찾아 주셔서 감사합니다.", "reply_posted_at": "2026-11-12T16:00:00+09:00"},
+    {"id": "rv_0392", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-12T18:20:00+09:00", "text": "메밀면이랑 옹심이가 쫀득하니 좋아요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "메밀면과 옹심이 맛있게 드셔서 기뻐요.", "reply_posted_at": "2026-11-13T09:00:00+09:00"},
+    {"id": "rv_0394", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-13T12:15:00+09:00", "text": "고소한 들깨 국물 최고예요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "들깨 국물 칭찬 감사해요. 매일 아침 갈아서 끓여요.", "reply_posted_at": "2026-11-13T15:00:00+09:00"},
+    {"id": "rv_0396", "platform": "naver", "rating": 4, "order_channel": "hall", "written_at": "2026-11-13T19:05:00+09:00", "text": "국물이 고소하고 양도 넉넉해요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "든든하게 드셨다니 기뻐요.", "reply_posted_at": "2026-11-14T09:00:00+09:00"},
+    {"id": "rv_0398", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-14T12:30:00+09:00", "text": "옹심이가 쫀득하고 국물도 고소해서 아이도 잘 먹어요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "아이도 잘 먹었다니 정말 기뻐요.", "reply_posted_at": "2026-11-14T15:00:00+09:00"},
+    {"id": "rv_0399", "platform": "naver", "rating": 5, "order_channel": "hall", "written_at": "2026-11-14T18:50:00+09:00", "text": "들깨 국물이 고소해요. 또 올게요.", "reply_status": "posted", "reply_by": "owner", "reply_text": "또 오세요. 기다릴게요.", "reply_posted_at": "2026-11-15T10:00:00+09:00"},
+    {"id": "rv_0400", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-14T19:40:00+09:00", "text": "들깨 국물에 양도 푸짐해요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "푸짐하게 드셨다니 기뻐요.", "reply_posted_at": "2026-11-15T09:00:00+09:00"}
+  ],
+  "sales": {
+    "_comment": "포스 매출 (원). today_so_far 는 문을 연 뒤 지금까지, last_week_same_time 은 지난주 같은 요일 이맘때",
+    "daily": {
+      "2026-11-09": 1522000,
+      "2026-11-10": 1142000, "2026-11-11": 1196000, "2026-11-12": 1088000, "2026-11-13": 1251000,
+      "2026-11-14": 1873000, "2026-11-15": 2146000, "2026-11-16": 1284000
+    },
+    "today_so_far": 418000,
+    "last_week_same_time": 372000,
+    "top_menus_yesterday": [
+      {"id": "m_1", "label": "들깨옹심이메밀칼국수", "count": 38},
+      {"id": "m_2", "label": "멸치옹심이메밀칼국수", "count": 27},
+      {"id": "m_3", "label": "들깨옹심이", "count": 21}
+    ]
+  },
+  "activity": [
+    {"id": "a_1109_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-09T09:20:00+09:00"},
+    {"id": "a_1110_read", "actor": "donna", "text": "리뷰 4개를 읽고 나눴어요", "at": "2026-11-10T09:00:00+09:00"},
+    {"id": "a_1110_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-10T09:15:00+09:00"},
+    {"id": "a_1111_read", "actor": "donna", "text": "리뷰 3개를 읽고 나눴어요", "at": "2026-11-11T09:00:00+09:00"},
+    {"id": "a_1111_post", "actor": "donna", "text": "답글 2개를 올렸어요", "at": "2026-11-11T15:00:00+09:00"},
+    {"id": "a_1112_read", "actor": "donna", "text": "리뷰 3개를 읽고 나눴어요", "at": "2026-11-12T09:00:00+09:00"},
+    {"id": "a_1112_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-12T09:10:00+09:00"},
+    {"id": "a_1113_read", "actor": "donna", "text": "리뷰 4개를 읽고 나눴어요", "at": "2026-11-13T09:00:00+09:00"},
+    {"id": "a_1113_post", "actor": "donna", "text": "답글 3개를 올렸어요", "at": "2026-11-13T15:00:00+09:00"},
+    {"id": "a_1114_read", "actor": "donna", "text": "리뷰 5개를 읽고 나눴어요", "at": "2026-11-14T09:00:00+09:00"},
+    {"id": "a_1114_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-14T09:25:00+09:00"},
+    {"id": "a_1115_read", "actor": "donna", "text": "리뷰 6개를 읽고 나눴어요", "at": "2026-11-15T09:00:00+09:00"},
+    {"id": "a_1115_post", "actor": "donna", "text": "답글 2개를 올렸어요", "at": "2026-11-15T09:00:00+09:00"},
+    {"id": "a_1116_read", "actor": "donna", "text": "리뷰 7개를 읽고 나눴어요", "at": "2026-11-16T09:00:00+09:00"},
+    {"id": "a_1116_post", "actor": "donna", "text": "좋은 리뷰 2개에 답글을 올렸어요", "at": "2026-11-16T11:00:00+09:00"},
+    {"id": "a_1116_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-16T09:12:00+09:00"}
+  ]
+}

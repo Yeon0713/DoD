@@ -1,6 +1,10 @@
 // 음성은 이 파일 뒤에 숨긴다. 화면 코드는 여기 함수만 부른다.
-// 지금은 웹(브라우저의 Web Speech API)만 된다. 휴대폰·태블릿 앱용 STT·TTS는 아직 없다 (docs/open-features.md).
+// 듣기(STT)는 웹(브라우저의 Web Speech API)만 된다. 휴대폰·태블릿 앱용 STT는 아직 없다 (docs/open-features.md).
+// 읽기(TTS)는 도나 목소리가 먼저다: 백엔드가 Qwen3-TTS(Sohee + 도나 목소리 설계)로 미리 만들어 둔 소리 (GET /v1/tts).
+// 아직 만들지 못한 문장이면 그 문장만 기기 목소리(speechSynthesis)로 읽는다.
 import { Platform } from 'react-native';
+
+import { BASE } from './api';
 
 type Recognition = {
   lang: string;
@@ -31,6 +35,43 @@ type Listener = {
 let recognition: Recognition | null = null;
 let wantListening = false;
 let paused = false;
+
+// ---------- 도나 목소리 (서버에서 만든 소리) ----------
+const canPlay = !!win?.fetch && !!win?.Audio && !!win?.URL?.createObjectURL;
+const voiceUrls = new Map<string, Promise<string | null>>();
+let playing: HTMLAudioElement | null = null;
+/** 서버가 답하기를 이만큼까지만 기다린다. 넘으면 그 문장은 기기 목소리로 읽는다. */
+const VOICE_WAIT_MS = 1500;
+
+/** 도나 목소리 주소 (blob). 만들어 둔 것이 없으면 null (그 사이 서버가 만들기 시작한다). */
+function donnaVoice(text: string): Promise<string | null> {
+  if (!canPlay) return Promise.resolve(null);
+  let found = voiceUrls.get(text);
+  if (!found) {
+    found = win
+      .fetch(`${BASE}/v1/tts?text=${encodeURIComponent(text)}`)
+      .then(async (res: Response) => (res.status === 200 ? win.URL.createObjectURL(await res.blob()) : null))
+      .catch(() => null) as Promise<string | null>;
+    voiceUrls.set(text, found);
+    // 아직 없던 문장은 다음에 다시 묻는다 (서버가 그 사이 만들어 둔다)
+    found.then((url) => {
+      if (!url) voiceUrls.delete(text);
+    });
+  }
+  return found;
+}
+
+function stopPlaying() {
+  const a = playing;
+  playing = null;
+  if (a) {
+    try {
+      a.pause();
+    } catch {
+      /* 무시 */
+    }
+  }
+}
 
 export const voice = {
   sttSupported: () => !!RecognitionCtor,
@@ -133,13 +174,20 @@ export const voice = {
     paused = false;
   },
 
-  /** 한 문장을 소리 내어 읽는다. 소리가 꺼져 있으면 읽는 데 걸릴 시간만큼 기다린다(화면 글이 그동안 보인다). */
+  /** 이번 응답에서 읽을 문장들의 도나 목소리를 미리 받아 둔다 (첫 문장을 읽는 동안 다음 문장을 받는다). */
+  prefetch(texts: string[]) {
+    texts.forEach((t) => void donnaVoice(t));
+  },
+
+  /** 한 문장을 소리 내어 읽는다. 도나 목소리가 있으면 그것으로, 없으면 기기 목소리로.
+   * 소리가 꺼져 있으면 읽는 데 걸릴 시간만큼 기다린다(화면 글이 그동안 보인다). */
   speak(text: string, opts: { sound: boolean }): { done: Promise<void>; cancel: () => void } {
     let finish: () => void = () => {};
     let cancelled = false;
     const estimate = Math.max(1400, text.length * 130);
     const done = new Promise<void>((resolve) => {
       let settled = false;
+      let guard: ReturnType<typeof setTimeout> | undefined;
       const end = () => {
         if (settled) return;
         settled = true;
@@ -147,35 +195,74 @@ export const voice = {
         resolve();
       };
       finish = end;
-      // 브라우저가 "다 읽었다"는 신호를 안 주는 경우가 있어서 시간으로도 끝낸다.
-      let guard = setTimeout(end, opts.sound && win?.speechSynthesis ? estimate * 2 + 1500 : estimate);
-      if (!opts.sound || !win?.speechSynthesis) return;
-      try {
-        const u = new win.SpeechSynthesisUtterance(text);
-        let started = false;
-        u.lang = 'ko-KR';
-        u.rate = 1;
-        u.onstart = () => {
-          started = true;
-        };
-        u.onend = end;
-        u.onerror = end;
-        win.speechSynthesis.speak(u);
-        // 읽기를 시작하지 못하는 브라우저에서는(목소리가 없는 경우) 글을 읽을 시간만큼만 기다린다.
-        setTimeout(() => {
-          if (started || settled) return;
-          clearTimeout(guard);
-          guard = setTimeout(end, Math.max(0, estimate - 700));
-        }, 700);
-      } catch {
-        /* 소리 없이 시간만 기다린다 */
+      if (!opts.sound) {
+        guard = setTimeout(end, estimate);
+        return;
       }
+
+      /** 기기 목소리 (도나 목소리가 없을 때) */
+      const device = () => {
+        if (settled || cancelled) return;
+        clearTimeout(guard);
+        // 브라우저가 "다 읽었다"는 신호를 안 주는 경우가 있어서 시간으로도 끝낸다.
+        guard = setTimeout(end, win?.speechSynthesis ? estimate * 2 + 1500 : estimate);
+        if (!win?.speechSynthesis) return;
+        try {
+          const u = new win.SpeechSynthesisUtterance(text);
+          let started = false;
+          u.lang = 'ko-KR';
+          u.rate = 1;
+          u.onstart = () => {
+            started = true;
+          };
+          u.onend = end;
+          u.onerror = end;
+          win.speechSynthesis.speak(u);
+          // 읽기를 시작하지 못하는 브라우저에서는(목소리가 없는 경우) 글을 읽을 시간만큼만 기다린다.
+          setTimeout(() => {
+            if (started || settled) return;
+            clearTimeout(guard);
+            guard = setTimeout(end, Math.max(0, estimate - 700));
+          }, 700);
+        } catch {
+          /* 소리 없이 시간만 기다린다 */
+        }
+      };
+
+      if (!canPlay) return device();
+      let gaveUp = false;
+      const wait = setTimeout(() => {
+        gaveUp = true;
+        device();
+      }, VOICE_WAIT_MS);
+      donnaVoice(text).then((url) => {
+        if (gaveUp || settled || cancelled) return;
+        clearTimeout(wait);
+        if (!url) return device();
+        const a: HTMLAudioElement = new win.Audio(url);
+        playing = a;
+        let failed = false;
+        const fail = () => {
+          if (failed) return;
+          failed = true;
+          if (playing === a) playing = null;
+          device();
+        };
+        a.onended = () => {
+          if (playing === a) playing = null;
+          end();
+        };
+        a.onerror = fail;
+        guard = setTimeout(end, estimate * 3 + 4000);
+        a.play().catch(fail);
+      });
     });
     return {
       done,
       cancel: () => {
         if (cancelled) return;
         cancelled = true;
+        stopPlaying();
         try {
           win?.speechSynthesis?.cancel();
         } catch {
@@ -187,6 +274,7 @@ export const voice = {
   },
 
   cancelSpeech() {
+    stopPlaying();
     try {
       win?.speechSynthesis?.cancel();
     } catch {

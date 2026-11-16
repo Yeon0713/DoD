@@ -11,6 +11,13 @@
   - repetitionPenalty / stop 은 문서 표기가 섞여 있어 보내지 않는다
 
 호출마다 기존 clova_usage_log.record_call 로 기록을 남긴다 (feature 는 "agent:<에이전트 이름>").
+
+평가 심판(Harness/evals/judge.py)이 쓰는 선택 인자. 넘기지 않으면 예전과 똑같이 보낸다.
+  - model: 주소에 넣을 모델 (기본 settings.clova_studio_model)
+  - thinking_effort: 추론 모델(HCX-007)의 thinking.effort. "none" 이면 추론을 끈 채 도구를 쓴다.
+    그 밖의 값이면 추론을 켜는 요청이라 도구를 함께 보낼 수 없고(tools 는 비워야 한다), maxTokens 대신
+    maxCompletionTokens(추론 + 답, 최대 32,768)를 보낸다 (CLOVA Studio 문서: 추론은 function calling 과 같이 쓸 수 없다)
+  - log_prefix: 사용 기록 feature 앞에 붙이는 말 (기본 "agent:")
 """
 
 import json
@@ -30,6 +37,7 @@ from Harness import limiter
 logger = logging.getLogger(__name__)
 
 MIN_MAX_TOKENS = 1024
+MAX_COMPLETION_TOKENS = 32768  # 추론 모델 한도 (추론 + 답)
 
 _local = threading.local()  # 이 스레드가 마지막으로 남긴 사용 기록 id
 
@@ -48,6 +56,7 @@ class ToolReply:
     finish_reason: str = "stop"
     input_tokens: int | None = None
     output_tokens: int | None = None
+    thinking_tokens: int | None = None  # 출력 토큰 중 추론에 쓴 수. 추론 글(thinkingContent)은 읽지 않는다
 
     def as_assistant_message(self) -> dict:
         """다음 요청에 그대로 붙일 assistant 메시지 (toolCalls 포함)."""
@@ -101,6 +110,7 @@ def parse_reply(response: httpx.Response) -> ToolReply | None:
         finish_reason=result.get("finishReason") or ("tool_calls" if calls else "stop"),
         input_tokens=usage.get("promptTokens"),
         output_tokens=usage.get("completionTokens"),
+        thinking_tokens=(usage.get("completionTokensDetails") or {}).get("thinkingTokens"),
     )
 
 
@@ -123,6 +133,9 @@ def chat_with_tools(
     timeout: float = 20,
     post: Post = httpx.post,
     alt_tools: list[dict] | None = None,
+    model: str | None = None,
+    thinking_effort: str | None = None,
+    log_prefix: str = "agent:",
 ) -> ToolReply | None:
     """대화와 도구 목록으로 한 번 묻는다. 키가 없거나, 연결이 실패하거나, 200 이 아니면(429 는 한 번 기다렸다 다시) None.
 
@@ -133,6 +146,9 @@ def chat_with_tools(
     """
     if not is_enabled():
         return None
+    reasoning = thinking_effort not in (None, "none")
+    if reasoning and tools:
+        raise ValueError("추론(thinking)을 켠 요청에는 도구를 보낼 수 없어요")
     body = {
         "messages": messages,
         "tools": tools,
@@ -141,18 +157,25 @@ def chat_with_tools(
         "temperature": temperature,
         "topP": 0.8,
     }
+    if thinking_effort is not None:
+        body["thinking"] = {"effort": thinking_effort}
+    if reasoning:
+        del body["tools"], body["toolChoice"], body["maxTokens"]
+        body["maxCompletionTokens"] = min(max_tokens, MAX_COMPLETION_TOKENS)
+    model = model or settings.clova_studio_model
+    feature = f"{log_prefix}{feature}"
     request_text = _last_text(messages)
     for attempt in range(limiter.RATE_LIMIT_RETRIES + 1):
         started = time.perf_counter()
-        response = _post(post, body, timeout)
+        response = _post(post, body, timeout, model)
         if response is None:
-            _log(feature, store_id, started, "connection_error", None, None, request_text)
+            _log(feature, model, store_id, started, "connection_error", None, None, request_text)
             return None
         if response.status_code == 429 and attempt < limiter.RATE_LIMIT_RETRIES:
-            _log(feature, store_id, started, "http_error", 429, None, request_text)
+            _log(feature, model, store_id, started, "http_error", 429, None, request_text)
             limiter.sleep(limiter.RATE_LIMIT_WAIT_SECONDS)
             continue
-        if response.status_code == 400 and body["toolChoice"] != "auto":
+        if response.status_code == 400 and body.get("toolChoice", "auto") != "auto":
             name = body["toolChoice"]["function"]["name"]
             nudge = {"role": "user", "content": f"답은 반드시 {name} 도구로 내."}
             retries = [{**body, "messages": [*messages, nudge]}]
@@ -160,30 +183,30 @@ def chat_with_tools(
                 retries.append({**body, "tools": alt_tools})
             for retry in retries:
                 logger.warning("CLOVA(도구) 강제 호출 400, 조건을 바꿔 다시 묻는다: %s", response.text[:200])
-                _log(feature, store_id, started, "http_error", 400, None, request_text)
+                _log(feature, model, store_id, started, "http_error", 400, None, request_text)
                 started = time.perf_counter()
-                response = _post(post, retry, timeout)
+                response = _post(post, retry, timeout, model)
                 if response is None:
-                    _log(feature, store_id, started, "connection_error", None, None, request_text)
+                    _log(feature, model, store_id, started, "connection_error", None, None, request_text)
                     return None
                 if response.status_code != 400:
                     break
         if response.status_code != 200:
             logger.warning("CLOVA(도구) 응답 %s: %s", response.status_code, response.text[:300])
-            _log(feature, store_id, started, "http_error", response.status_code, None, request_text)
+            _log(feature, model, store_id, started, "http_error", response.status_code, None, request_text)
             return None
         reply = parse_reply(response)
-        _log(feature, store_id, started, "ok" if reply else "bad_shape", 200, reply, request_text)
+        _log(feature, model, store_id, started, "ok" if reply else "bad_shape", 200, reply, request_text)
         return reply
     return None
 
 
-def _post(post: Post, body: dict, timeout: float) -> httpx.Response | None:
+def _post(post: Post, body: dict, timeout: float, model: str) -> httpx.Response | None:
     """자리 하나를 잡고 보낸다. 연결이 실패하면 None."""
     try:
         with limiter.slot():
             return post(
-                f"{settings.clova_studio_base_url}/v3/chat-completions/{settings.clova_studio_model}",
+                f"{settings.clova_studio_base_url}/v3/chat-completions/{model}",
                 headers={
                     "Authorization": f"Bearer {settings.clova_studio_api_key}",
                     "Content-Type": "application/json",
@@ -197,7 +220,7 @@ def _post(post: Post, body: dict, timeout: float) -> httpx.Response | None:
         return None
 
 
-def _log(feature: str, store_id: str | None, started: float, status: str, http_status: int | None,
+def _log(feature: str, model: str, store_id: str | None, started: float, status: str, http_status: int | None,
          reply: ToolReply | None, request_text: str) -> None:
     answer = None
     if reply is not None:
@@ -206,7 +229,8 @@ def _log(feature: str, store_id: str | None, started: float, status: str, http_s
         )
     try:
         _local.last_call_id = clova_usage_log.record_call(
-            feature=f"agent:{feature}",
+            feature=feature,
+            model=model,
             store_id=store_id,
             input_tokens=reply.input_tokens if reply else None,
             output_tokens=reply.output_tokens if reply else None,

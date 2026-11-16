@@ -192,6 +192,15 @@ def test_reasoning_model_uses_max_completion_tokens_and_keeps_old_shape_for_othe
     assert default["maxTokens"] == 1024 and "maxCompletionTokens" not in default and "thinking" not in default
 
 
+def test_base_url_trailing_slash_is_dropped(monkeypatch):
+    from app.core.config import settings
+
+    monkeypatch.setattr(settings, "clova_studio_base_url", "https://clova.example/")
+    fake = UrlFake("가")
+    clova_tools.chat_with_tools([{"role": "user", "content": "u"}], [], feature="t", store_id=None, post=fake, model="HCX-007")
+    assert fake.urls == ["https://clova.example/v3/chat-completions/HCX-007"]
+
+
 def test_thinking_mode_request_has_no_tools_and_reads_trailing_json():
     answer = '생각해 보면 지어낸 말이 있어요.\n```json\n{"ok": "아니오", "quotes": ["저희는 매일 아침 육수를 직접 끓여요."], "reason": "등록한 사실에 없음"}\n```'
     fake = UrlFake(answer, answer, answer)

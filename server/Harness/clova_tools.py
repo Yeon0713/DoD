@@ -222,7 +222,8 @@ def _post(post: Post, body: dict, timeout: float, model: str) -> httpx.Response 
     try:
         with limiter.slot():
             return post(
-                f"{settings.clova_studio_base_url}/v3/chat-completions/{model}",
+                # .env 의 주소 끝에 '/' 가 있으면 '…com//v3/…' 가 되어 모든 요청이 400 이다 (2026-11-17 실제로 겪음)
+                f"{settings.clova_studio_base_url.rstrip('/')}/v3/chat-completions/{model}",
                 headers={
                     "Authorization": f"Bearer {settings.clova_studio_api_key}",
                     "Content-Type": "application/json",

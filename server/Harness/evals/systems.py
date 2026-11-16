@@ -11,7 +11,12 @@
   rewrite(text, ctx, instruction, review_id)  답글 다시 쓰기
   diagnose(item, ctx)                    반복 불만 원인 분석
   campaign(item, ctx)                    메뉴판 후보 + 포스터 멘트
-  coordinate(batch, proposals, ctx)      알림 묶음 조율 (A 는 스스로 맞추므로 받은 제안을 그대로 돌려줄 수 있다)
+  coordinate(batch, proposals, ctx)      알림 묶음 조율 (B 만. A 는 묶음을 스스로 맞추므로 batch 로 비교한다)
+  batch(items, ctx)                      알림 묶음 하나(답글·재주문 인사·반복 불만 진단) → 할 일 id → Proposal 또는 None
+                                         B: 일꾼마다 따로(ctx.child) → supervisor 조율. A: 에이전트 하나가 한 번에
+  voice_prepare(view, jobs, now)         음성 브리핑 준비 → {"replies": {review_id: {text, source, notes}}, "tip": {text, source}}
+                                         jobs: [{"review": 리뷰 dict, "kind": AUTO|SCHEDULED|DRAFT, "occasion": dict|None}]
+                                         B: voice_reply.write 를 답글마다, improve_tip.suggest. A: 에이전트 하나가 한 번에
 일 이름이 없는 시스템에 그 일을 맡기면 KeyError 대신 SystemUnavailable 을 낸다.
 """
 
@@ -19,7 +24,9 @@ import importlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-TASKS = ("draft", "rewrite", "diagnose", "campaign", "coordinate")
+TASKS = ("draft", "rewrite", "diagnose", "campaign", "coordinate", "batch", "voice_prepare")
+REPLY_TYPES = ("REVISIT_REPLY", "REORDER_NUDGE")
+CAMPAIGN_TYPES = ("MENU_ORDER", "POSTER")
 SINGLE_AGENT_MODULE = "Harness.agents.single_agent"
 
 
@@ -39,6 +46,33 @@ class System:
         return self.tasks[name]
 
 
+def _b_batch(items, ctx) -> dict:
+    """B 의 알림 묶음: 할 일마다 일꾼을 따로 돌리고(이 실행 아래 ctx.child), 충돌이 있으면 supervisor 가 조율한다."""
+    from Harness.agents import campaign_agent, complaint_agent, reply_agent
+    from Harness.supervisor import coordinate_batch
+
+    workers = {**{t: reply_agent.draft for t in REPLY_TYPES}, "REVIEW_FIX": complaint_agent.diagnose,
+               **{t: campaign_agent.plan_campaign for t in CAMPAIGN_TYPES}}
+    plan_ids = [item.plan_id for item in items]
+    drafts = {}
+    for item in items:
+        if item.task_type not in workers:
+            raise SystemUnavailable(f"시스템 B 는 '{item.task_type}' 할 일을 하지 못해요")
+        drafts[item.plan_id] = workers[item.task_type](item, ctx.child())
+    result = coordinate_batch(plan_ids, {k: v for k, v in drafts.items() if v is not None}, ctx)
+    return {plan_id: result.proposals.get(plan_id) for plan_id in plan_ids}
+
+
+def _b_voice_prepare(view, jobs: list[dict], now) -> dict:
+    """B 의 음성 브리핑 준비: 답글마다 voice_reply 에이전트, 고칠 점은 improve_tip 에이전트 (각각 따로)."""
+    from voice.agents import improve_tip, voice_reply
+
+    return {
+        "replies": {job["review"]["id"]: voice_reply.write(view, job["review"], job["kind"], job.get("occasion")) for job in jobs},
+        "tip": improve_tip.suggest(view, now),
+    }
+
+
 def _system_b() -> System:
     from Harness.agents import campaign_agent, complaint_agent, reply_agent
     from Harness.supervisor import coordinate_batch
@@ -49,6 +83,8 @@ def _system_b() -> System:
         "diagnose": complaint_agent.diagnose,
         "campaign": campaign_agent.plan_campaign,
         "coordinate": coordinate_batch,
+        "batch": _b_batch,
+        "voice_prepare": _b_voice_prepare,
     })
 
 

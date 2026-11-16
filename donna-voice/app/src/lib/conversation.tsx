@@ -119,6 +119,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   const speakAll = useCallback(async (say: Turn['say'], my: number) => {
     voice.pause();
     setBusy('speaking');
+    if (soundRef.current) voice.prefetch(say.map((s) => s.text));
     for (let i = 0; i < say.length; i++) {
       const seg = say[i];
       if (token.current !== my) return false;

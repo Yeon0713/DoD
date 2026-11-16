@@ -35,7 +35,8 @@ def test_native_numbers_and_clock_labels():
         ["한", "두", "세", "네", "다섯", "열", "열두", "열네", "스무", "스물한", "아흔아홉"]
     assert speech.count(12, "분") == "열두 분"
     day = dt.datetime(2026, 11, 17, 18, 30)
-    assert speech.clock_label(day) == "저녁 6시 30분"
+    assert speech.clock_label(day) == "저녁 6시 반"
+    assert speech.clock_label(day.replace(minute=15)) == "저녁 6시 15분"
     assert speech.clock_label(day.replace(hour=8, minute=0)) == "아침 8시"
     assert speech.clock_label(day.replace(hour=11, minute=0)) == "오전 11시"
     assert speech.clock_label(day.replace(hour=17, minute=0)) == "오후 5시"

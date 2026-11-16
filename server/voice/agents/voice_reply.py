@@ -41,6 +41,7 @@ POSITIVE_TEMPLATES = {
     "event": "좋은 리뷰 감사해요! {label} 가시는 길에 편하게 들러 주세요.",
     "season": "좋게 봐 주셔서 감사해요! 날이 추워졌는데 따뜻한 {soup}로 몸 녹이고 가세요.",
     "weekend": "좋은 리뷰 남겨 주셔서 감사해요! 주말에도 맛있게 준비해 둘게요.",
+    "lunch": "맛있게 드셔 주셔서 감사해요! 점심 한 그릇 든든하게 드시러 또 들러 주세요.",
 }
 
 
@@ -50,7 +51,7 @@ POSITIVE_TEMPLATES = {
 def _soup(view: VoiceStore) -> str:
     from voice.jobs.strengths import SOUP_RE
 
-    return next((m["name"] for m in view.menus if SOUP_RE.search(m["name"])), "국물 요리")
+    return view.store.get("rain_menu") or next((m["name"] for m in view.menus if SOUP_RE.search(m["name"])), "국물 요리")
 
 
 def template(view: VoiceStore, review: dict, occasion: dict | None) -> str:

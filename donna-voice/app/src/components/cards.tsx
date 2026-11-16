@@ -214,7 +214,8 @@ export function Tip({ card }: { card: Pick<TipCard, 'kind' | 'text'> }) {
   );
 }
 
-export function Bars({ card }: { card: Pick<BarsCard, 'items' | 'unit' | 'title'> }) {
+/** prefix: 숫자 앞말. 좋은 리뷰에서 찾은 것은 "리뷰 9개", 매출 탭의 메뉴는 앞말 없이 "38개". */
+export function Bars({ card, prefix = '리뷰 ' }: { card: Pick<BarsCard, 'items' | 'unit' | 'title'>; prefix?: string }) {
   const max = Math.max(1, ...card.items.map((i) => i.count));
   return (
     <Surface gap={space.s16}>
@@ -229,7 +230,7 @@ export function Bars({ card }: { card: Pick<BarsCard, 'items' | 'unit' | 'title'
             <Txt variant="bodyStrong" style={{ flex: 1 }} numberOfLines={1}>
               {it.label}
             </Txt>
-            <NumText text={`리뷰 ${it.count}${card.unit}`} variant="label" />
+            <NumText text={`${prefix}${it.count}${card.unit}`} variant="label" />
           </View>
           <View style={styles.track}>
             <View style={[styles.fill, { width: `${Math.round((it.count / max) * 100)}%` }]} />

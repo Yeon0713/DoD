@@ -106,7 +106,7 @@ export default function SalesScreen() {
       </Surface>
   );
   const menus = (
-      <Bars card={{ title: top_menus.label, unit: top_menus.unit, items: top_menus.items }} />
+      <Bars card={{ title: top_menus.label, unit: top_menus.unit, items: top_menus.items }} prefix="" />
   );
 
   // 도나가 위에서 숫자를 말했으니, 카드는 견줄 것을 나란히 보여 준다.

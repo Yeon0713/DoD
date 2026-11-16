@@ -26,6 +26,12 @@
       "port": 8100
     },
     {
+      "name": "voice-backend",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd server && .venv/bin/python -m voice.run_voice"],
+      "port": 8100
+    },
+    {
       "name": "donna-voice-app",
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd donna-voice/app && npx expo start --web --port 8090"],

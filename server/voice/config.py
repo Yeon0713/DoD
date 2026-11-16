@@ -17,6 +17,9 @@ POSITIVE_WINDOW = dt.timedelta(days=7)  # 좋은 리뷰 일주일 분석
 POSITIVE_MIN = 3  # 최근 7일 좋은 리뷰가 이보다 적으면 4단계를 건너뛴다
 NEGATIVE_WINDOW = dt.timedelta(days=28)  # 고칠 점 찾기에 보는 기간
 TICK_SECONDS = 30  # 작업 큐를 보는 간격
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+# 켤 때 넣는 시연 가게 (비어 있으면 넣지 않는다). 그 파일의 demo.now 로 시계를 맞춘다 (시계는 켤 때마다 다시 맞춘다)
+DEMO_FIXTURE = os.environ.get("VOICE_DEMO_FIXTURE", "s005_choongjang")
 
 
 def agent_on(name: str) -> bool:

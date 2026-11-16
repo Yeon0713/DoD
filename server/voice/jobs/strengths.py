@@ -36,19 +36,36 @@ def label_of(key: str, menus: list[dict]) -> str:
     return LABELS[key]
 
 
-def analyze(reviews: list[dict], menus: list[dict]) -> dict:
-    """좋은 리뷰들 → {total, top: [{key, label, count}] (최대 3, 많은 순), headline, keep_tip}."""
+def analyze(reviews: list[dict], menus: list[dict], vocab: list[dict] | None = None) -> dict:
+    """좋은 리뷰들 → {total, top: [{key, label, count}] (최대 3, 많은 순), headline, keep_tip}.
+
+    vocab: 가게가 따로 정한 말 (store.strengths). [{key, pattern, label, headline, keep_tip}]
+    같은 key 면 기본 사전 대신 쓰고, 새 key 면 더한다 (초옹장의 '쫀득한 옹심이').
+    """
+    patterns = dict(PATTERNS)
+    labels: dict[str, str] = {}
+    headlines, keep_tips = dict(HEADLINES), dict(KEEP_TIPS)
+    for word in vocab or []:
+        key = word["key"]
+        patterns[key] = re.compile(word["pattern"])
+        if word.get("label"):
+            labels[key] = word["label"]
+        if word.get("headline"):
+            headlines[key] = word["headline"]
+        if word.get("keep_tip"):
+            keep_tips[key] = word["keep_tip"]
     counts: dict[str, int] = {}
     for review in reviews:
-        for key in keys_in(review["text"]):
-            counts[key] = counts.get(key, 0) + 1
-    order = list(PATTERNS)
+        for key, pattern in patterns.items():
+            if pattern.search(review["text"]):
+                counts[key] = counts.get(key, 0) + 1
+    order = list(patterns)
     top = sorted(counts.items(), key=lambda kv: (-kv[1], order.index(kv[0])))[:3]
-    items = [{"key": key, "label": label_of(key, menus), "count": n} for key, n in top]
+    items = [{"key": key, "label": labels.get(key) or (label_of(key, menus) if key in PATTERNS else key), "count": n} for key, n in top]
     first = items[0]["key"] if items else None
     return {
         "total": len(reviews),
         "top": items,
-        "headline": HEADLINES[first] if first else "좋은 리뷰가 많아요",
-        "keep_tip": KEEP_TIPS[first] if first else "지금처럼 맛과 응대를 지켜 주세요",
+        "headline": headlines.get(first, "좋은 리뷰가 많아요") if first else "좋은 리뷰가 많아요",
+        "keep_tip": keep_tips.get(first, "지금처럼 맛과 응대를 지켜 주세요") if first else "지금처럼 맛과 응대를 지켜 주세요",
     }

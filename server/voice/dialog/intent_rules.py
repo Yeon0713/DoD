@@ -37,6 +37,13 @@ JUMPS = [
     (re.compile(r"리뷰"), "reviews"),
 ]
 QUESTION_TOPIC_RE = re.compile(r"예약|날씨|비와|비오|비소식|행사|경기|축제")
+# 다른 탭을 여는 말 (문서 16-1). "홈"은 stop 과 같다
+NAVIGATE = [
+    (re.compile(r"매출|얼마(나)?팔|많이팔|장사(는|가)?어땠|장사잘"), "sales"),
+    (re.compile(r"이번주|달력|일정탭|언제바빠"), "week"),
+    (re.compile(r"설정"), "settings"),
+]
+HOME_RE = re.compile(r"^홈(으로|화면)?(가|가줘|으로가|보여줘)?$")
 QUESTION_TAIL_RE = re.compile(r"(있어|있나|있니|와|오나|와요|어때|해|하나|몇팀|몇명|언제)$")
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
@@ -75,7 +82,8 @@ def jump_target(squashed: str) -> str | None:
     return next((target for pattern, target in JUMPS if pattern.search(squashed)), None)
 
 
-def match(text: str, last_type: str | None) -> Intent | None:
+def match(text: str, last_type: str | None, addressed: bool = False) -> Intent | None:
+    """addressed: "도나야"로 불러서 한 말. 가게 손님·직원에게 한 말(not_for_donna)로 넘기지 않는다."""
     n = normalize(text)
     said = tidy(text)
     if not n:
@@ -84,9 +92,9 @@ def match(text: str, last_type: str | None) -> Intent | None:
     def found(name: str, jump_to: str | None = None) -> Intent:
         return Intent(name, said, jump_to)
 
-    if STOP_RE.search(n):
+    if STOP_RE.search(n) or HOME_RE.search(n):
         return found("stop")
-    if NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
+    if not addressed and NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
         return found("not_for_donna")
     if last_type == "ask_permission":
         if NO_RE.search(n):
@@ -116,12 +124,16 @@ def match(text: str, last_type: str | None) -> Intent | None:
     if START_RE.search(n):
         return found("briefing.start")
     if QUESTION_TOPIC_RE.search(n) and (QUESTION_TAIL_RE.search(n) or text.strip().endswith("?")):
-        return found("question")
+        return found("question")  # "이번 주 비 와?"는 묻는 말이다. 탭을 열지 않는다
+    for pattern, tab in NAVIGATE:
+        if pattern.search(n):
+            return found(f"navigate.{tab}")
     return None
 
 
-def heuristic(text: str) -> Intent:
-    """규칙도 LLM 도 못 가를 때. 도나에게 묻는 말 같으면 unknown(못 알아들음), 아니면 not_for_donna(가만히)."""
+def heuristic(text: str, addressed: bool = False) -> Intent:
+    """규칙도 LLM 도 못 가를 때. 도나에게 묻는 말 같으면 unknown(못 알아들음), 아니면 not_for_donna(가만히).
+    "도나야"로 부른 말은 언제나 도나에게 한 말이다."""
     n = normalize(text)
-    name = "unknown" if DONNA_CUE_RE.search(n) or text.strip().endswith("?") else "not_for_donna"
+    name = "unknown" if addressed or DONNA_CUE_RE.search(n) or text.strip().endswith("?") else "not_for_donna"
     return Intent(name, tidy(text), by="heuristic")

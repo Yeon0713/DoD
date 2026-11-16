@@ -18,6 +18,18 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": ["-c", "cd server && DEV_TOOLS_ENABLED=true .venv/bin/python run_dev.py"],
       "port": 8000
+    },
+    {
+      "name": "donna-voice-server",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd donna-voice/server && .venv/bin/python run_dev.py"],
+      "port": 8100
+    },
+    {
+      "name": "donna-voice-app",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": ["-c", "cd donna-voice/app && npx expo start --web --port 8090"],
+      "port": 8090
     }
   ]
 }

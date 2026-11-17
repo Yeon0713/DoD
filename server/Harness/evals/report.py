@@ -15,6 +15,7 @@ start() 가 하는 일
 (live_eval 의 CountingPost·_reason 과 같은 일을 하고 토큰도 센다. live_eval 이 이 모듈을 쓰게 바꾸는 것은 담당과 협의 중이다)
 
 result.json 모양 (schema 1): schema, suite, started_at, finished_at, git, config, systems, metrics, cases, validation.
+스위트가 표를 더 남기면(EvalRun.tables, 예: 분류 혼동 행렬) tables 가 붙는다. 비어 있으면 넣지 않는다.
 지표 한 줄은 metrics.metric() 모양이다. cases[].output 은 전문을 남긴다.
 """
 
@@ -149,6 +150,7 @@ class EvalRun:
     metrics: list[dict] = field(default_factory=list)
     cases: list[dict] = field(default_factory=list)
     validation: dict = field(default_factory=dict)
+    tables: dict = field(default_factory=dict)  # 지표 줄로 담기 어려운 표 (혼동 행렬 등)
 
     def add_metric(self, row: dict) -> None:
         self.metrics.append(row)
@@ -157,9 +159,12 @@ class EvalRun:
         self.cases.append(row)
 
     def as_dict(self, finished_at: str) -> dict:
-        return {"schema": SCHEMA, "suite": self.suite, "started_at": self.started_at, "finished_at": finished_at,
+        body = {"schema": SCHEMA, "suite": self.suite, "started_at": self.started_at, "finished_at": finished_at,
                 "git": self.git, "config": self.config, "systems": self.systems, "metrics": self.metrics,
                 "cases": self.cases, "validation": self.validation}
+        if self.tables:
+            body["tables"] = self.tables
+        return body
 
     def finish(self) -> Path:
         """result.json 을 쓰고 그 경로를 돌려준다. 다시 불러도 된다 (덮어쓴다)."""

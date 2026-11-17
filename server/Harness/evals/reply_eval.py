@@ -75,6 +75,7 @@ from pathlib import Path
 import httpx
 
 from app.core.config import settings
+from Harness import limiter
 from Harness.evals import derive, fail_cause, gold, judge, metrics, reply_checks, report, systems
 from Harness.evals.guards_eval import CaseAborted, GuardedPost
 
@@ -389,6 +390,7 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
     thread_post.local.case_id = case["case_id"]
     thread_post.local.run_ids = []
     thread_post.local.events = []
+    thread_post.local.waits = []
     started = time.perf_counter()
     error = None
     try:
@@ -400,6 +402,9 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
     run_ids = list(thread_post.local.run_ids)
     events = list(thread_post.local.events)
     thread_post.local.events = None
+    waited = list(thread_post.local.waits or [])
+    thread_post.local.waits = None
+    waits = {"count": len(waited), "seconds": round(sum(waited), 1), "estimated": False}
     seconds = round(time.perf_counter() - started, 3)
     text = (written.get("text") or "").strip() or None
     checks, verdicts = {}, {}
@@ -424,6 +429,7 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
         steps = [step for run_id in run_ids for step in trace.steps_of(run_id)]
         cause, cause_detail = fail_cause.classify(source, steps, events, top_run_id=run_ids[0] if run_ids else None)
         stats = fail_cause.submit_stats(steps)
+    cause_detail = fail_cause.with_waits(cause, cause_detail, waits)
     markers = (case.get("injection") or {}).get("follow_markers") or []
     return {
         "case_id": case["case_id"], "system": system, "run": run, "run_id": run_ids[0] if run_ids else None, "source": source,
@@ -435,7 +441,7 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
         "followed_injection": [m for m in markers if text and m in text] if markers else None,
         "calls": counting.calls, "tokens": list(counting.tokens), "seconds": seconds,
         "rejections": list(written.get("notes") or []), "error": error,
-        "fail_cause": cause, "fail_detail": cause_detail, "transport_events": events, "submit_stats": stats,
+        "fail_cause": cause, "fail_detail": cause_detail, "transport_events": events, "submit_stats": stats, "waited_429": waits,
         "check_kind": CHECK_KINDS.get(system, ""),
     }
 
@@ -508,12 +514,20 @@ CAUSE_NAMES = {"none": "없음(생성 성공)", "transport": "전송 실패", "r
 
 
 def cause_metrics(name: str, rows: list[dict]) -> list[dict]:
-    """fail_cause_rate:<값> (분모 요청 전체). 검사 통과·거절 비율과 합치지 않는다."""
+    """fail_cause_rate:<값> (분모 요청 전체). 검사 통과·거절 비율과 합치지 않는다.
+    fail_cause_rate:budget_with_429 는 budget 의 부분 집합이라 원인 합계에 넣지 않는다."""
     counts = Counter(row.get("fail_cause") for row in rows if row.get("fail_cause"))
     total = len(rows)
-    return [metrics.metric(f"fail_cause_rate:{cause}", f"실패 원인: {CAUSE_NAMES[cause]}", question=QUESTION_TASK, system=name,
-                           numerator=counts[cause], denominator=total, higher_is_better=cause == "none")
-            for cause in fail_cause.CAUSES]
+    out = [metrics.metric(f"fail_cause_rate:{cause}", f"실패 원인: {CAUSE_NAMES[cause]}", question=QUESTION_TASK, system=name,
+                          numerator=counts[cause], denominator=total, higher_is_better=cause == "none")
+           for cause in fail_cause.CAUSES]
+    with_429 = [row for row in rows if fail_cause.budget_with_429(row.get("fail_cause") or "", row.get("waited_429"))]
+    waited = sum((row["waited_429"].get("seconds") or 0) for row in with_429)
+    out.append(metrics.metric("fail_cause_rate:budget_with_429", "실패 원인: 상한 중 429 대기 있음", question=QUESTION_TASK,
+                              system=name, numerator=len(with_429), denominator=total, higher_is_better=False,
+                              note=f"budget {counts['budget']}건의 부분 집합 (합계에 두 번 세지 않음) · 429 대기 "
+                                   f"{sum(row['waited_429']['count'] for row in with_429)}번, {waited:g}초"))
+    return out
 
 
 def attempt_metrics(name: str, rows: list[dict]) -> list[dict]:
@@ -598,6 +612,16 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, workers: int
     trace.record = record
     saved_post, saved_env = context.post, {key: os.environ.get(key) for key in SWITCHES}
     context.post = thread_post
+    saved_wait = limiter.wait_after_429
+
+    def wait_after_429(headers):  # 사례마다 실제로 기다린 초를 센다 (기다리는 방식은 그대로)
+        seconds = saved_wait(headers)
+        waits = getattr(thread_post.local, "waits", None)
+        if waits is not None:
+            waits.append(seconds)
+        return seconds
+
+    limiter.wait_after_429 = wait_after_429
     if path == "voice":
         os.environ.update(SWITCHES)
     clock.set_now(now)
@@ -626,6 +650,7 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, workers: int
     finally:
         context.post = saved_post
         trace.record = saved_record
+        limiter.wait_after_429 = saved_wait
         clock.set_now(None)
         for key, value in saved_env.items():
             if value is None:

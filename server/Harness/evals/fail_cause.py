@@ -16,6 +16,12 @@ fail_cause (사례마다 하나)
   other      위에 없음. fail_detail 에 까닭 글
 fail_cause 는 생성이 왜 실패했는지만 말한다. 적합(심판·코드 검사)과 검사 통과/거절 비율은 따로 센다.
 
+budget 중 그 실행에 429 대기가 있었던 것 (budget_with_429)
+  429 를 받고 기다린 시간이 시간 상한을 먹었을 수 있다. fail_cause 는 budget 그대로 두고(합계에 두 번 세지 않음)
+  fail_detail 에 "429 대기 n번, m초" 를 붙이고, 사례 줄 waited_429 {count, seconds, estimated} 에 남긴다.
+  새 실행은 limiter.wait_after_429 를 감싸 사례마다 실제 기다린 초를 센다. 예전 결과는 clova_usage.db 의 429 기록 수와,
+  그 다음 같은 에이전트 호출까지의 간격으로 어림한 초(estimated true)를 쓴다.
+
 제출 통계 (사례 = 논리 작업 하나)
   submits      제출 수 (A·B: trace submit 단계, B 는 아래 일꾼 실행 포함 / S: 답이 온 시도)
   first_ok     첫 제출이 검사를 통과했나 (제출이 없으면 None)
@@ -80,6 +86,25 @@ def attempts_stats(verdicts: list[bool]) -> dict:
     if not verdicts[0] and any(verdicts):
         recovered = verdicts.index(True)  # 통과 전까지 거절 수
     return {"submits": len(verdicts), "first_ok": verdicts[0], "rejections": rejections, "recovered_at": recovered}
+
+
+def waits_note(waits: dict | None) -> str:
+    if not waits or not waits.get("count"):
+        return ""
+    seconds = waits.get("seconds")
+    shown = "?" if seconds is None else f"{'약 ' if waits.get('estimated') else ''}{seconds:g}"
+    return f"429 대기 {waits['count']}번, {shown}초"
+
+
+def budget_with_429(cause: str, waits: dict | None) -> bool:
+    return cause == "budget" and bool(waits and waits.get("count"))
+
+
+def with_waits(cause: str, detail: str, waits: dict | None) -> str:
+    """budget 이고 429 대기가 있었으면 까닭 글에 붙인다."""
+    if not budget_with_429(cause, waits):
+        return detail
+    return f"{detail}; {waits_note(waits)}" if detail else waits_note(waits)
 
 
 def classify(source: str | None, steps: list[dict], events: Iterable[object] = (), top_run_id: str | None = None) -> tuple[str, str]:
@@ -167,10 +192,37 @@ def usage_events(usage_db: Path, started: str, ended: str, features: Iterable[st
     return [http if http is not None else status for status, http, feature in rows if not features or feature in features]
 
 
+def usage_429_waits(usage_db: Path, started: str, ended: str, features: Iterable[str] = ()) -> dict:
+    """예전 결과용: 그 시간 사이 그 에이전트의 429 기록 수와, 429 다음 같은 에이전트 호출까지 간격의 합(어림, 초)."""
+    features = list(features)
+    if not Path(usage_db).is_file():
+        return {"count": 0, "seconds": None, "estimated": True}
+    import datetime as dt
+
+    conn = sqlite3.connect(f"{Path(usage_db).resolve().as_uri()}?mode=ro", uri=True)
+    try:
+        rows = conn.execute("SELECT id, at, feature, http_status, latency_ms FROM calls WHERE feature NOT LIKE 'eval_judge%' ORDER BY id").fetchall()
+    except sqlite3.OperationalError:
+        rows = []
+    finally:
+        conn.close()
+    count, seconds = 0, 0.0
+    for k, (_, at, feature, http, _latency) in enumerate(rows):
+        if http != 429 or not (started <= at <= ended) or (features and feature not in features):
+            continue
+        count += 1
+        following = next((r for r in rows[k + 1:] if r[2] == feature), None)
+        if following is not None:
+            gap = (dt.datetime.fromisoformat(following[1]) - dt.datetime.fromisoformat(at)).total_seconds()
+            seconds += max(0.0, gap)
+    return {"count": count, "seconds": round(seconds, 1) if count else None, "estimated": True}
+
+
 def reread_case(folder: Path, case: dict) -> tuple[str, str, dict]:
-    """저장된 사례 한 줄 → (fail_cause, fail_detail, 제출 통계). 새 결과면 줄에 이미 있는 값을 쓴다."""
+    """저장된 사례 한 줄 → (fail_cause, fail_detail, 제출 통계). 새 결과면 줄에 이미 있는 값을 쓴다.
+    제출 통계에는 waited_429 도 담는다."""
     if case.get("fail_cause"):
-        return case["fail_cause"], case.get("fail_detail", ""), case.get("submit_stats") or {}
+        return case["fail_cause"], case.get("fail_detail", ""), {**(case.get("submit_stats") or {}), "waited_429": case.get("waited_429")}
     folder = Path(folder)
     run_id = case.get("run_id")
     steps = read_steps(folder / "harness_trace.db", run_id) if run_id else []
@@ -179,4 +231,8 @@ def reread_case(folder: Path, case: dict) -> tuple[str, str, dict]:
         features = {f"agent:{s['agent']}" for s in steps if s.get("agent")}
         events = usage_events(folder / "clova_usage.db", steps[0]["at"], steps[-1]["at"], features)
     cause, detail = classify(case.get("source"), steps, events, top_run_id=run_id)
-    return cause, detail, submit_stats(steps)
+    waits = None
+    if steps:
+        features = {f"agent:{s['agent']}" for s in steps if s.get("agent")}
+        waits = usage_429_waits(folder / "clova_usage.db", steps[0]["at"], steps[-1]["at"], features)
+    return cause, with_waits(cause, detail, waits), {**submit_stats(steps), "waited_429": waits}

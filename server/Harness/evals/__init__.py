@@ -10,6 +10,9 @@
               git 커밋·브랜치·dirty, 프롬프트·세트 sha256, result.json (schema 1) 쓰기
   metrics.py  비율(분모 0 이면 null), 정밀도·재현율·F1, Macro-F1, 3회 모두 통과(pass^k), 중앙값·최댓값·예산 안 비율
   systems.py  비교할 시스템. "B" = 지금 멀티 에이전트 하네스, "A" = 단일 에이전트(Harness/agents/single_agent.py)
+  gold.py     정답지(xlsx) 읽기: sha256 확인, 행 → 사례 dict (python -m Harness.evals.gold 로 개수 확인)
+  derive.py   정답지 사례 → 평가 세트(분류, 답글, 떼어 둔 세트, 리뷰 속 지시, 위반 답글 변형). seed 로 같게 나온다
+  data/       파생 세트 문장 틀 (violation_templates.json, 만든 문장)
   judge.py    CLOVA X 심판 (조건마다 따로, 3표 다수결, 답글에서 글자 그대로 옮긴 문제 문구)
   prompts/    심판 프롬프트 (judge_policy.txt 공통 정책, judge_cond_<조건>.txt, judge_json_answer.txt)
   cli.py      스위트 이름 → 실행 함수

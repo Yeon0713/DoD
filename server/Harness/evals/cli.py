@@ -16,7 +16,7 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 from Harness import limiter
-from Harness.evals import judge, systems
+from Harness.evals import gold, judge, systems
 
 
 @dataclass(frozen=True)
@@ -71,6 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="CLOVA 동시 호출 한도. 4 는 429 가 많이 났다 (2026-11-15)")
     parser.add_argument("--judge-mode", choices=judge.MODES, default="tools",
                         help="심판 방식. tools: 추론 끄고 도구로 제출, thinking: 추론 켜고 JSON 글로 답")
+    gold.add_arguments(parser)  # 정답지를 쓰는 스위트가 gold.from_args(args) 로 읽는다
     return parser
 
 
@@ -91,5 +92,5 @@ def main(argv: list[str] | None = None) -> None:
     limiter.set_max_concurrent(args.concurrency)
     try:
         suite.run(args)
-    except judge.JudgeModelError as error:
+    except (judge.JudgeModelError, gold.GoldError) as error:
         raise SystemExit(f"멈춤: {error}") from None

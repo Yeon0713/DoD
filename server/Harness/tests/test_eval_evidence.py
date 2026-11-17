@@ -198,3 +198,36 @@ def test_case_row_keeps_context_without_changing_set_hash(gold_rows):
     row = guards_eval.case_row("regex", 1, case, guards_eval.Judgement(ok=True))
     assert set(row["context"]) == {"needs_order_info", "order_menus", "needs_store_fact", "unbacked"}
     assert derive.sha256_of(sets["normal"]) == before  # 이어 돌리기(--resume)의 세트 해시가 그대로
+
+
+# ── budget 중 429 대기 ──
+
+
+def test_budget_with_429_is_subset_and_noted():
+    waits = {"count": 2, "seconds": 20.0, "estimated": False}
+    assert fail_cause.with_waits("budget", "time_budget", waits) == "time_budget; 429 대기 2번, 20초"
+    assert fail_cause.with_waits("transport", "429", waits) == "429"  # budget 이 아니면 그대로
+    rows = [{"fail_cause": "budget", "waited_429": waits}, {"fail_cause": "budget", "waited_429": {"count": 0, "seconds": 0}},
+            {"fail_cause": "none", "waited_429": waits}]
+    m = {x["id"]: x for x in reply_eval.cause_metrics("A", rows)}
+    assert m["fail_cause_rate:budget"]["numerator"] == 2 and m["fail_cause_rate:budget_with_429"]["numerator"] == 1
+    assert sum(m[f"fail_cause_rate:{c}"]["numerator"] for c in fail_cause.CAUSES) == 3  # 부분 집합은 합계에 없다
+    assert "부분 집합" in m["fail_cause_rate:budget_with_429"]["note"]
+
+
+def test_evaluate_counts_real_429_waits_per_case(gold_rows, monkeypatch):
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    monkeypatch.setattr(limiter, "RATE_LIMIT_RETRIES", 2)
+    inner = ServerClova({"c0002": NEG_REPLY}, found=FIX)
+    first = [True]
+
+    def post(url, **kwargs):  # 첫 호출만 429 (Retry-After 3초), 그다음은 정상
+        if first[0]:
+            first[0] = False
+            return httpx.Response(429, headers={"Retry-After": "3"}, json={"status": {"code": "42901"}}, request=httpx.Request("POST", url))
+        return inner(url, **kwargs)
+
+    (row,) = reply_eval.evaluate([gold_rows[1]], ["B"], post=post, judge_post=RouterClova())["cases"]
+    assert row["waited_429"] == {"count": 1, "seconds": 3.0, "estimated": False} and 429 in row["transport_events"]
+    assert row["fail_cause"] == "none" and "429" not in row["fail_detail"]  # 성공 사례에는 붙이지 않는다
+    assert limiter.wait_after_429.__name__ == "wait_after_429" and limiter.wait_after_429.__module__ == "Harness.limiter"  # 되돌림

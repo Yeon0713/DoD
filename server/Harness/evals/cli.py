@@ -71,6 +71,12 @@ def _run_reply(args: argparse.Namespace) -> object:
     return reply_eval.run(args)
 
 
+def _run_batch(args: argparse.Namespace) -> object:
+    from Harness.evals import batch_eval
+
+    return batch_eval.run(args)
+
+
 def _run_guards(args: argparse.Namespace) -> object:
     from Harness.evals import guards_eval
 
@@ -94,6 +100,9 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
                    "정답지 필요 (--split tune 48 기본, holdout 16, injection 20. --labels rule 이면 끝까지 실행. "
                    "--path voice 면 음성 경로 voice_single_agent·voice_reply 보조 실험)",
           _run_reply, uses_systems=True, uses_judge=True),
+    Suite("batch", "진단·묶음 조율(질문 2·4): A·B 의 심은 원인 찾기(d1~d4), 숫자 근거, 남은 충돌, 묶음 안 답글 적합, 재작업 한도. "
+                   "건수로 적음 (d4 는 정답지가 있을 때만)",
+          _run_batch, uses_systems=True, uses_judge=True),
     Suite("guards", "안전장치(질문 3): 판정기 regex, critic, judge_tools, judge_thinking 의 놓침·오거절·판단 불가·시간. 정답지 필요 "
                     "(critic_cases 41 + 정상 40 + 위반 40. --systems 기본 regex. --dry-run 이면 예상 호출 수만)",
           _run_guards, uses_systems=True, uses_judge=True, parse_systems=_guards_systems, default_systems="regex",

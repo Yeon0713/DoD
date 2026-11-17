@@ -136,3 +136,24 @@ def test_suite_needs_key_only_for_hcx_and_rejects_unknown(fake_gold, monkeypatch
         cli.main(["label", "--systems", "rule,gpt", "--gold", str(path), "--gold-sha", sha])
     with pytest.raises(SystemExit, match="sha256 이 달라요"):
         cli.main(["label", "--gold", str(path), "--gold-sha", "0" * 64])
+
+
+def test_hcx_timeout_only_inside_eval(fake_gold, tmp_path, monkeypatch):
+    """--hcx-timeout 은 평가 실행 안에서만 hcx_classifier.TIMEOUT_SECONDS 를 바꾸고 끝나면 되돌린다."""
+    from app.analysis.review import hcx_classifier
+
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    monkeypatch.setattr(report, "OUT_ROOT", tmp_path / "harness_eval")
+    seen = []
+
+    def classify(text, post=None):  # 밖으로 부르지 않고, 부른 때의 제한 시간만 본다
+        seen.append(hcx_classifier.TIMEOUT_SECONDS)
+        return "POSITIVE", []
+
+    monkeypatch.setattr(hcx_classifier, "classify_with_hcx", classify)
+    before = hcx_classifier.TIMEOUT_SECONDS
+    path, sha = fake_gold
+    cli.main(["label", "--systems", "hcx", "--scope", "balanced", "--hcx-timeout", "33", "--gold", str(path), "--gold-sha", sha])
+    assert seen and set(seen) == {33} and hcx_classifier.TIMEOUT_SECONDS == before
+    (out,) = (tmp_path / "harness_eval").glob("label-*/result.json")
+    assert json.loads(out.read_text(encoding="utf-8"))["config"]["hcx_timeout_seconds"] == 33

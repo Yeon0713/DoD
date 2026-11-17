@@ -281,7 +281,7 @@ def evaluate(cases: list[dict], names: list[str], *, scope: str = "full", worker
 
 
 def run(args: argparse.Namespace):
-    """python -m Harness.evals label --systems rule,hcx,voice [--scope balanced]"""
+    """python -m Harness.evals label --systems rule,hcx,voice [--scope balanced] [--hcx-timeout 30]"""
     path, sha, cases = gold.from_args(args)
     if args.ids:
         wanted = {part for part in args.ids.split(",") if part}
@@ -289,14 +289,22 @@ def run(args: argparse.Namespace):
     names = args.system_names
     if args.runs != 1:
         print("[알림] label 스위트는 한 번만 돌려요 (--runs 무시)", file=sys.stderr)
+    timeout = getattr(args, "hcx_timeout", None)
     config = {"model": settings.clova_studio_model if "hcx" in names else None, "scope": args.scope,
-              "gold_verified": GOLD_VERIFIED, "concurrency": args.concurrency}
+              "gold_verified": GOLD_VERIFIED, "concurrency": args.concurrency,
+              "hcx_timeout_seconds": (timeout or hcx_classifier.TIMEOUT_SECONDS) if "hcx" in names else None}
     if "hcx" in names:
         config["prompts"] = report.prompt_hashes([HCX_PROMPT])
     eval_run = report.start("label", config=config, systems=names)
     print(f"결과 폴더: {eval_run.out}")
-    result = evaluate(cases, names, scope=args.scope, workers=args.concurrency,
-                      on_done=lambda name, seconds: print(f"  {name}: {seconds:.1f}초"))
+    saved_timeout = hcx_classifier.TIMEOUT_SECONDS
+    if timeout:  # 평가 실행 안에서만 바꾸고 끝나면 되돌린다 (운영 설정 그대로)
+        hcx_classifier.TIMEOUT_SECONDS = timeout
+    try:
+        result = evaluate(cases, names, scope=args.scope, workers=args.concurrency,
+                          on_done=lambda name, seconds: print(f"  {name}: {seconds:.1f}초"))
+    finally:
+        hcx_classifier.TIMEOUT_SECONDS = saved_timeout
     hashes = {name: derive.write_set(eval_run.out, name, rows) for name, rows in result["sets"].items()}
     eval_run.config["gold"] = gold.config_entry(path, sha, hashes)
     for row in result["metrics"]:

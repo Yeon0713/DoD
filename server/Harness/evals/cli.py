@@ -177,6 +177,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="reply: 리뷰 분류를 정답으로 줄지(gold), 음성 라벨 규칙을 거칠지(rule, 끝까지 실행)")
     parser.add_argument("--path", choices=("server", "voice"), default="server",
                         help="reply: server(주 실험, reply_agent.draft 대 single_agent) 또는 voice(보조, voice_reply 대 voice_single_agent)")
+    parser.add_argument("--hcx-timeout", type=float, default=None, metavar="초",
+                        help="label: hcx 분류기 호출 하나의 제한 시간 (평가 실행 안에서만. 운영 값은 hcx_classifier.TIMEOUT_SECONDS 그대로)")
     parser.add_argument("--system-concurrency", default="",
                         help="guards: 판정기마다 CLOVA 동시 호출 (예: judge_thinking=1). 적지 않은 판정기는 --concurrency")
     parser.add_argument("--system-runs", default="",

@@ -77,6 +77,30 @@ def _run_batch(args: argparse.Namespace) -> object:
     return batch_eval.run(args)
 
 
+def _run_intent(args: argparse.Namespace) -> object:
+    from Harness.evals import intent_eval
+
+    return intent_eval.run(args)
+
+
+def _intent_systems(text: str) -> list[str]:
+    from Harness.evals import intent_eval
+
+    return intent_eval.parse_systems(text)
+
+
+def _run_all(args: argparse.Namespace) -> object:
+    from Harness.evals import run_all
+
+    return run_all.run_all(args, SUITES)
+
+
+def _run_report(args: argparse.Namespace) -> object:
+    from Harness.evals import report_md
+
+    return report_md.run(args)
+
+
 def _run_guards(args: argparse.Namespace) -> object:
     from Harness.evals import guards_eval
 
@@ -107,6 +131,16 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
                     "(critic_cases 41 + 정상 40 + 위반 40. --systems 기본 regex. --dry-run 이면 예상 호출 수만)",
           _run_guards, uses_systems=True, uses_judge=True, parse_systems=_guards_systems, default_systems="regex",
           needs_clova=lambda args: not args.dry_run and any(name != "regex" for name in args.system_names)),
+    Suite("intent", "뜻 판정(질문 4, 공통): 규칙(rule)과 규칙+판정 에이전트(rule+judge)의 정확도·잘못 답한 비율·명령 무시·"
+                    "판정 시간(3초)·규칙 비율. 세트 Harness/evals/data/intents_v1.json (rule 은 CLOVA 없이 돈다)",
+          _run_intent, uses_systems=True, parse_systems=_intent_systems, default_systems="rule,rule+judge",
+          needs_clova=lambda args: "rule+judge" in args.system_names),
+    Suite("all", "label → guards → reply → batch → intent 를 차례로 (스위트마다 기본 --systems). 실패해도 다음으로 가고 "
+                 "끝에 결과 폴더를 출력한다. --baseline 이면 기준점으로 적는다",
+          _run_all, needs_clova=lambda args: False),
+    Suite("report", "결과 폴더들을 모아 보고서 report-<날짜>.md 를 쓴다 (CLOVA 없음. --results 비우면 스위트마다 최근 결과, "
+                    "--out 으로 저장 위치)",
+          _run_report, needs_clova=lambda args: False),
 )}
 
 
@@ -145,6 +179,10 @@ def build_parser() -> argparse.ArgumentParser:
                         help="reply: server(주 실험, reply_agent.draft 대 single_agent) 또는 voice(보조, voice_reply 대 voice_single_agent)")
     parser.add_argument("--system-runs", default="",
                         help="guards: 판정기마다 회차 (예: judge_tools=1,judge_thinking=1). 적지 않은 판정기는 --runs")
+    parser.add_argument("--baseline", action="store_true",
+                        help="all: 결과에 기준점 표시(config.baseline). report: 기준점 결과만 모은다")
+    parser.add_argument("--results", default="", help="report: 쉼표로 구분한 결과 폴더 (비우면 스위트마다 최근)")
+    parser.add_argument("--out", default=None, help="report: 보고서 파일 경로 (기본 지금 폴더의 report-<날짜>.md)")
     gold.add_arguments(parser)  # 정답지를 쓰는 스위트가 gold.from_args(args) 로 읽는다
     return parser
 

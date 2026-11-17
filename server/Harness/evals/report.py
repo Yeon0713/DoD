@@ -38,6 +38,7 @@ from Harness import cache, trace
 SCHEMA = 1
 SERVER_DIR = Path(__file__).resolve().parents[2]
 OUT_ROOT = SERVER_DIR / "db" / "app_data" / "harness_eval"
+BASELINE = False  # all --baseline 이 켠다. 켜져 있으면 start() 가 config.baseline = true 를 적는다
 
 
 
@@ -195,7 +196,10 @@ def start(suite: str, *, config: dict | None = None, systems: list[str] | None =
     if swap_logs:
         clova_usage_log.LOG_PATH = out / "clova_usage.db"
         trace.TRACE_PATH = out / "harness_trace.db"
-    return EvalRun(suite=suite, out=out, started_at=at.isoformat(timespec="seconds"), config=dict(config or {}),
+    config = dict(config or {})
+    if BASELINE:
+        config["baseline"] = True
+    return EvalRun(suite=suite, out=out, started_at=at.isoformat(timespec="seconds"), config=config,
                    systems=list(systems or []), git=git_info())
 
 

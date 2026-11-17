@@ -1,0 +1,190 @@
+{
+ "_comment": "평가용 초옹장 메뉴 목록. 정답지(review_gold_v1) 리뷰와 사장님 답변에 나온 메뉴 이름을 모은 후보다. 가격·실제 판매 여부는 모른다(price null). 사장님·팀 확인 전이라 verified 가 false 다. 확인하면 verified_by 에 이름과 날짜를 적는다. aliases 는 같은 메뉴의 다른 표기로, 평가 가게 보기에서는 따로 한 줄씩 넣어 메뉴 검사에서 같은 메뉴로 통과하게 한다.",
+ "store": "s005",
+ "status": "확인 전",
+ "verified": false,
+ "verified_by": null,
+ "source": "review_gold_v1.xlsx (리뷰 글, 사장님 답변)",
+ "menus": [
+  {
+   "id": "e_1",
+   "name": "초계국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 231,
+   "seen_in_replies": 357
+  },
+  {
+   "id": "e_2",
+   "name": "물초계국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [
+    "초계물국수"
+   ],
+   "seen_in_reviews": 10,
+   "seen_in_replies": 37
+  },
+  {
+   "id": "e_3",
+   "name": "비빔초계국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [
+    "초계비빔국수"
+   ],
+   "seen_in_reviews": 12,
+   "seen_in_replies": 35
+  },
+  {
+   "id": "e_4",
+   "name": "장칼국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 97,
+   "seen_in_replies": 155
+  },
+  {
+   "id": "e_5",
+   "name": "들깨칼국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 7,
+   "seen_in_replies": 14
+  },
+  {
+   "id": "e_6",
+   "name": "메밀칼국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 8,
+   "seen_in_replies": 55
+  },
+  {
+   "id": "e_7",
+   "name": "옹심이메밀칼국수",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 3,
+   "seen_in_replies": 42
+  },
+  {
+   "id": "e_8",
+   "name": "들깨옹심이",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 21,
+   "seen_in_replies": 96
+  },
+  {
+   "id": "e_9",
+   "name": "감자옹심이",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 20,
+   "seen_in_replies": 50
+  },
+  {
+   "id": "e_10",
+   "name": "멸치옹심이",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 5,
+   "seen_in_replies": 18
+  },
+  {
+   "id": "e_11",
+   "name": "감자전",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 80,
+   "seen_in_replies": 162
+  },
+  {
+   "id": "e_12",
+   "name": "도토리전병",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 20,
+   "seen_in_replies": 91
+  },
+  {
+   "id": "e_13",
+   "name": "메밀전병",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 10,
+   "seen_in_replies": 3
+  },
+  {
+   "id": "e_14",
+   "name": "수육",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 55,
+   "seen_in_replies": 131
+  },
+  {
+   "id": "e_15",
+   "name": "수도감세트",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 37,
+   "seen_in_replies": 170
+  },
+  {
+   "id": "e_16",
+   "name": "초당순두부",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [
+    "순두부",
+    "초당두부"
+   ],
+   "seen_in_reviews": 184,
+   "seen_in_replies": 215
+  },
+  {
+   "id": "e_17",
+   "name": "공깃밥",
+   "category": "SIDE",
+   "price": null,
+   "aliases": [
+    "공기밥"
+   ],
+   "seen_in_reviews": 5,
+   "seen_in_replies": 15
+  },
+  {
+   "id": "e_18",
+   "name": "막걸리",
+   "category": "DRINK",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 40,
+   "seen_in_replies": 44
+  },
+  {
+   "id": "e_19",
+   "name": "냉면",
+   "category": "MAIN",
+   "price": null,
+   "aliases": [],
+   "seen_in_reviews": 8,
+   "seen_in_replies": 6
+  }
+ ]
+}

@@ -35,6 +35,7 @@
 | 에이전트 | LLM 방식 스위치(에이전트 하네스 ↔ 기존 단일 호출), 지금 도는 에이전트, 가게별 에이전트 작업, 에이전트별 통과·물러남 통계, 최근 실행과 단계 펼치기. 기존 서버와 음성 백엔드(`server/voice`)의 실행이 함께 보이고, 이 탭을 보는 동안 5초마다 새로 그립니다 | `/api/dev_tools/agents`, `agents/run`, `POST agents/mode` |
 | 조작 | 다시 계산, 서버 시계 실제 시각으로, 문장 다듬기 켜기/끄기, 데모 초기화, 앱 열기 | `POST` API |
 | 화면 글 | 앱 화면의 글(제목, 설명, 버튼, 띠, 시트, 오류)을 화면별로 보고 [수정] 칸에 적어 앱 코드에 넣기. 밖에서 고치는 JSON 내려받기·등록 | `/api/dev_tools/ui_text`, `ui_text/save`, `ui_text/apply`, `ui_text/export`, `ui_text/import` |
+| 평가 | 평가 스위트(`python -m Harness.evals …`) 결과 폴더 `server/db/app_data/harness_eval/` 를 본다. 실행 목록(대표 지표, 기준점) → 질문별 지표 표(A·B 값, 분자/분모, 차이, 좋은 방향), 지표 추세(실행별, 커밋 표시), 사례(실패만 기본, 입력·출력·코드 검사·심판 투표, 단계 펼치기), 짝 비교, 심판 검증. 운영 기록과 섞지 않는다. CLOVA 를 부르지 않는다 | `/api/dev_tools/evals`, `evals/run`, `evals/trend`, `evals/trace` |
 
 위 맨 오른쪽의 **가게** 고르기 하나로 시연, 분석, 알림 타임라인, 다시 계산의 가게를 고릅니다.
 (2026-11-13 정리: 개요+시스템 → 상태, AI 비용+AI 품질 → AI, 시계 앞당기기 버튼과 CLOVA 기록 지우기는 뺐습니다. 까닭은 `docs/dev-dashboard-optimization.md`)

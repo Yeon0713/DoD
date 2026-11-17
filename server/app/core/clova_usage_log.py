@@ -80,8 +80,10 @@ def record_call(
     http_status: int | None,
     request_text: str,
     answer_text: str | None,
+    model: str | None = None,
 ) -> int:
-    """호출 한 번을 남기고 id 를 돌려준다. 같은 스레드의 다음 set_verdict 가 이 기록에 붙는다."""
+    """호출 한 번을 남기고 id 를 돌려준다. 같은 스레드의 다음 set_verdict 가 이 기록에 붙는다.
+    model 을 주지 않으면 설정의 기본 모델(CLOVA_STUDIO_MODEL)로 적는다 (평가 심판처럼 다른 모델을 부를 때만 준다)."""
     with _write_lock, _db() as conn:
         cursor = conn.execute(
             "INSERT INTO calls (at, feature, store_id, model, input_tokens, output_tokens, latency_ms, status,"
@@ -90,7 +92,7 @@ def record_call(
                 now_seoul().isoformat(timespec="seconds"),
                 feature,
                 store_id,
-                settings.clova_studio_model,
+                model or settings.clova_studio_model,
                 input_tokens,
                 output_tokens,
                 latency_ms,

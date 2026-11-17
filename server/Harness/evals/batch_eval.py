@@ -4,6 +4,10 @@
 진단 (사례는 scenarios.py)
   B  d1~d3: complaint_agent.diagnose, d4: voice improve_tip.suggest (VOICE_AGENT_IMPROVE 를 실행 안에서만 켬)
   A  d1~d3: single_agent 의 diagnose(할 일 하나 묶음), d4: single_agent.prepare_voice(jobs 없음, tip=True)
+  R  기준선: 규칙 한 줄. app/planner/rule_complaint_fix 의 REVIEW_FIX 카드 문구("최근 7일 동안 … 불만이 N건 들어왔어요.")
+     LLM 없음. 같은 판정 규칙을 그대로 적용한다. 가설이 없으므로 원인 찾음은 0 이 정상이다.
+     d2(단서 없음, confidence low 기대)는 R 에 확신도가 없어 통과하지 않는다. 숫자 근거·과제 완료·묶음 조율은 R 에 해당 없음.
+  A·B 진단 사례에는 reply 스위트와 같은 fail_cause·제출 통계(Harness/evals/fail_cause)를 남긴다.
   판정 (코드): cause_found  심은 원인 말 묶음이 가설(고칠 점) 글에 모두 있는지. d2 는 confidence low 인지
              grounded     가설 글의 숫자가 그 실행의 도구 결과(harness_trace.db)에 모두 있는지 (grounding.ungrounded_numbers)
   점검 목록이 사장님이 할 수 있는 일인지는 사람이 본다 (결과에 checklist 를 남긴다).
@@ -33,13 +37,62 @@ import httpx
 
 from app.core.config import settings
 from Harness import grounding, trace
-from Harness.evals import gold, judge, metrics, reply_checks, report, scenarios, systems
+from Harness.evals import fail_cause, gold, judge, metrics, reply_checks, report, scenarios, systems
 from Harness.evals.guards_eval import CaseAborted, GuardedPost
 
 QUESTION_FIT, QUESTION_TASK = 2, 4
 JUDGE_DEADLINE_SECONDS = 600
 SWITCHES = {"VOICE_AGENT_IMPROVE": "true"}
 A_TASK_TYPES = {"REVISIT_REPLY", "REORDER_NUDGE", "REVIEW_FIX"}  # single_agent.run_batch 가 맡는 할 일
+RULE = "R"  # 기준선: 규칙 한 줄 (진단만)
+
+
+def parse_systems(text: str) -> list[str]:
+    """batch 의 --systems: A, B 와 기준선 R."""
+    names = list(dict.fromkeys(part.strip().upper() for part in text.split(",") if part.strip()))
+    rest = [name for name in names if name != RULE]
+    if rest:
+        systems.parse_names(",".join(rest))
+    if not names:
+        raise ValueError("시스템을 하나 이상 고르세요 (R, A, B)")
+    return names
+
+
+class EventPost:
+    """post 를 감싸 사례의 전송 사건(200 이 아닌 응답 상태, 예외 이름)을 모은다."""
+
+    def __init__(self, post):
+        self.post, self.events = post, []
+
+    def __call__(self, url, **kwargs):
+        try:
+            response = self.post(url, **kwargs)
+        except Exception as error:
+            self.events.append(type(error).__name__)
+            raise
+        if getattr(response, "status_code", 200) != 200:
+            self.events.append(response.status_code)
+        return response
+
+
+def rule_line(complaint_type: str, count: int) -> str:
+    """rule_complaint_fix 의 REVIEW_FIX 카드 문구와 같은 문장."""
+    from app.planner.rule_complaint_fix import COMPLAINT_NAMES
+
+    return f"최근 7일 동안 {COMPLAINT_NAMES[complaint_type]} 불만이 {count}건 들어왔어요."
+
+
+def rule_diagnosis(case_id: str, gold_rows: list[dict]) -> dict:
+    """기준선 R 의 '진단': 위험 신호 하나를 규칙 문장 한 줄로."""
+    if case_id == "d4":
+        reviews, topic = scenarios.voice_reviews(gold_rows, voice_view(gold_rows)[1])
+        kind = next((k for k, v in scenarios.VOICE_TOPICS.items() if v == topic), None)
+        text = rule_line(kind, len(reviews)) if kind else ""
+    else:
+        snap = scenarios.snapshot(case_id)
+        risk = next(iter(snap.risk_signals), None)
+        text = rule_line(risk.complaint_type, len(risk.review_ids)) if risk else ""
+    return {"source": "RULE", "text": text, "hypotheses": [text] if text else [], "confidence": None, "checklist": []}
 
 
 # ── 실행 id 모으기 ──
@@ -142,13 +195,18 @@ def voice_view(gold_rows: list[dict]):
 def diagnosis_row(system: str, run: int, case_id: str, *, gold_rows: list[dict], post, run_ids: RunIds) -> dict:
     from voice import clock, context
 
-    counting = report.CountingPost(post)
+    events = EventPost(post)
+    counting = report.CountingPost(events)
     run_ids.start()
     started = time.perf_counter()
     error = None
     expect = scenarios.EXPECT[case_id]
     try:
-        if case_id == "d4":
+        if system == RULE:
+            found = rule_diagnosis(case_id, gold_rows)
+            if case_id == "d4":
+                expect = scenarios.d4_expect(voice_view(gold_rows)[2])
+        elif case_id == "d4":
             view, now, topic = voice_view(gold_rows)
             expect = scenarios.d4_expect(topic)
             saved = context.post
@@ -164,12 +222,20 @@ def diagnosis_row(system: str, run: int, case_id: str, *, gold_rows: list[dict],
     except Exception as exc:  # 한 사례가 실패해도 나머지는 잰다
         found, error = {"source": "NONE", "text": "", "hypotheses": [], "confidence": None, "checklist": []}, f"{type(exc).__name__}: {exc}"
     ids = run_ids.take()
-    loose = grounding.ungrounded_numbers(found["text"], tool_evidence(ids)) if found["text"] else []
+    rule = system == RULE
+    loose = grounding.ungrounded_numbers(found["text"], tool_evidence(ids)) if found["text"] and not rule else []
+    if rule:  # 규칙 문장의 숫자는 데이터에서 센 것이라 근거 대조 대상이 아니다
+        cause, detail, stats = None, "", {}
+    else:
+        steps = [step for run_id in ids for step in trace.steps_of(run_id)]
+        cause, detail = fail_cause.classify(found["source"], steps, events.events, top_run_id=ids[0] if ids else None)
+        stats = fail_cause.submit_stats(steps)
     return {
         "case_id": case_id, "part": "diagnosis", "system": system, "run": run, "run_id": ids[0] if ids else None,
         "source": found["source"], "output": found["text"], "hypotheses": found["hypotheses"], "confidence": found["confidence"],
         "checklist": found["checklist"], "expect": expect, "cause_found": cause_found(found["text"], expect, found["confidence"]),
-        "ungrounded_numbers": loose, "grounded": bool(found["text"]) and not loose,
+        "ungrounded_numbers": loose, "grounded": None if rule else bool(found["text"]) and not loose,
+        "fail_cause": cause, "fail_detail": detail, "transport_events": list(events.events), "submit_stats": stats,
         "calls": counting.calls, "tokens": list(counting.tokens), "seconds": round(time.perf_counter() - started, 3), "error": error,
     }
 
@@ -269,6 +335,8 @@ def _rework(run_id: str | None) -> dict:
 
 
 def batch_row(system: str, run: int, case_id: str, *, mode: str, post, judge_post, run_ids: RunIds) -> dict | None:
+    if system == RULE:  # 규칙 기준선은 묶음 조율을 하지 않는다 (해당 없음)
+        return None
     from Harness.spec import RunContext
 
     snap = scenarios.snapshot(case_id)
@@ -322,15 +390,23 @@ def _count(id: str, name: str, system: str, count: int, total: int, *, question:
 
 
 def score(name: str, rows: list[dict]) -> list[dict]:
+    from Harness.evals.reply_eval import attempt_metrics, cause_metrics
+
     diag = [r for r in rows if r["part"] == "diagnosis"]
     batch = [r for r in rows if r["part"] == "batch"]
+    rule = name == RULE
+    agentic = [] if rule else diag  # 규칙 기준선에는 근거 대조·과제 완료가 해당 없음
     out = [
         _count("diagnosis_cause_found", "심은 원인을 찾은 진단", name, sum(r["cause_found"] for r in diag), len(diag),
                question=QUESTION_FIT),
-        _count("diagnosis_grounded", "숫자 근거가 맞는 진단", name, sum(r["grounded"] for r in diag), len(diag), question=QUESTION_FIT),
-        _count("diagnosis_agent", "진단 과제 완료 (AGENT)", name, sum(r["source"] == "AGENT" for r in diag), len(diag),
+        _count("diagnosis_grounded", "숫자 근거가 맞는 진단", name, sum(bool(r["grounded"]) for r in agentic), len(agentic),
+               question=QUESTION_FIT),
+        _count("diagnosis_agent", "진단 과제 완료 (AGENT)", name, sum(r["source"] == "AGENT" for r in agentic), len(agentic),
                question=QUESTION_TASK),
     ]
+    if not rule and diag:
+        out.extend({**m, "id": f"diagnosis_{m['id']}", "name": f"진단 {m['name']}"} for m in cause_metrics(name, diag))
+        out.extend({**m, "id": f"diagnosis_{m['id']}", "name": f"진단 {m['name']}"} for m in attempt_metrics(name, diag))
     planted = sum(len(r["planted"]) for r in batch)
     left = sum(len(r["left"]) for r in batch)
     out.append(metrics.value_metric("conflicts_left", "남은 충돌", question=QUESTION_TASK, system=name,

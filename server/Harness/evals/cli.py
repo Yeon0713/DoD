@@ -71,6 +71,18 @@ def _run_reply(args: argparse.Namespace) -> object:
     return reply_eval.run(args)
 
 
+def _reply_systems(text: str) -> list[str]:
+    from Harness.evals import reply_eval
+
+    return reply_eval.parse_systems(text)
+
+
+def _batch_systems(text: str) -> list[str]:
+    from Harness.evals import batch_eval
+
+    return batch_eval.parse_systems(text)
+
+
 def _run_batch(args: argparse.Namespace) -> object:
     from Harness.evals import batch_eval
 
@@ -122,11 +134,11 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
           needs_clova=lambda args: "hcx" in args.system_names),
     Suite("reply", "답글(질문 2·4·5): 서버 경로 A(single_agent)·B(reply_agent.draft, 검토기 포함)의 적합률·안전 위반·과제 완료·3회 통과·호출 수·시간. "
                    "정답지 필요 (--split tune 48 기본, holdout 16, injection 20. --labels rule 이면 끝까지 실행. "
-                   "--path voice 면 음성 경로 voice_single_agent·voice_reply 보조 실험)",
-          _run_reply, uses_systems=True, uses_judge=True),
+                   "--path voice 면 음성 경로 voice_single_agent·voice_reply 보조 실험. --systems S,A,B 의 S 는 지금 서비스 기준선)",
+          _run_reply, uses_systems=True, uses_judge=True, parse_systems=_reply_systems),
     Suite("batch", "진단·묶음 조율(질문 2·4): A·B 의 심은 원인 찾기(d1~d4), 숫자 근거, 남은 충돌, 묶음 안 답글 적합, 재작업 한도. "
-                   "건수로 적음 (d4 는 정답지가 있을 때만)",
-          _run_batch, uses_systems=True, uses_judge=True),
+                   "건수로 적음 (d4 는 정답지가 있을 때만. --systems R,A,B 의 R 은 규칙 한 줄 기준선, 진단만)",
+          _run_batch, uses_systems=True, uses_judge=True, parse_systems=_batch_systems),
     Suite("guards", "안전장치(질문 3): 판정기 regex, critic, judge_tools, judge_thinking 의 놓침·오거절·판단 불가·시간. 정답지 필요 "
                     "(critic_cases 41 + 정상 40 + 위반 40. --systems 기본 regex. --dry-run 이면 예상 호출 수만)",
           _run_guards, uses_systems=True, uses_judge=True, parse_systems=_guards_systems, default_systems="regex",

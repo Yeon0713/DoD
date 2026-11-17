@@ -82,6 +82,10 @@ def _legacy_metrics(body: dict) -> list[dict]:
 
 
 def _ok(case: dict) -> bool | None:
+    if case.get("part") == "diagnosis" and isinstance(case.get("cause_found"), bool):  # batch 진단: 심은 원인을 찾았나
+        return case["cause_found"]
+    if case.get("part") == "batch" and isinstance(case.get("left"), bool):  # batch 묶음: 충돌이 남지 않았나
+        return not case["left"]
     for key in ("fit", "correct", "ok", "passed"):
         if isinstance(case.get(key), bool):
             return case[key]
@@ -224,7 +228,7 @@ def headline(run: dict) -> list[dict]:
 
 def list_runs() -> dict:
     runs = _all_runs()
-    return {"root": str(EVAL_ROOT), "runs": [
+    return {"root": str(EVAL_ROOT), "summary": summary(runs), "runs": [
         {"id": r["id"], "suite": r["suite"], "started_at": r["started_at"], "commit": r["commit"], "systems": r["systems"],
          "baseline": r["baseline"], "legacy": r["legacy"], "cases": len(r["cases"]), "headline": headline(r)}
         for r in runs]}
@@ -258,9 +262,12 @@ def judge_check(run: dict) -> dict | None:
     return {"metrics": rows, "validation": run["validation"]}
 
 
-def get_run(run_id: str, *, failed_only: bool = False, system: str | None = None, limit: int = 100, offset: int = 0) -> dict:
+def get_run(run_id: str, *, failed_only: bool = False, system: str | None = None, limit: int = 100, offset: int = 0,
+            case: int | None = None) -> dict:
     run = _read_run(folder_of(run_id)) or normalize(run_id, {})
     cases = run["cases"]
+    if case is not None:  # 사례 격자에서 누른 칸 하나
+        cases = [c for c in cases if c["index"] == case]
     if system:
         cases = [c for c in cases if c["system"] == system]
     if failed_only:
@@ -268,7 +275,7 @@ def get_run(run_id: str, *, failed_only: bool = False, system: str | None = None
     total = len(cases)
     return {**run, "cases": cases[offset:offset + limit], "cases_total": total, "cases_all": len(run["cases"]),
             "offset": offset, "limit": limit, "pairs": pairs(run["cases"], run["systems"]), "judge_check": judge_check(run),
-            "visuals": visuals(run)}
+            "charts": charts(run)}
 
 
 def trend(suite: str, metric: str) -> dict:
@@ -304,45 +311,105 @@ def trace_steps(run_id: str, agent_run_id: str) -> dict:
     return {"id": run_id, "run_id": agent_run_id, "steps": [dict(row) for row in rows]}
 
 
-# ── 그래프용 집계 (화면이 그리기만 하면 되게) ──
+# ── 그래프용 집계 (화면은 그리기만 한다) ──
+# get_run 의 charts: 질문(1~5)마다 그 실행에서 그릴 수 있는 그래프 묶음과 사례 격자(cases_grid).
+# list_runs 의 summary: 질문마다 가장 최근 실행의 대표 지표, 시스템별 값, A·B 차이, 목표 통과 여부.
 
-# 결과 구성: 스위트마다 사례를 나누는 칸과 그 순서(좋은 것 먼저). 칸 이름 → 상태 색(good·good2(진한 초록)·warning·serious·critical·neutral)
-MIX = {
-    "reply": ("source", [("AGENT", "good"), ("FALLBACK", "warning"), ("TEMPLATE", "serious"), ("NONE", "critical")]),
-    "batch": ("source", [("AGENT", "good"), ("FALLBACK", "warning"), ("TEMPLATE", "serious"), ("NONE", "critical")]),
-    "guards": ("outcome", [("pass", "good"), ("caught", "good2"), ("false_reject", "warning"), ("missed", "critical"),
-                           ("unknown", "neutral")]),
-}
-MIX_NAMES = {"pass": "정상 통과", "caught": "위반 잡음", "false_reject": "오거절", "missed": "놓침", "unknown": "판단 불가",
-             "AGENT": "에이전트", "FALLBACK": "물러나기", "TEMPLATE": "템플릿", "NONE": "출력 없음",
-             "ok": "맞음", "wrong": "틀림", "unknown_ok": "모름"}
-TOP_PROBLEMS = 8
+SUMMARY = [  # (질문, 스위트, 지표 id, 세트)
+    (1, "label", "negative_recall", "balanced"),
+    (2, "reply", "reply_fit_rate", None),
+    (3, "guards", "missed_rate", "all"),
+    (4, "reply", "task_completion_rate", None),
+    (5, "reply", "prep_within_budget", None),
+]
+# 목표: 기준 문서에 숫자 목표가 없어 코드에 있는 것만 쓴다.
+#   guards → critic 기준(놓침 0, 오거절 10% 이하, guards_eval.critic_target) / A·B 지표 → B 가 A 보다 나쁘지 않음
+GOAL_NOTES = {"ab": "B(하네스)가 A(단일)보다 나쁘지 않음", "critic": "critic 놓침 0, 오거절 10% 이하 (all 세트)",
+              "none": "기준 없음 (비교만)"}
+STATUS_FIXED = {"AGENT": "good", "FALLBACK": "warning", "TEMPLATE": "serious", "NONE": "critical"}
+SOURCES = ["AGENT", "FALLBACK", "TEMPLATE", "NONE"]
+TOP_REASONS = 8
+GRID_ROWS = 300
 LATENCY_BUDGET = {"reply": "prep_budget_seconds", "intent": "judge_budget_seconds"}
 DEFAULT_BUDGET = {"reply": 15}  # 예산을 config 에 적기 전 결과는 기준 문서 v2 의 15초로 본다
 
 
-def _mix(run: dict) -> dict | None:
-    """시스템마다 사례 구성 {field, order:[{key,name,status}], systems:{시스템: {칸: 수}}}."""
-    cases = run["cases"]
-    if not cases or run["suite"] == "label":  # label 결과는 틀린 사례만 남겨 구성이 뜻이 없다 (혼동 행렬을 본다)
+def _metric(run: dict, metric_id: str, system: str | None, set_name: str | None = None) -> dict | None:
+    return next((m for m in run["metrics"] if m["id"] == metric_id and m["system"] == system
+                 and (set_name is None or m.get("set") in (set_name, None))), None)
+
+
+def _num(m: dict | None) -> dict | None:
+    if m is None:
         return None
-    field, order = MIX.get(run["suite"], ("ok", [("ok", "good"), ("wrong", "critical"), ("unknown_ok", "neutral")]))
-    counts: dict[str, dict[str, int]] = {}
-    for case in cases:
-        if field == "ok":
-            key = "ok" if case["ok"] is True else "wrong" if case["ok"] is False else "unknown_ok"
-        else:
-            key = str(case["raw"].get(field) or ("NONE" if field == "source" else "unknown"))
-        row = counts.setdefault(case["system"] or "-", {})
-        row[key] = row.get(key, 0) + 1
-    seen = {key for row in counts.values() for key in row}
-    order = [item for item in order if item[0] in seen] + [(key, "neutral") for key in sorted(seen - {k for k, _ in order})]
-    return {"field": field, "order": [{"key": k, "name": MIX_NAMES.get(k, k), "status": s} for k, s in order],
-            "systems": counts}
+    return {"value": m["value"], "numerator": m["numerator"], "denominator": m["denominator"], "unit": m["unit"]}
+
+
+def _better_or_same(a: dict | None, b: dict | None, higher: bool) -> bool | None:
+    if not a or not b or a["value"] is None or b["value"] is None:
+        return None
+    return b["value"] >= a["value"] if higher else b["value"] <= a["value"]
+
+
+def summary(runs: list[dict]) -> list[dict]:
+    """질문마다 카드 하나. 그 스위트의 가장 최근(예전 형식 제외) 실행에서 뽑는다. 없으면 run 이 None."""
+    out = []
+    for question, suite, metric_id, set_name in SUMMARY:
+        run = next((r for r in runs if r["suite"] == suite and not r["legacy"]), None)
+        card = {"question": question, "suite": suite, "metric": metric_id, "set": set_name, "run": run["id"] if run else None,
+                "name": None, "higher_is_better": True, "values": {}, "diff": None, "goal": None, "goal_note": None}
+        if run:
+            rows = [m for m in run["metrics"] if m["id"] == metric_id and (set_name is None or m.get("set") in (set_name, None))]
+            if rows:
+                card["name"], card["higher_is_better"] = rows[0]["name"], rows[0]["higher_is_better"]
+            for m in rows:
+                card["values"][m["system"] or "-"] = _num(m)
+            a, b = card["values"].get("A"), card["values"].get("B")
+            if a and b and a["value"] is not None and b["value"] is not None:
+                card["diff"] = b["value"] - a["value"]
+            if suite == "guards":
+                target = (run["validation"].get("critic_target") or {}).get(set_name or "all")
+                card["goal"], card["goal_note"] = (target or {}).get("pass"), GOAL_NOTES["critic"]
+            elif a and b:
+                card["goal"], card["goal_note"] = _better_or_same(a, b, card["higher_is_better"]), GOAL_NOTES["ab"]
+            else:
+                card["goal_note"] = GOAL_NOTES["none"]
+        out.append(card)
+    return out
+
+
+# ── 질문 1: 분류 ──
+
+
+def _recall_precision(run: dict) -> dict | None:
+    sets = [s for s in ("balanced", "full") if any(m.get("set") == s for m in run["metrics"])]
+    if not sets:
+        return None
+    out = {}
+    for set_name in sets:
+        rows = {}
+        for system in run["systems"]:
+            recall = _metric(run, "negative_recall", system, set_name)
+            precision = _metric(run, "negative_precision", system, set_name)
+            if recall or precision:
+                rows[system] = {"recall": _num(recall), "precision": _num(precision)}
+        if rows:
+            out[set_name] = rows
+    return {"sets": out, "default": sets[0]} if out else None
+
+
+def _confusion(run: dict) -> dict | None:
+    table = run["tables"].get("confusion")
+    if not isinstance(table, dict) or not table:
+        return None
+    return {"sets": table, "default": "balanced" if "balanced" in table else next(iter(table))}
+
+
+# ── 질문 2: 글 ──
 
 
 def _conditions(run: dict) -> dict | None:
-    """조건(심판 4조건 + format)별 통과 수. {conditions:[…], systems:{시스템: {조건: {pass, fail, unknown}}}}."""
+    """조건별 통과율 (시스템마다). A·B 덤벨과 사례 격자가 같이 쓴다."""
     names: list[str] = []
     out: dict[str, dict[str, dict[str, int]]] = {}
     for case in run["cases"]:
@@ -352,26 +419,121 @@ def _conditions(run: dict) -> dict | None:
                 names.append(name)
             cell = out.setdefault(case["system"] or "-", {}).setdefault(name, {"pass": 0, "fail": 0, "unknown": 0})
             cell["pass" if ok is True else "fail" if ok is False else "unknown"] += 1
-    return {"conditions": names, "systems": out} if names else None
+    if not names:
+        return None
+    for system_cells in out.values():
+        for cell in system_cells.values():
+            total = cell["pass"] + cell["fail"] + cell["unknown"]
+            cell["total"], cell["rate"] = total, (cell["pass"] / total) if total else None
+    return {"conditions": names, "systems": out}
 
 
-def _problem_label(text: str) -> str:
-    """같은 종류끼리 모이게 문제 문구를 줄인다 (따옴표 안 문구·숫자는 뺀다)."""
-    text = re.sub(r"문제 문구: .*", "문제 문구", text)
-    text = re.sub(r"'[^']*'", "'…'", text)
-    text = re.sub(r"\d+", "N", text)
-    return text[:60]
+def _source_mix(run: dict) -> dict | None:
+    """source_rate 지표로 결과 구성 (AGENT·FALLBACK·TEMPLATE·NONE 건수)."""
+    out = {}
+    for system in run["systems"]:
+        counts = {}
+        agent = _metric(run, "task_completion_rate", system)
+        if agent and agent["numerator"] is not None:
+            counts["AGENT"] = agent["numerator"]
+        for source in SOURCES[1:]:
+            m = _metric(run, f"source_rate:{source}", system)
+            if m and m["numerator"] is not None:
+                counts[source] = m["numerator"]
+        if counts:
+            total = (agent or {}).get("denominator") or sum(counts.values())
+            out[system] = {"counts": counts, "total": total}
+    if not out:
+        return None
+    return {"order": [{"key": s, "status": STATUS_FIXED[s]} for s in SOURCES], "systems": out}
 
 
-def _problem_counts(run: dict) -> dict | None:
+# ── 질문 3: 안전장치 ──
+
+
+def _guards_scatter(run: dict) -> dict | None:
+    sets = [s for s in ("all", "gold", "critic_cases") if any(m.get("set") == s for m in run["metrics"])]
+    if run["suite"] != "guards" or not sets:
+        return None
+    points = {}
+    for set_name in sets:
+        rows = []
+        for system in run["systems"]:
+            missed = _metric(run, "missed_rate", system, set_name)
+            false_reject = _metric(run, "false_reject_rate", system, set_name)
+            if missed and false_reject and missed["value"] is not None and false_reject["value"] is not None:
+                rows.append({"system": system, "missed": _num(missed), "false_reject": _num(false_reject)})
+        if rows:
+            points[set_name] = rows
+    if not points:
+        return None
+    return {"sets": points, "default": next(s for s in sets if s in points), "target": {"missed": 0.0, "false_reject": 0.10, "note": GOAL_NOTES["critic"]}}
+
+
+def _by_kind(run: dict) -> dict | None:
+    table = run["tables"].get("by_kind")
+    if not isinstance(table, dict) or not table:
+        return None
+    kinds = [k for rows in table.values() for k in rows if k != "normal"]
+    kinds = list(dict.fromkeys(kinds))
+    cells = {}
+    for system, rows in table.items():
+        for kind in kinds:
+            c = rows.get(kind)
+            if c:
+                total = c.get("total") or 0
+                cells.setdefault(system, {})[kind] = {"missed": c.get("missed", 0), "total": total, "unknown": c.get("unknown", 0),
+                                                      "rate": (c.get("missed", 0) / total) if total else None}
+    return {"kinds": kinds, "systems": cells}
+
+
+# ── 질문 4: 동작 ──
+
+
+def _pass_distribution(run: dict) -> dict | None:
+    """사례마다 몇 회차에 맞았나 (0~회차 수). 시스템마다 그 분포."""
+    if run["suite"] == "label":  # label 결과는 틀린 사례만 남겨 분포가 뜻이 없다
+        return None
+    by_case: dict[tuple, list[bool]] = {}
+    for case in run["cases"]:
+        if case["ok"] is None:
+            continue
+        by_case.setdefault((case["system"] or "-", case["case_id"]), []).append(bool(case["ok"]))
+    if not by_case:
+        return None
+    runs = max(len(v) for v in by_case.values())
+    out = {}
+    for (system, _), oks in by_case.items():
+        row = out.setdefault(system, [0] * (runs + 1))
+        row[sum(oks)] += 1
+    return {"runs": runs, "systems": out}
+
+
+def _batch_grid(run: dict) -> dict | None:
+    if run["suite"] != "batch":
+        return None
+    rows: dict[str, dict] = {}
+    for case in run["cases"]:
+        key = f"{case['case_id']} · {case['raw'].get('part', '')}".strip(" ·")
+        rows.setdefault(key, {})[f"{case['system']}#{case['run']}"] = {"ok": case["ok"], "index": case["index"]}
+    columns = sorted({col for cells in rows.values() for col in cells})
+    return {"rows": [{"key": k, "cells": v} for k, v in sorted(rows.items())], "columns": columns}
+
+
+def _reasons(run: dict) -> dict | None:
     out = {}
     for case in run["cases"]:
-        for problem in case["problems"]:
+        for reason in case["raw"].get("rejections") or []:
+            label = re.sub(r"'[^']*'", "'…'", str(reason))[:60]
             row = out.setdefault(case["system"] or "-", {})
-            label = _problem_label(problem)
             row[label] = row.get(label, 0) + 1
-    top = {system: sorted(row.items(), key=lambda kv: -kv[1])[:TOP_PROBLEMS] for system, row in out.items()}
-    return {"systems": {s: [{"label": k, "count": n} for k, n in rows] for s, rows in top.items()}} if top else None
+    if not out:
+        return None
+    return {"systems": {s: [{"label": k, "count": n} for k, n in sorted(r.items(), key=lambda kv: -kv[1])[:TOP_REASONS]]
+                        for s, r in out.items()}}
+
+
+# ── 질문 5: 비용·시간 ──
 
 
 def _latency(run: dict) -> dict | None:
@@ -386,30 +548,41 @@ def _latency(run: dict) -> dict | None:
     return {"budget": budget, "systems": seconds}
 
 
-def _heatmap_by_kind(run: dict) -> dict | None:
-    """guards: 판정기 × 위반 종류 칸마다 틀린 비율 (위반은 놓침, 정상은 오거절)."""
-    table = run["tables"].get("by_kind")
-    if not isinstance(table, dict) or not table:
+def _cost(run: dict) -> dict | None:
+    out = {}
+    for metric_id in ("calls_per_fit", "tokens_per_fit"):
+        rows = {s: _num(_metric(run, metric_id, s)) for s in run["systems"]}
+        rows = {s: v for s, v in rows.items() if v and v["value"] is not None}
+        if rows:
+            out[metric_id] = rows
+    return out or None
+
+
+# ── 사례 격자 ──
+
+
+def _cases_grid(run: dict) -> dict | None:
+    """사례(사례 id·시스템·회차) × 조건 통과/실패. 칸을 누르면 그 사례(index)를 연다."""
+    conditions = (_conditions(run) or {}).get("conditions")
+    if not conditions:
         return None
-    kinds: list[str] = []
-    cells = {}
-    for system, rows in table.items():
-        for kind, c in rows.items():
-            if kind not in kinds:
-                kinds.append(kind)
-            total = c.get("total") or 0
-            wrong = c.get("false_reject", 0) if kind == "normal" else c.get("missed", 0)
-            cells.setdefault(system, {})[kind] = {"wrong": wrong, "total": total, "unknown": c.get("unknown", 0),
-                                                  "rate": (wrong / total) if total else None}
-    return {"kinds": kinds, "systems": cells, "what": "틀린 비율 (위반 종류는 놓침, normal 은 오거절)"}
+    rows = []
+    for case in run["cases"]:
+        values = case["raw"].get("conditions") or {name: v.get("ok") for name, v in case["verdicts"].items()}
+        if not values:
+            continue
+        rows.append({"index": case["index"], "case_id": case["case_id"], "system": case["system"], "run": case["run"],
+                     "ok": case["ok"], "cells": [values.get(name) for name in conditions]})
+    rows.sort(key=lambda r: (r["ok"] is not False, r["case_id"], r["system"] or "", r["run"]))  # 실패 먼저
+    return {"conditions": conditions, "rows": rows[:GRID_ROWS], "total": len(rows)}
 
 
-def _confusion(run: dict) -> dict | None:
-    """label: 세트 → 분류기 → 정답 → 예측 → 수."""
-    table = run["tables"].get("confusion")
-    return table if isinstance(table, dict) and table else None
-
-
-def visuals(run: dict) -> dict:
-    return {"mix": _mix(run), "conditions": _conditions(run), "problems": _problem_counts(run), "latency": _latency(run),
-            "by_kind": _heatmap_by_kind(run), "confusion": _confusion(run)}
+def charts(run: dict) -> dict:
+    return {
+        "q1": {"recall_precision": _recall_precision(run), "confusion": _confusion(run)},
+        "q2": {"conditions": _conditions(run), "source_mix": _source_mix(run)},
+        "q3": {"scatter": _guards_scatter(run), "by_kind": _by_kind(run)},
+        "q4": {"pass_distribution": _pass_distribution(run), "batch_grid": _batch_grid(run), "reasons": _reasons(run)},
+        "q5": {"latency": _latency(run), "cost": _cost(run)},
+        "cases_grid": _cases_grid(run),
+    }

@@ -132,13 +132,19 @@ def test_agent_names_include_comparison_agents():
     assert AGENT_NAMES["single_agent"] == "단일 에이전트(비교용)" and AGENT_NAMES["voice_single_agent"].startswith("음성")
 
 
-def test_run_visuals_for_charts(client):
-    """그래프용 집계: 결과 구성(상태 순서), 조건별 통과, 문제 순위, 걸린 시간, guards 종류별 칸."""
-    v = client.get("/api/dev_tools/evals/run", params={"id": "reply-20261118-100000"}).json()["visuals"]
-    assert v["mix"]["field"] == "source" and [o["key"] for o in v["mix"]["order"]] == ["AGENT", "FALLBACK"]
-    assert v["mix"]["systems"] == {"A": {"AGENT": 1}, "B": {"FALLBACK": 1}}
-    assert v["conditions"]["systems"]["B"]["fact"] == {"pass": 0, "fail": 1, "unknown": 0}
-    assert {"label": "fact 문제 문구", "count": 1} in v["problems"]["systems"]["B"]
-    assert v["latency"] is None and v["by_kind"] is None and v["confusion"] is None  # seconds 가 없는 사례
-    guards = client.get("/api/dev_tools/evals/run", params={"id": "guards-20261117-120000"}).json()["visuals"]
-    assert guards["mix"] is None and guards["by_kind"] is None
+def test_run_charts_and_summary(client):
+    """그래프용 집계(charts)와 질문별 요약 카드(summary), 사례 하나 열기(case)."""
+    body = client.get("/api/dev_tools/evals/run", params={"id": "reply-20261118-100000"}).json()
+    c = body["charts"]
+    assert c["q2"]["conditions"]["systems"]["B"]["fact"] == {"pass": 0, "fail": 1, "unknown": 0, "total": 1, "rate": 0.0}
+    assert c["q4"]["pass_distribution"] == {"runs": 1, "systems": {"A": [0, 1], "B": [1, 0]}}
+    grid = c["cases_grid"]
+    assert grid["conditions"] == ["fact", "format"] and grid["rows"][0]["system"] == "B"  # 실패한 사례 먼저
+    one = client.get("/api/dev_tools/evals/run", params={"id": "reply-20261118-100000", "case": grid["rows"][0]["index"]}).json()
+    assert [(x["system"], x["case_id"]) for x in one["cases"]] == [("B", "c1")]
+    guards = client.get("/api/dev_tools/evals/run", params={"id": "guards-20261117-120000"}).json()["charts"]["q3"]["scatter"]
+    assert guards is None  # false_reject_rate 가 없는 세트는 점을 찍지 않는다
+    summary = {card["question"]: card for card in client.get("/api/dev_tools/evals").json()["summary"]}
+    q2 = summary[2]
+    assert q2["run"] == "reply-20261118-100000" and q2["values"]["B"]["value"] == 0.5 and q2["diff"] == 0.0
+    assert q2["goal"] is True and summary[1]["run"] is None

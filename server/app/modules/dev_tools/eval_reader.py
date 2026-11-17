@@ -267,7 +267,8 @@ def get_run(run_id: str, *, failed_only: bool = False, system: str | None = None
         cases = [c for c in cases if c["ok"] is False or (c["ok"] is None and c["problems"])]
     total = len(cases)
     return {**run, "cases": cases[offset:offset + limit], "cases_total": total, "cases_all": len(run["cases"]),
-            "offset": offset, "limit": limit, "pairs": pairs(run["cases"], run["systems"]), "judge_check": judge_check(run)}
+            "offset": offset, "limit": limit, "pairs": pairs(run["cases"], run["systems"]), "judge_check": judge_check(run),
+            "visuals": visuals(run)}
 
 
 def trend(suite: str, metric: str) -> dict:
@@ -301,3 +302,114 @@ def trace_steps(run_id: str, agent_run_id: str) -> dict:
     finally:
         conn.close()
     return {"id": run_id, "run_id": agent_run_id, "steps": [dict(row) for row in rows]}
+
+
+# ── 그래프용 집계 (화면이 그리기만 하면 되게) ──
+
+# 결과 구성: 스위트마다 사례를 나누는 칸과 그 순서(좋은 것 먼저). 칸 이름 → 상태 색(good·good2(진한 초록)·warning·serious·critical·neutral)
+MIX = {
+    "reply": ("source", [("AGENT", "good"), ("FALLBACK", "warning"), ("TEMPLATE", "serious"), ("NONE", "critical")]),
+    "batch": ("source", [("AGENT", "good"), ("FALLBACK", "warning"), ("TEMPLATE", "serious"), ("NONE", "critical")]),
+    "guards": ("outcome", [("pass", "good"), ("caught", "good2"), ("false_reject", "warning"), ("missed", "critical"),
+                           ("unknown", "neutral")]),
+}
+MIX_NAMES = {"pass": "정상 통과", "caught": "위반 잡음", "false_reject": "오거절", "missed": "놓침", "unknown": "판단 불가",
+             "AGENT": "에이전트", "FALLBACK": "물러나기", "TEMPLATE": "템플릿", "NONE": "출력 없음",
+             "ok": "맞음", "wrong": "틀림", "unknown_ok": "모름"}
+TOP_PROBLEMS = 8
+LATENCY_BUDGET = {"reply": "prep_budget_seconds", "intent": "judge_budget_seconds"}
+DEFAULT_BUDGET = {"reply": 15}  # 예산을 config 에 적기 전 결과는 기준 문서 v2 의 15초로 본다
+
+
+def _mix(run: dict) -> dict | None:
+    """시스템마다 사례 구성 {field, order:[{key,name,status}], systems:{시스템: {칸: 수}}}."""
+    cases = run["cases"]
+    if not cases or run["suite"] == "label":  # label 결과는 틀린 사례만 남겨 구성이 뜻이 없다 (혼동 행렬을 본다)
+        return None
+    field, order = MIX.get(run["suite"], ("ok", [("ok", "good"), ("wrong", "critical"), ("unknown_ok", "neutral")]))
+    counts: dict[str, dict[str, int]] = {}
+    for case in cases:
+        if field == "ok":
+            key = "ok" if case["ok"] is True else "wrong" if case["ok"] is False else "unknown_ok"
+        else:
+            key = str(case["raw"].get(field) or ("NONE" if field == "source" else "unknown"))
+        row = counts.setdefault(case["system"] or "-", {})
+        row[key] = row.get(key, 0) + 1
+    seen = {key for row in counts.values() for key in row}
+    order = [item for item in order if item[0] in seen] + [(key, "neutral") for key in sorted(seen - {k for k, _ in order})]
+    return {"field": field, "order": [{"key": k, "name": MIX_NAMES.get(k, k), "status": s} for k, s in order],
+            "systems": counts}
+
+
+def _conditions(run: dict) -> dict | None:
+    """조건(심판 4조건 + format)별 통과 수. {conditions:[…], systems:{시스템: {조건: {pass, fail, unknown}}}}."""
+    names: list[str] = []
+    out: dict[str, dict[str, dict[str, int]]] = {}
+    for case in run["cases"]:
+        conditions = case["raw"].get("conditions") or {name: v.get("ok") for name, v in case["verdicts"].items()}
+        for name, ok in conditions.items():
+            if name not in names:
+                names.append(name)
+            cell = out.setdefault(case["system"] or "-", {}).setdefault(name, {"pass": 0, "fail": 0, "unknown": 0})
+            cell["pass" if ok is True else "fail" if ok is False else "unknown"] += 1
+    return {"conditions": names, "systems": out} if names else None
+
+
+def _problem_label(text: str) -> str:
+    """같은 종류끼리 모이게 문제 문구를 줄인다 (따옴표 안 문구·숫자는 뺀다)."""
+    text = re.sub(r"문제 문구: .*", "문제 문구", text)
+    text = re.sub(r"'[^']*'", "'…'", text)
+    text = re.sub(r"\d+", "N", text)
+    return text[:60]
+
+
+def _problem_counts(run: dict) -> dict | None:
+    out = {}
+    for case in run["cases"]:
+        for problem in case["problems"]:
+            row = out.setdefault(case["system"] or "-", {})
+            label = _problem_label(problem)
+            row[label] = row.get(label, 0) + 1
+    top = {system: sorted(row.items(), key=lambda kv: -kv[1])[:TOP_PROBLEMS] for system, row in out.items()}
+    return {"systems": {s: [{"label": k, "count": n} for k, n in rows] for s, rows in top.items()}} if top else None
+
+
+def _latency(run: dict) -> dict | None:
+    seconds = {}
+    for case in run["cases"]:
+        value = case.get("seconds")
+        if isinstance(value, (int, float)) and value > 0:
+            seconds.setdefault(case["system"] or "-", []).append(round(float(value), 2))
+    if not seconds:
+        return None
+    budget = run["config"].get(LATENCY_BUDGET.get(run["suite"], ""), DEFAULT_BUDGET.get(run["suite"]))
+    return {"budget": budget, "systems": seconds}
+
+
+def _heatmap_by_kind(run: dict) -> dict | None:
+    """guards: 판정기 × 위반 종류 칸마다 틀린 비율 (위반은 놓침, 정상은 오거절)."""
+    table = run["tables"].get("by_kind")
+    if not isinstance(table, dict) or not table:
+        return None
+    kinds: list[str] = []
+    cells = {}
+    for system, rows in table.items():
+        for kind, c in rows.items():
+            if kind not in kinds:
+                kinds.append(kind)
+            total = c.get("total") or 0
+            wrong = c.get("false_reject", 0) if kind == "normal" else c.get("missed", 0)
+            cells.setdefault(system, {})[kind] = {"wrong": wrong, "total": total, "unknown": c.get("unknown", 0),
+                                                  "rate": (wrong / total) if total else None}
+    return {"kinds": kinds, "systems": cells, "what": "틀린 비율 (위반 종류는 놓침, normal 은 오거절)"}
+
+
+def _confusion(run: dict) -> dict | None:
+    """label: 세트 → 분류기 → 정답 → 예측 → 수."""
+    table = run["tables"].get("confusion")
+    return table if isinstance(table, dict) and table else None
+
+
+def visuals(run: dict) -> dict:
+    return {"mix": _mix(run), "conditions": _conditions(run), "problems": _problem_counts(run), "latency": _latency(run),
+            "by_kind": _heatmap_by_kind(run), "confusion": _confusion(run)}

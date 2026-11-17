@@ -1170,7 +1170,7 @@ content.addEventListener("change", (e) => {
 // 평가 스위트(python -m Harness.evals …)가 남긴 result.json 을 본다. 운영 기록(AI·에이전트 탭)과 섞지 않는다.
 // 실행 목록 → 고른 실행의 질문별 지표 표, 추세, 사례(실패만 기본), 짝 비교(A·B), 심판 검증.
 
-const evalView = { id: null, system: "", failedOnly: true, offset: 0, metric: null, open: new Set(), steps: {} };
+const evalView = { id: null, system: "", failedOnly: true, offset: 0, metric: null, open: new Set(), steps: {}, table: false, set: null };
 const EVAL_PAGE = 30;
 const EVAL_QUESTIONS = {
   1: "질문 1. 리뷰를 바르게 가르는가",
@@ -1198,7 +1198,7 @@ function evalDiff(a, b) {
 }
 
 function evalRunRow(r) {
-  const head = r.headline.map((m) => `<span class="muted small">${esc(m.system ?? "")} ${esc(m.id)}</span> ${evalValue(m)}`).join(" · ");
+  const head = vizHeadline(r);
   return `<div class="call eval-run ${r.id === evalView.id ? "picked" : ""}"><div class="call-head">
       <button class="btn-outline small" data-eval-pick="${esc(r.id)}">${r.id === evalView.id ? "보는 중" : "보기"}</button>
       <span class="mono">${esc(time(r.started_at))}</span><b>${esc(r.suite)}</b>
@@ -1230,34 +1230,6 @@ function evalMetricTables(run) {
     });
     return `<div class="card"><h2>${esc(EVAL_QUESTIONS[q] ?? "기타 지표")}</h2>${table(headers, body)}</div>`;
   }).join("");
-}
-
-function evalTrendSvg(t) {
-  const points = t.points.filter((p) => p.value !== null && p.value !== undefined);
-  if (!points.length) return '<div class="empty">값이 있는 실행이 없어요</div>';
-  const runs = [...new Map(t.points.map((p) => [p.id, p])).values()];
-  const systems = [...new Set(points.map((p) => p.system ?? "-"))];
-  const colors = ["var(--brand)", "var(--blue)", "var(--warn)", "var(--bad)", "var(--ink-3)"];
-  const W = 640, H = 170, L = 44, R = 16, T = 12, B = 34;
-  const values = points.map((p) => p.value);
-  const lo = Math.min(0, ...values), hi = Math.max(...values, t.points[0]?.unit === "ratio" ? 1 : lo + 1);
-  const x = (i) => L + (runs.length === 1 ? (W - L - R) / 2 : (i * (W - L - R)) / (runs.length - 1));
-  const y = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
-  const fmtV = (v) => (t.points[0]?.unit === "ratio" ? `${Math.round(v * 100)}%` : Number(v).toFixed(1));
-  const lines = systems.map((s, si) => {
-    const pts = runs.map((r, i) => [i, points.find((p) => p.id === r.id && (p.system ?? "-") === s)]).filter(([, p]) => p);
-    const path = pts.map(([i, p], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
-    return `<path d="${path}" fill="none" stroke="${colors[si % colors.length]}" stroke-width="2"/>` +
-      pts.map(([i, p]) => `<circle cx="${x(i)}" cy="${y(p.value)}" r="${runs[i].baseline ? 5 : 3}" fill="${runs[i].baseline ? "var(--surface)" : colors[si % colors.length]}" stroke="${colors[si % colors.length]}" stroke-width="2"><title>${esc(s)} ${esc(fmtV(p.value))} · ${esc(runs[i].id)}</title></circle>`).join("");
-  }).join("");
-  const axis = `<line x1="${L}" y1="${y(lo)}" x2="${W - R}" y2="${y(lo)}" stroke="var(--line)"/>
-    <text x="${L - 6}" y="${y(hi) + 4}" text-anchor="end" class="eval-axis">${esc(fmtV(hi))}</text>
-    <text x="${L - 6}" y="${y(lo) + 4}" text-anchor="end" class="eval-axis">${esc(fmtV(lo))}</text>` +
-    runs.map((r, i) => `<text x="${x(i)}" y="${H - 18}" text-anchor="middle" class="eval-axis mono">${esc(r.commit ?? "-")}</text>
-      <text x="${x(i)}" y="${H - 5}" text-anchor="middle" class="eval-axis">${esc(time(r.started_at).slice(0, 5))}</text>`).join("");
-  const legend = systems.map((s, si) => `<span class="eval-legend"><i style="background:${colors[si % colors.length]}"></i>${esc(s)}</span>`).join("");
-  return `<svg class="eval-trend" viewBox="0 0 ${W} ${H}" role="img">${axis}${lines}</svg>
-    <div class="muted small">${legend} · 큰 빈 동그라미는 기준점 · 아래는 커밋과 날짜 · ${t.higher_is_better === false ? "낮을수록 좋음" : "높을수록 좋음"}</div>`;
 }
 
 function evalVotes(verdicts) {
@@ -1335,7 +1307,10 @@ async function renderEval() {
   const trend = evalView.metric ? await api(`${API}/evals/trend?suite=${encodeURIComponent(run.suite)}&metric=${encodeURIComponent(evalView.metric)}`) : null;
   const legacy = run.legacy
     ? `<div class="card"><h2>요약 <span class="muted">예전 형식 결과 (숫자만)</span></h2>${table(["항목", "값"], Object.entries(run.summary ?? {}).map(([k, v]) => [esc(k), `<span class="mono">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`]))}</div>`
-    : evalMetricTables(run);
+    : evalView.table ? evalMetricTables(run) : vizMetricCards(run);
+  const v = run.visuals ?? {};
+  const charts = run.legacy ? "" : [vizMix(v.mix, run.systems), vizConditions(v.conditions, run.systems), vizByKind(v.by_kind, run.systems),
+    vizConfusion(v.confusion, run.systems), vizProblems(v.problems, run.systems), vizLatency(v.latency, run.systems)].join("");
   const filters = `<div class="eval-filters">
       <button class="btn-outline small ${evalView.failedOnly ? "on" : ""}" data-eval-failed="${evalView.failedOnly ? "off" : "on"}">${evalView.failedOnly ? "실패만 보는 중" : "모두 보는 중"}</button>
       ${["", ...run.systems].map((s) => `<button class="btn-outline small ${evalView.system === s ? "on" : ""}" data-eval-system="${esc(s || "*")}">${esc(s || "모든 시스템")}</button>`).join("")}
@@ -1347,11 +1322,14 @@ async function renderEval() {
     <div class="card"><h2>평가 실행 <span class="muted">최근 먼저 · ${esc(list.length)}개</span></h2><div class="eval-runs">${list.map(evalRunRow).join("")}</div></div>
     <div class="card"><h2>${esc(run.suite)} · <span class="mono">${esc(run.id)}</span>
       <span class="muted">${esc(time(run.started_at))} · 커밋 ${esc(run.commit ?? "-")}${run.git?.dirty ? " (고친 파일 있음)" : ""}${run.baseline ? " · 기준점" : ""}</span></h2>
+      ${run.legacy ? "" : `<button class="btn-outline small viz-toggle" data-eval-table="${evalView.table ? "off" : "on"}">${evalView.table ? "그래프로 보기" : "지표를 표로 보기"}</button>`}
+      ${vizLegend(run.systems)}
       <div class="muted small">시스템 ${esc(run.systems.join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
     </div>
-    ${legacy}
-    ${trend ? `<div class="card"><h2>추세 · <span class="mono">${esc(trend.metric)}</span> <span class="muted">${esc(run.suite)} 실행별</span>
+    ${trend ? `<div class="card" id="eval-trend-card"><h2>추세 · <span class="mono">${esc(trend.metric)}</span> <span class="muted">${esc(run.suite)} 실행별</span>
       <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}</div>` : ""}
+    ${legacy}
+    ${charts}
     ${evalJudgeCard(run.judge_check)}
     ${evalPairs(run.pairs)}
     <div class="card"><h2>사례</h2>${filters}
@@ -1359,7 +1337,9 @@ async function renderEval() {
 }
 
 async function onEvalClick(button) {
-  const { evalPick, evalMetric, evalFailed, evalSystem, evalPage, evalTrace } = button.dataset;
+  const { evalPick, evalMetric, evalFailed, evalSystem, evalPage, evalTrace, evalTable, evalSet } = button.dataset;
+  if (evalSet !== undefined) evalView.set = evalSet;
+  if (evalTable !== undefined) evalView.table = evalTable === "on";
   if (evalPick !== undefined) Object.assign(evalView, { id: evalPick, offset: 0, system: "", metric: null, open: new Set(), steps: {} });
   if (evalMetric !== undefined) evalView.metric = evalMetric || null;
   if (evalFailed !== undefined) Object.assign(evalView, { failedOnly: evalFailed === "on", offset: 0 });
@@ -1371,7 +1351,8 @@ async function onEvalClick(button) {
   }
   const keep = window.scrollY;
   content.innerHTML = await renderEval();
-  window.scrollTo(0, keep);
+  if (evalMetric) document.getElementById("eval-trend-card")?.scrollIntoView({ block: "start" }); // 아래에서 누른 추세를 바로 보이게
+  else window.scrollTo(0, keep);
 }
 
 // 평가 탭 버튼은 아래 공통 클릭 처리(화면 전체 새로 그리기)보다 먼저 잡는다
@@ -1385,3 +1366,242 @@ content.addEventListener("click", async (e) => {
     toast(error.message);
   }
 }, true);
+
+// ── 평가 탭 그래프 ──
+// 색은 하는 일로 정한다. 시스템(정체) = 범주 색을 이름에 고정(필터로 바뀌지 않게), 크기 = 파랑 한 색 진하기,
+// 상태(통과·물러남·놓침) = 상태 색 + 글자. 글자는 늘 잉크 색이고 색 칠한 표시(점·막대)가 옆에서 정체를 알린다.
+// 모든 그래프 아래에 정확한 숫자(분자/분모)가 글자로 있고, 지표는 [표로 보기]로 예전 표를 볼 수 있다.
+
+const VIZ_SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]; // 밝은 화면 범주 색 1~4 (검사 통과: 인접 CVD ΔE 9.1 이상)
+const VIZ_SYSTEM_SLOT = { A: 0, B: 1, rule: 0, hcx: 1, voice: 2, regex: 0, critic: 1, judge_tools: 2, judge_thinking: 3, "rule+judge": 1 };
+const VIZ_STATUS = { good: "#0ca30c", good2: "#006300", warning: "#fab219", serious: "#ec835a", critical: "#d03b3b", neutral: "#c3c2b7" };
+const VIZ_STATUS_INK = { warning: "#0b0b0b", neutral: "#0b0b0b" }; // 밝은 칸 안 글자는 검정, 나머지는 흰색
+const VIZ_SEQ = ["#f0efec", "#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]; // 파랑 단계 (0 은 거의 없음)
+
+const vizColor = (system, systems) => VIZ_SERIES[(VIZ_SYSTEM_SLOT[system] ?? Math.max(0, systems.indexOf(system))) % VIZ_SERIES.length];
+const vizPct = (v) => `${Math.round(v * 100)}%`;
+const vizSeq = (rate) => (rate == null ? "#f0efec" : VIZ_SEQ[Math.min(VIZ_SEQ.length - 1, Math.round(rate * (VIZ_SEQ.length - 1)))]);
+const vizSeqInk = (rate) => (rate != null && rate >= 0.5 ? "#ffffff" : "#0b0b0b");
+
+function vizLegend(systems) {
+  return `<div class="viz-legend">${systems.map((s) => `<span><i style="background:${vizColor(s, systems)}"></i>${esc(s)}</span>`).join("")}</div>`;
+}
+
+// 지표 하나를 시스템마다 막대 한 줄로. 비율·F1 은 0~100% 고정 축, 그 밖(초, 호출, 토큰)은 그 지표의 가장 큰 값 기준
+// 지표 하나 = 한 줄 점 그림. 시스템마다 점 하나를 같은 축에 (비율·F1 은 0~100%, 시간·호출은 그 지표의 가장 큰 값까지).
+// 둘 이상이면 가장 낮은 점과 높은 점을 회색 선으로 이어 차이를 보이고, 오른쪽에 정확한 값(분자/분모)을 글자로
+function vizMetricRows(rows, systems, ab) {
+  const keys = [...new Set(rows.map((m) => m.key))];
+  return keys.map((key) => {
+    const group = rows.filter((m) => m.key === key);
+    const first = group[0];
+    const fixed = first.unit === "ratio" || first.unit === "f1";
+    const max = fixed ? 1 : Math.max(...group.map((m) => m.value ?? 0), 1e-9);
+    const present = systems.filter((s) => group.some((m) => (m.system ?? "-") === s));
+    const cell = (s) => group.find((m) => (m.system ?? "-") === s);
+    const pos = (m) => Math.max(0, Math.min(1, m.value / max)) * 100;
+    const valued = present.map(cell).filter((m) => m.value != null);
+    const span = valued.length > 1 ? [Math.min(...valued.map(pos)), Math.max(...valued.map(pos))] : null;
+    const dots = present.map((s, i) => {
+      const m = cell(s);
+      if (m.value == null) return "";
+      const offset = (i - (present.length - 1) / 2) * 5; // 같은 값이 겹쳐도 보이게 위아래로 조금씩
+      return `<span class="viz-dot" style="left:${pos(m)}%;top:calc(50% + ${offset}px);background:${vizColor(s, systems)}"
+        title="${esc(s)} · ${esc(first.name)}: ${esc(m.unit === "ratio" ? vizPct(m.value) : m.value)}${m.denominator != null ? ` (${m.numerator}/${m.denominator})` : ""}${m.note ? ` · ${esc(m.note)}` : ""}"></span>`;
+    }).join("");
+    const values = present.map((s) => `<span class="viz-v"><i style="background:${vizColor(s, systems)}"></i>${present.length > 1 ? `${esc(s)} ` : ""}${evalValue(cell(s))}</span>`).join("");
+    const scale = fixed ? "" : `<span class="viz-scale-max muted small">${esc(Number.isInteger(max) ? max : max.toFixed(1))} ${esc(first.unit ?? "")}</span>`;
+    return `<div class="viz-dotrow">
+      <div class="viz-dot-name"><b>${esc(first.name)}</b><span class="muted small mono">${esc(key)}</span>
+        <span class="viz-dir">${first.higher_is_better === false ? "↓ 낮을수록 좋음" : "↑ 높을수록 좋음"}</span></div>
+      <div class="viz-dot-track">${span ? `<span class="viz-span" style="left:${span[0]}%;width:${span[1] - span[0]}%"></span>` : ""}${dots}${scale}</div>
+      <div class="viz-dot-values">${values}${ab ? evalDiff(cell("A"), cell("B")) : ""}</div>
+      <button class="btn-outline small" data-eval-metric="${esc(key)}">추세</button></div>`;
+  }).join("");
+}
+
+function vizMetricCards(run) {
+  // 세트(critic_cases·gold·all 등)가 붙은 지표는 한 세트씩 본다 (기본 all, 없으면 첫 세트)
+  const sets = [...new Set(run.metrics.map((m) => m.set).filter(Boolean))];
+  const chosen = sets.includes(evalView.set) ? evalView.set : sets.includes("all") ? "all" : sets[0];
+  const setBar = sets.length > 1 ? `<div class="eval-filters viz-sets"><span class="muted small">세트</span>${sets.map((name) =>
+    `<button class="btn-outline small ${name === chosen ? "on" : ""}" data-eval-set="${esc(name)}">${esc(name)}</button>`).join("")}</div>` : "";
+  const groups = {};
+  for (const m of run.metrics.filter((m) => !m.set || m.set === chosen)) (groups[m.question ?? "etc"] ??= []).push(m);
+  const systems = run.systems.length ? run.systems : [...new Set(run.metrics.map((m) => m.system ?? "-"))];
+  const ab = run.systems.includes("A") && run.systems.includes("B");
+  return setBar + Object.keys(groups).sort().map((q) => `<div class="card"><h2>${esc(EVAL_QUESTIONS[q] ?? "기타 지표")}
+      <span class="muted">점 위치 = 값 · 축은 비율·F1 이면 0~100%, 시간·호출이면 0~가장 큰 값 · 회색 선 = 시스템 사이 차이</span></h2>
+      ${vizLegend(systems.filter((s) => groups[q].some((m) => (m.system ?? "-") === s)))}${vizMetricRows(groups[q], systems, ab)}</div>`).join("");
+}
+
+// 결과 구성: 시스템마다 사례가 어디로 갔는지 한 줄 막대 (상태 색 + 칸 안 비율 + 범례 글자)
+function vizMix(mix, systems) {
+  if (!mix) return "";
+  const rows = systems.filter((s) => mix.systems[s]).map((s) => {
+    const counts = mix.systems[s];
+    const total = Object.values(counts).reduce((a, b) => a + b, 0);
+    const blocks = mix.order.filter((o) => counts[o.key]).map((o) => {
+      const share = counts[o.key] / total;
+      const label = share >= 0.08 ? `${vizPct(share)}` : "";
+      return `<span class="viz-seg" style="flex:${counts[o.key]};background:${VIZ_STATUS[o.status]};color:${VIZ_STATUS_INK[o.status] ?? "#ffffff"}"
+        title="${esc(s)} · ${esc(o.name)} ${counts[o.key]}/${total} (${vizPct(share)})">${label}</span>`;
+    }).join("");
+    return `<div class="viz-mix-row"><span class="viz-sys"><i style="background:${vizColor(s, systems)}"></i>${esc(s)}</span>
+      <div class="viz-segbar">${blocks}</div><span class="muted small num">${total}건</span></div>`;
+  }).join("");
+  const legend = `<div class="viz-legend">${mix.order.map((o) => `<span><i style="background:${VIZ_STATUS[o.status]}"></i>${esc(o.name)}</span>`).join("")}</div>`;
+  const title = mix.field === "source" ? "누가 답을 냈나 (에이전트 · 물러나기 · 템플릿 · 출력 없음)" : mix.field === "outcome" ? "판정 결과 구성" : "맞음 · 틀림";
+  return `<div class="card"><h2>${esc(title)} <span class="muted">시스템마다 전체 사례를 100% 로</span></h2>${legend}${rows}</div>`;
+}
+
+// 칸 그림(히트맵): 행 = 시스템, 열 = 조건·종류. 칸 색은 파랑 한 색 진하기, 칸 안에 비율과 분자/분모
+function vizHeatmap({ title, note, rows, cols, cell }) {
+  const head = `<div class="viz-hm-row viz-hm-head" style="grid-template-columns:120px repeat(${cols.length}, minmax(64px, 1fr))"><span></span>${cols.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
+  const body = rows.map((r) => `<div class="viz-hm-row" style="grid-template-columns:120px repeat(${cols.length}, minmax(64px, 1fr))">
+      <span class="viz-sys">${r.swatch ? `<i style="background:${r.swatch}"></i>` : ""}${esc(r.name)}</span>
+      ${cols.map((c) => {
+        const v = cell(r.key, c);
+        if (!v) return '<span class="viz-hm-cell empty">-</span>';
+        return `<span class="viz-hm-cell${v.mark ? " mark" : ""}" style="background:${vizSeq(v.rate)};color:${vizSeqInk(v.rate)}" title="${esc(r.name)} · ${esc(c)}: ${esc(v.tip)}">
+          <b>${v.rate == null ? "-" : vizPct(v.rate)}</b><small>${esc(v.sub)}</small></span>`;
+      }).join("")}</div>`).join("");
+  const scale = `<div class="viz-scale"><span>0%</span>${VIZ_SEQ.map((c) => `<i style="background:${c}"></i>`).join("")}<span>100%</span></div>`;
+  return `<div class="card"><h2>${esc(title)} <span class="muted">${esc(note)}</span></h2>${scale}<div class="viz-hm">${head}${body}</div></div>`;
+}
+
+function vizConditions(cond, systems) {
+  if (!cond) return "";
+  const rows = systems.filter((s) => cond.systems[s]).map((s) => ({ key: s, name: s, swatch: vizColor(s, systems) }));
+  return vizHeatmap({
+    title: "조건별 통과율", note: "진할수록 많이 통과 · 칸 = 통과/전체 (판단 불가는 따로)", rows, cols: cond.conditions,
+    cell: (s, c) => {
+      const v = cond.systems[s]?.[c];
+      if (!v) return null;
+      const total = v.pass + v.fail + v.unknown;
+      return { rate: total ? v.pass / total : null, sub: `${v.pass}/${total}${v.unknown ? ` ?${v.unknown}` : ""}`, tip: `통과 ${v.pass}, 실패 ${v.fail}, 판단 불가 ${v.unknown}` };
+    },
+  });
+}
+
+function vizByKind(byKind, systems) {
+  if (!byKind) return "";
+  const rows = systems.filter((s) => byKind.systems[s]).map((s) => ({ key: s, name: s, swatch: vizColor(s, systems) }));
+  return vizHeatmap({
+    title: "종류별로 틀린 비율", note: `${byKind.what} · 진할수록 많이 틀림`, rows, cols: byKind.kinds,
+    cell: (s, k) => {
+      const v = byKind.systems[s]?.[k];
+      return v ? { rate: v.rate, sub: `${v.wrong}/${v.total}${v.unknown ? ` ?${v.unknown}` : ""}`, tip: `틀림 ${v.wrong} / ${v.total}, 판단 불가 ${v.unknown}` } : null;
+    },
+  });
+}
+
+// 혼동 행렬: 분류기마다 작은 칸 그림 (행 = 정답, 열 = 예측, 칸 색 = 정답 행 안에서의 비율, 대각선 테두리 = 맞힌 칸)
+function vizConfusion(confusion, systems) {
+  if (!confusion) return "";
+  const set = confusion.balanced ? "balanced" : Object.keys(confusion)[0];
+  const tables = confusion[set] ?? {};
+  const panels = Object.entries(tables).map(([system, rows]) => {
+    const truths = Object.keys(rows);
+    const preds = [...new Set(truths.flatMap((t) => Object.keys(rows[t])))];
+    const order = (p) => { const i = truths.findIndex((t) => t.toLowerCase() === p.toLowerCase()); return i < 0 ? 99 : i; };
+    preds.sort((a, b) => order(a) - order(b));
+    const grid = `<div class="viz-cm" style="grid-template-columns:84px repeat(${preds.length}, 1fr)">
+      <span class="muted small">정답 \\ 예측</span>${preds.map((p) => `<span class="muted small viz-cm-col">${esc(p)}</span>`).join("")}
+      ${truths.map((t) => {
+        const total = Object.values(rows[t]).reduce((a, b) => a + b, 0);
+        return `<span class="small">${esc(t)} <span class="muted">${total}</span></span>` + preds.map((p) => {
+          const n = rows[t][p] ?? 0;
+          const rate = total ? n / total : null;
+          const hit = p.toLowerCase() === t.toLowerCase();
+          return `<span class="viz-hm-cell${hit ? " mark" : ""}" style="background:${vizSeq(rate)};color:${vizSeqInk(rate)}" title="정답 ${esc(t)} → ${esc(p)}: ${n}/${total}"><b>${n}</b></span>`;
+        }).join("");
+      }).join("")}</div>`;
+    return `<div class="viz-cm-panel"><div class="viz-sys"><i style="background:${vizColor(system, systems)}"></i><b>${esc(system)}</b></div>${grid}</div>`;
+  }).join("");
+  return `<div class="card"><h2>혼동 행렬 · ${esc(set)} <span class="muted">행 = 정답, 열 = 예측 · 진할수록 그 정답 중 많이 · 테두리 칸이 맞힌 것</span></h2>
+    <div class="viz-cm-wrap">${panels}</div></div>`;
+}
+
+// 문제 순위: 시스템마다 많이 걸린 까닭 가로 막대 (많은 것부터, 그 시스템 색 한 가지)
+function vizProblems(problems, systems) {
+  if (!problems) return "";
+  const panels = systems.filter((s) => problems.systems[s]?.length).map((s) => {
+    const rows = problems.systems[s];
+    const max = Math.max(...rows.map((r) => r.count), 1);
+    return `<div class="viz-rank"><div class="viz-sys"><i style="background:${vizColor(s, systems)}"></i><b>${esc(s)}</b></div>
+      ${rows.map((r) => `<div class="viz-rank-row" title="${esc(r.label)}: ${r.count}건"><span class="viz-rank-label">${esc(r.label)}</span>
+        <span class="viz-track"><span class="viz-fill" style="width:${(r.count / max) * 100}%;background:${vizColor(s, systems)}"></span></span>
+        <span class="num small">${r.count}</span></div>`).join("")}</div>`;
+  }).join("");
+  return panels ? `<div class="card"><h2>많이 걸린 까닭 <span class="muted">시스템마다 상위 8개 · 같은 종류끼리 묶음 (따옴표 안 문구·숫자는 지움)</span></h2><div class="viz-rank-wrap">${panels}</div></div>` : "";
+}
+
+// 걸린 시간: 사례 하나 = 점 하나. 같은 가로축, 세로 막대 = 중앙값, 빨간 세로선 = 예산
+function vizLatency(latency, systems) {
+  if (!latency) return "";
+  const names = systems.filter((s) => latency.systems[s]?.length);
+  if (!names.length) return "";
+  const all = names.flatMap((s) => latency.systems[s]);
+  const max = Math.max(...all, latency.budget ?? 0) * 1.05;
+  const W = 760, L = 110, R = 190, rowH = 32, T = 8, H = T + names.length * rowH + 24;
+  const x = (v) => L + (v / max) * (W - L - R);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(max * f));
+  const median = (a) => { const s = [...a].sort((p, q) => p - q); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const rows = names.map((s, i) => {
+    const y = T + i * rowH + rowH / 2;
+    const values = latency.systems[s];
+    const med = median(values);
+    const within = latency.budget != null ? values.filter((v) => v <= latency.budget).length : null;
+    const jitter = (k) => ((k * 37) % 11 - 5) * 1.2;
+    return `<text x="${L - 8}" y="${y + 4}" text-anchor="end" class="viz-axis-ink">${esc(s)}</text>
+      ${values.map((v, k) => `<circle cx="${x(v).toFixed(1)}" cy="${(y + jitter(k)).toFixed(1)}" r="4" fill="${vizColor(s, systems)}" fill-opacity="0.55" stroke="#fcfcfb" stroke-width="1"><title>${esc(s)} ${v}초</title></circle>`).join("")}
+      <line x1="${x(med)}" y1="${y - 10}" x2="${x(med)}" y2="${y + 10}" stroke="#0b0b0b" stroke-width="2"><title>${esc(s)} 중앙값 ${med.toFixed(1)}초</title></line>
+      <text x="${W - R + 12}" y="${y + 4}" class="viz-axis-ink">중앙 ${med.toFixed(1)}초${within != null ? ` · 예산 안 ${within}/${values.length}` : ""}</text>`;
+  }).join("");
+  const grid = ticks.map((t) => `<line x1="${x(t)}" y1="${T}" x2="${x(t)}" y2="${H - 22}" stroke="#e1e0d9"/><text x="${x(t)}" y="${H - 8}" text-anchor="middle" class="viz-axis">${t}초</text>`).join("");
+  const budget = latency.budget != null ? `<line x1="${x(latency.budget)}" y1="${T}" x2="${x(latency.budget)}" y2="${H - 22}" stroke="${VIZ_STATUS.critical}" stroke-width="2"/>
+    <text x="${x(latency.budget) + 4}" y="${T + 10}" class="viz-axis-ink">예산 ${latency.budget}초</text>` : "";
+  return `<div class="card"><h2>사례마다 걸린 시간 <span class="muted">점 하나 = 사례 하나 · 검은 세로 막대 = 중앙값${latency.budget != null ? " · 빨간 선 = 예산" : ""}</span></h2>
+    <svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="사례마다 걸린 시간">${grid}${budget}${rows}</svg></div>`;
+}
+
+// 추세: 가는 선 + 점 + 끝 값 글자, 가로 격자, 기준점은 빈 동그라미. 점에 마우스를 올리면 값
+function evalTrendSvg(t) {
+  const points = t.points.filter((p) => p.value !== null && p.value !== undefined);
+  if (!points.length) return '<div class="empty">값이 있는 실행이 없어요</div>';
+  const runs = [...new Map(t.points.map((p) => [p.id, p])).values()];
+  const systems = [...new Set(points.map((p) => p.system ?? "-"))];
+  const ratio = t.points[0]?.unit === "ratio";
+  const W = 680, H = 200, L = 46, R = 90, T = 14, B = 38;
+  const values = points.map((p) => p.value);
+  const lo = ratio ? 0 : Math.min(0, ...values), hi = ratio ? 1 : Math.max(...values, lo + 1e-9) * 1.1;
+  const x = (i) => L + (runs.length === 1 ? (W - L - R) / 2 : (i * (W - L - R)) / (runs.length - 1));
+  const y = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
+  const fmtV = (v) => (ratio ? vizPct(v) : Number(v).toFixed(1));
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((f) => lo + (hi - lo) * f).map((v) => `<line x1="${L}" y1="${y(v)}" x2="${W - R}" y2="${y(v)}" stroke="#e1e0d9"/>
+    <text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="viz-axis">${esc(fmtV(v))}</text>`).join("");
+  const lines = systems.map((s) => {
+    const color = vizColor(s, systems);
+    const pts = runs.map((r, i) => [i, points.find((p) => p.id === r.id && (p.system ?? "-") === s)]).filter(([, p]) => p);
+    const path = pts.map(([i, p], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+    const [li, lp] = pts[pts.length - 1];
+    return `<path d="${path}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` +
+      pts.map(([i, p]) => `<circle cx="${x(i)}" cy="${y(p.value)}" r="${runs[i].baseline ? 6 : 4}" fill="${runs[i].baseline ? "#fcfcfb" : color}" stroke="${runs[i].baseline ? color : "#fcfcfb"}" stroke-width="2"><title>${esc(s)} ${esc(fmtV(p.value))}${p.denominator != null ? ` (${p.numerator}/${p.denominator})` : ""} · ${esc(runs[i].id)} · 커밋 ${esc(runs[i].commit ?? "-")}</title></circle>`).join("") +
+      `<text x="${x(li) + 10}" y="${y(lp.value) + 4}" class="viz-axis-ink">${esc(s)} ${esc(fmtV(lp.value))}</text>`;
+  }).join("");
+  const axis = runs.map((r, i) => `<text x="${x(i)}" y="${H - 20}" text-anchor="middle" class="viz-axis mono">${esc(r.commit ?? "-")}</text>
+      <text x="${x(i)}" y="${H - 6}" text-anchor="middle" class="viz-axis">${esc(time(r.started_at).slice(0, 11))}</text>`).join("");
+  return `${systems.length > 1 ? vizLegend(systems) : ""}<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(t.metric)} 추세">${grid}${axis}${lines}</svg>
+    <div class="muted small">아래는 커밋과 시각 · 빈 동그라미 = 기준점 · ${t.higher_is_better === false ? "낮을수록 좋음" : "높을수록 좋음"} · 점에 마우스를 올리면 값</div>`;
+}
+
+// 실행 목록의 대표 지표: 시스템마다 작은 막대 (비율일 때)
+function vizHeadline(r) {
+  const systems = r.systems;
+  return r.headline.map((m) => {
+    const bar = m.unit === "ratio" && m.value != null
+      ? `<span class="viz-mini"><span style="width:${m.value * 100}%;background:${vizColor(m.system ?? "-", systems)}"></span></span>` : "";
+    return `<span class="viz-head-item"><span class="muted small">${esc(m.system ?? "")} ${esc(m.id)}</span>${bar}${evalValue(m)}</span>`;
+  }).join("");
+}

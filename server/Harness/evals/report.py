@@ -197,3 +197,13 @@ def start(suite: str, *, config: dict | None = None, systems: list[str] | None =
         trace.TRACE_PATH = out / "harness_trace.db"
     return EvalRun(suite=suite, out=out, started_at=at.isoformat(timespec="seconds"), config=dict(config or {}),
                    systems=list(systems or []), git=git_info())
+
+
+def reopen(out: Path, previous: dict, *, systems: list[str] | None = None, swap_logs: bool = True) -> EvalRun:
+    """끊긴 결과 폴더를 다시 연다 (result.json 의 config·started_at 을 이어 쓴다)."""
+    if swap_logs:
+        clova_usage_log.LOG_PATH = out / "clova_usage.db"
+        trace.TRACE_PATH = out / "harness_trace.db"
+    return EvalRun(suite=previous["suite"], out=out, started_at=previous["started_at"],
+                   config=dict(previous.get("config") or {}), systems=list(systems or previous.get("systems") or []),
+                   git=git_info())

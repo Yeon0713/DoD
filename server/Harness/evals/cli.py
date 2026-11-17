@@ -4,9 +4,10 @@
 result.json 을 쓴다. 공통 옵션의 뜻은 build_parser 에 적었다.
 
 실제 CLOVA 를 부른다. server/.env 의 CLOVA_STUDIO_API_KEY 가 없으면 시작하지 않는다.
-(label 스위트는 hcx 분류기를 고를 때만 키가 필요하다. rule, voice 는 CLOVA 를 부르지 않는다)
+(label 은 hcx, guards 는 critic·judge_* 를 고를 때만 키가 필요하다. --dry-run 이면 키 없이 예상 호출 수만 본다)
 
---systems 의 뜻은 스위트마다 다르다. A/B 를 비교하는 스위트는 A, B, label 은 분류기 이름(rule, hcx, voice)이다.
+--systems 의 뜻은 스위트마다 다르다. A/B 를 비교하는 스위트는 A, B, label 은 분류기 이름(rule, hcx, voice),
+guards 는 판정기 이름(regex, critic, judge_tools, judge_thinking)이다.
 
 critic, live 는 기존 스크립트(Harness/critic_eval.py, live_eval.py)를 그대로 부른다. 두 스크립트는 아직 예전 결과 모양
 (result.json 에 schema 없음)으로 쓴다. 음성 점검(voice/live_check.py)은 run() 입구가 생기면 스위트로 더한다.
@@ -31,7 +32,7 @@ class Suite:
     uses_judge: bool = False  # 심판을 부르는지 (아니면 --judge-mode 를 쓰지 않는다)
     parse_systems: Callable[[str], list[str]] = systems.parse_names  # --systems 글 → 이름 목록 (잘못되면 ValueError·SystemUnavailable)
     default_systems: str = "A,B"
-    needs_clova: Callable[[list[str]], bool] = lambda names: True  # 고른 시스템으로 CLOVA 키가 필요한지
+    needs_clova: Callable[[argparse.Namespace], bool] = lambda args: True  # 이 실행에 CLOVA 키가 필요한지
 
 
 def _ids(args: argparse.Namespace) -> list[str] | None:
@@ -62,13 +63,38 @@ def _label_systems(text: str) -> list[str]:
     return label_eval.parse_classifiers(text)
 
 
+def _run_reply(args: argparse.Namespace) -> object:
+    from Harness.evals import reply_eval
+
+    return reply_eval.run(args)
+
+
+def _run_guards(args: argparse.Namespace) -> object:
+    from Harness.evals import guards_eval
+
+    return guards_eval.run(args)
+
+
+def _guards_systems(text: str) -> list[str]:
+    from Harness.evals import guards_eval
+
+    return guards_eval.parse_judges(text)
+
+
 SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("critic", "LLM 검토기(reply_critic) 정확도: 판정 세트 놓침·오탐 (--ids 로 사례 고르기, 예전 결과 모양)", _run_critic),
     Suite("live", "에이전트 실제 호출: 가상 가게 t001 사례 7개의 과제 완료·호출 수·시간 (--ids 로 사례 이름, 예전 결과 모양)", _run_live),
     Suite("label", "리뷰 분류(질문 1): 분류기 rule, hcx, voice 의 아쉬운 리뷰 재현율·정밀도, 감정·불만 유형 F1. 정답지 필요 "
                    "(--systems 기본 rule,voice. hcx 는 실제 CLOVA. --scope balanced 면 64건만)",
           _run_label, uses_systems=True, parse_systems=_label_systems, default_systems="rule,voice",
-          needs_clova=lambda names: "hcx" in names),
+          needs_clova=lambda args: "hcx" in args.system_names),
+    Suite("reply", "답글(질문 2·4·5): 음성 경로 A(단일 에이전트)·B(voice_reply)의 적합률·안전 위반·과제 완료·3회 통과·호출 수·시간. "
+                   "정답지 필요 (--split tune 48 기본, holdout 16, injection 20. --labels rule 이면 끝까지 실행)",
+          _run_reply, uses_systems=True, uses_judge=True),
+    Suite("guards", "안전장치(질문 3): 판정기 regex, critic, judge_tools, judge_thinking 의 놓침·오거절·판단 불가·시간. 정답지 필요 "
+                    "(critic_cases 41 + 정상 40 + 위반 40. --systems 기본 regex. --dry-run 이면 예상 호출 수만)",
+          _run_guards, uses_systems=True, uses_judge=True, parse_systems=_guards_systems, default_systems="regex",
+          needs_clova=lambda args: not args.dry_run and any(name != "regex" for name in args.system_names)),
 )}
 
 
@@ -96,6 +122,15 @@ def build_parser() -> argparse.ArgumentParser:
                         help="심판 방식. tools: 추론 끄고 도구로 제출, thinking: 추론 켜고 JSON 글로 답")
     parser.add_argument("--scope", choices=("full", "balanced"), default="full",
                         help="label: full 이면 전체와 balanced 둘 다, balanced 면 balanced 64건만 분류")
+    parser.add_argument("--dry-run", action="store_true", help="guards: 세트와 예상 호출 수만 보여 주고 CLOVA 를 부르지 않는다")
+    parser.add_argument("--resume", default=None, metavar="결과폴더",
+                        help="guards: 끊긴 결과 폴더를 이어 돌린다 (cases.jsonl 에 있는 판정은 건너뜀)")
+    parser.add_argument("--split", choices=("tune", "holdout", "injection"), default="tune",
+                        help="reply: 답글 세트 (떼어 둔 holdout 은 이 값을 줄 때만 돈다)")
+    parser.add_argument("--labels", choices=("gold", "rule"), default="gold",
+                        help="reply: 리뷰 분류를 정답으로 줄지(gold), 음성 라벨 규칙을 거칠지(rule, 끝까지 실행)")
+    parser.add_argument("--system-runs", default="",
+                        help="guards: 판정기마다 회차 (예: judge_tools=1,judge_thinking=1). 적지 않은 판정기는 --runs")
     gold.add_arguments(parser)  # 정답지를 쓰는 스위트가 gold.from_args(args) 로 읽는다
     return parser
 
@@ -113,7 +148,7 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(str(error)) from None
     elif args.systems is not None:
         print(f"[알림] {suite.name} 스위트는 시스템을 나누지 않아 --systems 를 쓰지 않아요 (지금 하네스만 잽니다)", file=sys.stderr)
-    if suite.needs_clova(args.system_names) and not settings.clova_studio_api_key:
+    if suite.needs_clova(args) and not settings.clova_studio_api_key:
         raise SystemExit("server/.env 에 CLOVA_STUDIO_API_KEY 가 없어요")
     limiter.set_max_concurrent(args.concurrency)
     try:

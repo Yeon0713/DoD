@@ -481,15 +481,16 @@ def voice_spec(task: dict) -> AgentSpec:
     )
 
 
-def prepare_voice(view, jobs: list[dict], now: dt.datetime) -> dict:
+def prepare_voice(view, jobs: list[dict], now: dt.datetime, *, tip: bool = True) -> dict:
     """브리핑 준비 때 할 일을 에이전트 하나로 끝낸다.
 
     jobs: [{"review": 리뷰 dict, "kind": AUTO|SCHEDULED|DRAFT, "occasion": dict|None}]
     돌려주는 것: {"replies": {review_id: {text, source, notes}}, "tip": {text, source}}
       voice_reply.write, improve_tip.suggest 와 같은 모양. 에이전트·물러나기가 모두 실패하면 템플릿(source TEMPLATE).
       평가에서만 부르므로 VOICE_AGENT_* 스위치는 보지 않는다.
+    tip=False 면 고칠 점은 맡기지 않는다 (답글만 비교하는 평가에서 B 의 voice_reply.write 와 같은 일만 하게).
     """
-    negatives = improve_tip.negatives(view, now)
+    negatives = improve_tip.negatives(view, now) if tip else []
     task = {
         "date": f"{now:%Y-%m-%d}",
         "replies": [{"kind": job["kind"], "review_id": job["review"]["id"], "occasion": job.get("occasion")} for job in jobs],

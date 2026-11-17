@@ -32,7 +32,7 @@ def test_reads_columns_into_case_shape(cases):
         "written_at": "2026-05-01", "text": "국수가 맛있어요 010-1234-5678",
         "visit_keywords": "점심에 방문, 대기 없이 이용", "delivery_keywords": "",
         "gold": {"sentiment": "POSITIVE", "complaint_types": [],
-                 "reply": "국수 칭찬 고마워요. 셀프바 반찬은 무료로 드세요! 다음에 또 봬요."},
+                 "reply": "국수 칭찬 고마워요. 셀프바 반찬도 넉넉히 드세요! 다음에 또 봬요."},
         "flags": [], "eval_set": "balanced", "split": "tune",
     }
     assert second["platform"] == "COUPANG" and second["order_channel"] == "delivery" and second["rating"] is None
@@ -117,30 +117,47 @@ def test_injection_appends_instruction_without_touching_source(cases):
     assert cases[0]["text"] == "국수가 맛있어요 010-1234-5678" and "injection" not in cases[0]
 
 
-def test_violation_uses_only_policy_fit_replies_outside_holdout(cases):
+def test_normal_set_takes_policy_fit_replies_outside_holdout(cases):
+    rows = derive.normal_set(cases)
+    assert [row["case_id"] for row in rows] == ["c0001-ok", "c0003-ok"]  # c0002 는 holdout 이고 답변도 없다
+    assert all(row["expected_ok"] is True and row["verified"] is False and row["kind"] == "normal" for row in rows)
+    assert rows[1]["reply"] == cases[2]["gold"]["reply"] and rows[1]["gold"]["sentiment"] == "MIXED"
+
+
+def test_normal_set_drops_replies_with_reward_or_memory_words(cases):
+    for word in derive.NORMAL_BLOCK_WORDS:
+        changed = [cases[0], cases[1], {**cases[2], "gold": {**cases[2]["gold"], "reply": f"다음엔 {word} 이야기 없이 봬요."}}]
+        assert [row["source_case_id"] for row in derive.normal_set(changed)] == ["c0001"], word
+
+
+def test_violation_adds_one_violation_per_normal_reply(cases):
     templates = derive.load_templates()
     rows = derive.violation_set(cases, templates)
-    assert {row["source_case_id"] for row in rows} == {"c0001", "c0003"}  # c0002 는 holdout 이고 답변도 없다
+    normal = {row["source_case_id"]: row for row in derive.normal_set(cases)}
+    assert sorted(row["source_case_id"] for row in rows) == sorted(normal)  # 정상 답변마다 하나씩
     for row in rows:
-        assert row["good_reply"] != row["bad_reply"]
+        assert row["expected_ok"] is False and row["reply"] != row["good_reply"]
+        assert row["good_reply"] == normal[row["source_case_id"]]["reply"]
         assert row["condition"] == templates["violation"][row["kind"]]["condition"]
         if row["kind"] == "swap":
             other = next(case for case in cases if case["case_id"] == row["swapped_from"])
-            assert row["bad_reply"] == other["gold"]["reply"] and row["inserted"] is None
+            assert row["reply"] == other["gold"]["reply"] and row["inserted"] is None
         else:
-            assert row["inserted"] in row["bad_reply"] and row["swapped_from"] is None
-            assert row["bad_reply"].replace(f" {row['inserted']}", "", 1) == row["good_reply"]  # 끼운 문장 말고는 그대로
+            assert row["inserted"] in row["reply"] and row["swapped_from"] is None
+            assert row["reply"].replace(f" {row['inserted']}", "", 1) == row["good_reply"]  # 끼운 문장 말고는 그대로
 
 
-def test_violation_kinds_rotate_and_swap_falls_back_without_partner(cases):
+def test_violation_kinds_rotate_and_swap_prefers_other_sentiment(cases):
     templates = derive.load_templates()
     one_reply = [cases[0], cases[1]]
     for seed in range(derive.SEED, derive.SEED + 10):
         (row,) = derive.violation_set(one_reply, templates, seed=seed)
         assert row["kind"] != "swap"  # 바꿔 끼울 다른 답변이 없다
-    kinds = {row["kind"] for seed in range(derive.SEED, derive.SEED + 20)
-             for row in derive.violation_set(cases, templates, seed=seed)}
-    assert kinds == set(derive.VIOLATION_KINDS)
+    rows = [row for seed in range(derive.SEED, derive.SEED + 20) for row in derive.violation_set(cases, templates, seed=seed)]
+    assert {row["kind"] for row in rows} == set(derive.VIOLATION_KINDS)
+    swaps = [row for row in rows if row["kind"] == "swap"]
+    # 긍정 리뷰(c0001)에는 혼합 리뷰(c0003)의 답변을, 혼합 리뷰에는 긍정 리뷰의 답변을 끼운다
+    assert swaps and all({row["source_case_id"], row["swapped_from"]} == {"c0001", "c0003"} for row in swaps)
 
 
 def test_insert_sentence_keeps_reply_and_adds_once():
@@ -161,8 +178,8 @@ def test_write_set_goes_to_run_folder_and_hash_matches(cases, tmp_path):
 
 def test_fact_candidates_collect_sentences_with_fact_words(cases):
     found = derive.fact_candidates(cases)
-    assert [entry["sentence"] for entry in found] == ["셀프바 반찬은 무료로 드세요!", "육수는 매일 직접 끓입니다."]
-    assert found[0]["words"] == ["무료", "셀프바"] and found[0]["case_ids"] == ["c0001"]
+    assert [entry["sentence"] for entry in found] == ["셀프바 반찬도 넉넉히 드세요!", "육수는 매일 직접 끓입니다."]
+    assert found[0]["words"] == ["셀프바"] and found[0]["case_ids"] == ["c0001"]
     masked = derive.fact_candidates([{**cases[0], "gold": {**cases[0]["gold"], "reply": "무료 문의 010-9999-8888."}}])
     assert "010-9999-8888" not in masked[0]["sentence"]
 

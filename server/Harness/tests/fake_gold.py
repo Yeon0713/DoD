@@ -13,7 +13,7 @@ HEADER = ["case_id", "index_id", "별점", "방문상황키워드", "배달상�
           "플랫폼", "class", "sentiment", "complaint_types", "complaint_note", "eval_set", "split", "flags"]
 ROWS = [
     ["c0001", 11, 5, "점심에 방문, 대기 없이 이용", None, dt.datetime(2026, 5, 1), "국수가 맛있어요 010-1234-5678",
-     dt.datetime(2026, 5, 2), "국수 칭찬 고마워요. 셀프바 반찬은 무료로 드세요! 다음에 또 봬요.",
+     dt.datetime(2026, 5, 2), "국수 칭찬 고마워요. 셀프바 반찬도 넉넉히 드세요! 다음에 또 봬요.",
      "네이버플레이스", 1, "POSITIVE", "[]", None, "balanced", "tune", None],
     ["c0002", 12, None, None, "포장 상태 좋음", dt.datetime(2026, 6, 3), "면이 불어서 왔어요",
      dt.datetime(2026, 6, 4), "면이 불어서 왔어요", "쿠팡이츠", 0, "NEGATIVE", '["TASTE", "DELIVERY_DELAY"]', "면 불음",

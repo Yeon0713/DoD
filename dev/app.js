@@ -1182,12 +1182,15 @@ const EVAL_QUESTIONS = {
   4: "질문 4. 에이전트가 믿을 만하게 동작하는가",
   5: "질문 5. 비용과 시간",
 };
-const VIZ_SLOT = { A: 1, B: 2, rule: 1, hcx: 2, voice: 3, regex: 1, critic: 2, judge_tools: 3, judge_thinking: 4, "rule+judge": 2 };
+const VIZ_SLOT = { A: 1, B: 2, S: 3, R: 3, rule: 1, hcx: 2, voice: 3, regex: 1, critic: 2, judge_tools: 3, judge_thinking: 4, "rule+judge": 2 };
 const VIZ_STATUS_INK = { warning: "#0b0b0b", neutral: "#0b0b0b" }; // 밝은 칸 안 글자는 검정, 나머지 흰색 (두 모드 같음)
 const VIZ_SEQ = ["--viz-seq-0", "--viz-seq-1", "--viz-seq-2", "--viz-seq-3", "--viz-seq-4", "--viz-seq-5", "--viz-seq-6", "--viz-seq-7"];
-const SOURCE_NAMES = { AGENT: "에이전트", FALLBACK: "물러나기", TEMPLATE: "템플릿", NONE: "출력 없음" };
+const SOURCE_NAMES = { AGENT: "에이전트", SINGLE_CALL: "단일 호출", FALLBACK: "물러나기", TEMPLATE: "템플릿", NONE: "출력 없음" };
+// 결과 구성: 생성 성공이면 적합 여부, 아니면 실패 원인 (서버 Harness/evals/fail_cause)
+const OUTCOME_NAMES = { success_fit: "생성 성공 · 적합", success_unfit: "생성 성공 · 부적합", transport: "전송 실패",
+  rejected: "검사 거절 상한", budget: "시간·호출·단계 상한", no_submit: "제출 없음", other: "기타" };
 // 화면에는 코드 이름 대신 뜻 이름을 쓴다 (코드 이름은 마우스를 올리면 보인다)
-const SYSTEM_NAMES = { A: "A 단일 에이전트", B: "B 하네스", rule: "규칙", hcx: "HCX 분류기", voice: "음성 규칙", regex: "금지어 정규식",
+const SYSTEM_NAMES = { A: "A 단일 에이전트", B: "B 하네스", S: "S 지금 서비스(기준선)", R: "R 규칙 한 줄(기준선)", rule: "규칙", hcx: "HCX 분류기", voice: "음성 규칙", regex: "금지어 정규식",
   critic: "LLM 검토기", judge_tools: "심판(도구)", judge_thinking: "심판(추론)", "rule+judge": "규칙+판정 에이전트" };
 const COND_NAMES = { fact: "사실", policy: "정책", core: "핵심 내용", response: "응대", format: "형식", consistency: "일관성" };
 const KIND_NAMES = { normal: "정상 답글", compensation: "보상 약속", fabricated: "지어낸 가게 사정", blame: "손님·남 탓", memory: "기억하는 척",
@@ -1424,6 +1427,18 @@ function vizStack(rows, order, { nameOf, colorOf, inkOf }) {
   return legend + body;
 }
 
+function vizOutcomeMix(mix, source, systems) {
+  if (!mix) return vizSourceMix(source, systems);
+  const names = systems.filter((s) => mix.systems[s]);
+  const rows = names.map((s) => ({ label: sysName(s), swatch: vizColor(s, names), counts: mix.systems[s] }));
+  const order = mix.order.filter((o) => names.some((s) => mix.systems[s][o.key]));
+  const chart = vizStack(rows, order, { nameOf: (o) => OUTCOME_NAMES[o.key] ?? o.key, colorOf: (o) => `var(--viz-${o.status})`, inkOf: (o) => VIZ_STATUS_INK[o.status] ?? "#ffffff" });
+  const tableHtml = table(["시스템", ...order.map((o) => esc(OUTCOME_NAMES[o.key] ?? o.key))], names.map((s) => [esc(sysName(s)), ...order.map((o) => num(mix.systems[s][o.key] ?? 0))]))
+    + (source ? `<div class="small muted" style="margin-top:8px">누가 답을 냈나 (source)</div>` + table(["시스템", ...source.order.map((o) => esc(SOURCE_NAMES[o.key] ?? o.key)), "전체"],
+      systems.filter((s) => source.systems[s]).map((s) => [esc(sysName(s)), ...source.order.map((o) => num(source.systems[s].counts[o.key] ?? 0)), num(source.systems[s].total)])) : "");
+  return vizBlock("결과 구성", "생성 성공은 적합 여부로, 실패는 원인으로 나눔 · 시스템마다 전체 사례 100% · 검사 통과·거절 비율과는 따로 센다", chart + vizDetails(tableHtml));
+}
+
 function vizSourceMix(mix, systems) {
   if (!mix) return "";
   const names = systems.filter((s) => mix.systems[s]);
@@ -1606,7 +1621,7 @@ function evalQuestionCards(run) {
   const c = run.charts ?? {};
   const charts = {
     1: [vizRecallPrecision(c.q1?.recall_precision, systems), vizConfusion(c.q1?.confusion)],
-    2: [vizDumbbell(c.q2?.conditions, systems), vizSourceMix(c.q2?.source_mix, systems)],
+    2: [vizDumbbell(c.q2?.conditions, systems), vizOutcomeMix(c.q2?.outcome_mix, c.q2?.source_mix, systems)],
     3: [vizScatter(c.q3?.scatter, systems), vizByKind(c.q3?.by_kind, systems)],
     4: [vizPassDistribution(c.q4?.pass_distribution, systems), vizBatchGrid(c.q4?.batch_grid), vizReasons(c.q4?.reasons, systems)],
     5: [vizLatency(c.q5?.latency, systems), vizCost(c.q5?.cost, systems)],
@@ -1812,7 +1827,7 @@ async function renderEval() {
     <div class="card"><h2>${esc(nm(SUITE_NAMES, run.suite))} · <span class="mono">${esc(run.id)}</span>
       <span class="muted">${esc(time(run.started_at))} · 커밋 ${esc(run.commit ?? "-")}${run.git?.dirty ? " (고친 파일 있음)" : ""}${run.baseline ? " · 기준점" : ""}</span></h2>
       ${vizLegend(run.systems)}
-      <div class="muted small">시스템 ${esc(run.systems.map(sysName).join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
+      <div class="muted small">시스템 ${esc(run.systems.map(sysName).join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.check_kinds ? ` · 검사 종류 ${Object.entries(run.config.check_kinds).map(([k, v]) => `${esc(sysName(k))}: ${esc(v)}`).join(" / ")}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
     </div>
     ${trend ? `<div class="card" id="eval-trend-card"><h2>추세 · <span title="${esc(trend.metric)}">${esc(run.metrics.find((m) => m.key === trend.metric)?.name ? metricName(run.metrics.find((m) => m.key === trend.metric).name) : trend.metric)}</span> <span class="muted">${esc(nm(SUITE_NAMES, run.suite))} 실행별</span>
       <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}${vizDetails(table(["실행", "커밋", "시스템", "값"], trend.points.map((p) => [esc(p.id), esc(p.commit ?? "-"), esc(sysName(p.system ?? "-")), evalValue(p)])))}</div>` : ""}

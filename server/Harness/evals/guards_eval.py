@@ -69,7 +69,9 @@ QUESTION = 3
 JUDGES = ("regex", "critic", "judge_tools", "judge_thinking")
 DEFAULT_JUDGES = ("regex",)  # 실제 CLOVA 를 부르지 않는 것만
 JUDGE_MODES = {"judge_tools": "tools", "judge_thinking": "thinking"}
-SETS = ("critic_cases", "normal", "violation")
+SETS = ("critic_cases", "normal", "violation", "normal_needs_context")
+CONTEXT_SET = "normal_needs_context"  # 정상 답글 중 주문 정보나 가게 사실이 있어야 설명되는 것 (가게 사실이 있을 때만 나눈다)
+STORE_FACTS_PATH = Path(__file__).resolve().parent / "data" / "store_facts_choongjang.json"  # 사람이 확정한 가게 사실 (없으면 빈 목록)
 SERVER_DIR = Path(__file__).resolve().parents[2]
 CRITIC_CASES_PATH = SERVER_DIR / "Harness" / "critic_cases.json"
 S005_FIXTURE = SERVER_DIR / "voice" / "fixtures" / "s005_choongjang.json"
@@ -218,11 +220,54 @@ def _gold_row(row: dict, set_name: str) -> dict:
     }
 
 
-def gold_cases(cases: list[dict], *, seed: int = derive.SEED) -> dict[str, list[dict]]:
-    """정답지 사례 → normal, violation 판정 세트."""
+def gold_cases(cases: list[dict], *, seed: int = derive.SEED, facts: list[str] | None = None,
+               menus: list[str] | None = None) -> dict[str, list[dict]]:
+    """정답지 사례 → normal, violation 판정 세트 (+ 가게 사실이 있으면 normal_needs_context).
+
+    가게 사실(facts)이 비어 있으면 세트는 예전 그대로다 (정상 답글마다 표시만 case_row 의 context 에 남는다).
+    사실이 있으면 정상 세트 v2: 주문 정보·사실로만 설명되는 답글을 normal_needs_context 로 옮긴다 (버리지 않는다)."""
     templates = derive.load_templates()
-    return {"normal": [_gold_row(row, "normal") for row in derive.normal_set(cases, seed=seed)],
-            "violation": [_gold_row(row, "violation") for row in derive.violation_set(cases, templates, seed=seed)]}
+    normal = [_gold_row(row, "normal") for row in derive.normal_set(cases, seed=seed)]
+    out = {"normal": normal, "violation": [_gold_row(row, "violation") for row in derive.violation_set(cases, templates, seed=seed)]}
+    if facts:
+        menus = eval_menu_names() if menus is None else menus
+        flagged = [row for row in normal if needs_context(context_flags(row["reply"], row["text"], menus, facts))]
+        out["normal"] = [row for row in normal if row not in flagged]
+        out[CONTEXT_SET] = [{**row, "set": CONTEXT_SET} for row in flagged]
+    return out
+
+
+# ── 정상 답글이 무엇을 근거로 썼나 (주문 정보, 가게 사실) ──
+
+
+def eval_menu_names() -> list[str]:
+    from Harness.evals.reply_eval import eval_menus
+
+    return [menu["name"] for menu in eval_menus()]
+
+
+def load_store_facts(path: Path = STORE_FACTS_PATH) -> list[str]:
+    """확정한 가게 사실 목록. 파일이 없으면 빈 목록 (사실 확정 전)."""
+    if not path.exists():
+        return []
+    body = json.loads(path.read_text(encoding="utf-8"))
+    return [str(row["text"] if isinstance(row, dict) else row) for row in body.get("facts", [])]
+
+
+def context_flags(reply: str, review_text: str, menus: list[str], facts: list[str]) -> dict:
+    """needs_order_info: 답글에 메뉴 이름이 있는데 리뷰 글에는 없다 (주문 내역을 보고 쓴 것. 정답지에는 주문 메뉴가 없다).
+    needs_store_fact: 가게 사정 문장(정규식 MADE_UP_FACT_RE)이 약속만이 아니고 확정 사실로 설명되지 않는다
+                      (reply_critic.only_promises·backed_by_facts 와 같은 규칙. 사실이 비어 있으면 가게 사정 문장은 모두 표시)."""
+    from Harness.agents import quote_judge, reply_critic
+
+    order = sorted({name for name in menus if len(name) >= 2 and name in reply and name not in review_text})
+    claims = [part for part in quote_judge.sentences(reply) if guards.MADE_UP_FACT_RE.search(part)]
+    unbacked = [claim for claim in claims if not reply_critic.only_promises(claim) and not reply_critic.backed_by_facts(claim, facts)]
+    return {"needs_order_info": bool(order), "order_menus": order, "needs_store_fact": bool(unbacked), "unbacked": unbacked}
+
+
+def needs_context(flags: dict) -> bool:
+    return bool(flags.get("needs_order_info") or flags.get("needs_store_fact"))
 
 
 # ── 판정기 ──
@@ -345,8 +390,21 @@ def right_reason(case: dict, detected: list[str]) -> bool | None:
     return bool(wanted & set(detected))
 
 
+_CONTEXT_INPUTS: dict = {}
+
+
+def _row_context(case: dict) -> dict | None:
+    """정상 답글(정답지)의 근거 표시. 세트 해시를 바꾸지 않게 사례 dict 가 아니라 판정 줄에만 남긴다."""
+    if case["set"] not in ("normal", CONTEXT_SET):
+        return None
+    if not _CONTEXT_INPUTS:
+        _CONTEXT_INPUTS.update(menus=eval_menu_names(), facts=load_store_facts())
+    return context_flags(case["reply"], case["text"], _CONTEXT_INPUTS["menus"], _CONTEXT_INPUTS["facts"])
+
+
 def case_row(name: str, run: int, case: dict, result: Judgement) -> dict:
     return {
+        "context": _row_context(case),
         "case_id": case["case_id"], "system": name, "run": run, "run_id": None, "source": None, "set": case["set"],
         "kind": case["kind"], "kinds": case["kinds"], "expected_ok": case["expected_ok"], "verified": case["verified"],
         "text": case["text"], "output": case["reply"], "got_ok": result.ok, "outcome": outcome(case["expected_ok"], result.ok),
@@ -357,7 +415,10 @@ def case_row(name: str, run: int, case: dict, result: Judgement) -> dict:
 
 
 def _in_set(row: dict, set_name: str) -> bool:
-    return set_name == "all" or row["set"] == set_name or (set_name == "gold" and row["set"] in ("normal", "violation"))
+    """all·gold 는 주 지표라서 근거가 더 있어야 설명되는 정상 답글(normal_needs_context)을 넣지 않는다 (따로 보고)."""
+    if set_name == "all":
+        return row["set"] != CONTEXT_SET
+    return row["set"] == set_name or (set_name == "gold" and row["set"] in ("normal", "violation"))
 
 
 def _rate(id: str, name: str, system: str, set_name: str, numerator: int, denominator: int, *, higher: bool,
@@ -405,7 +466,7 @@ def summarize(name: str, rows: list[dict]) -> dict:
 def score(name: str, rows: list[dict]) -> list[dict]:
     """판정기 하나의 지표 줄들."""
     out = []
-    for set_name in ("critic_cases", "gold", "all"):
+    for set_name in ("critic_cases", "gold", "all", CONTEXT_SET):
         chosen = [row for row in rows if _in_set(row, set_name)]
         if not chosen:
             continue
@@ -566,8 +627,8 @@ def evaluate(cases: list[dict], stores: dict[str, Store], names: list[str], *, r
 def build_cases(args: argparse.Namespace) -> tuple[list[dict], dict[str, list[dict]], tuple]:
     """(판정할 사례, 세트별 사례, (정답지 경로, sha256))."""
     path, sha, gold_rows = gold.from_args(args)
-    sets = {"critic_cases": critic_cases(), **gold_cases(gold_rows)}
-    cases = [case for name in SETS for case in sets[name]]
+    sets = {"critic_cases": critic_cases(), **gold_cases(gold_rows, facts=load_store_facts())}
+    cases = [case for name in SETS for case in sets.get(name, [])]
     if args.ids:
         wanted = {part for part in args.ids.split(",") if part}
         unknown = wanted - {case["case_id"] for case in cases}
@@ -684,7 +745,10 @@ def reopen(out: Path, config: dict, names: list[str], sets: dict[str, list[dict]
 
 def _run(args, names, runs, cases, sets, path, sha, plan):
     prompts = sorted(CRITIC_PROMPTS.glob("*_judge.txt")) + sorted(judge.PROMPTS_DIR.glob("*.txt"))
+    facts = load_store_facts()
     config = {"model": settings.clova_studio_model, "judge_model": settings.eval_judge_model, "judge_votes": judge.VOTES,
+              "store_facts_verified": bool(facts), "store_facts_sha256": derive.sha256_of(facts),
+              "normal_set_version": "v2" if facts else "v1 (가게 사실 확정 전: 근거 표시만, 세트 그대로)",
               "runs": runs, "concurrency": args.concurrency, "workers": args.workers,
               "system_concurrency": getattr(args, "concurrency_by_system", {}), "rate_limit_retries": GUARDS_RATE_LIMIT_RETRIES,
               "judge_modes": [JUDGE_MODES[n] for n in names if n in JUDGE_MODES], "judge_gold_reply": False,

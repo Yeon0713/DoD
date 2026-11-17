@@ -148,3 +148,10 @@ def test_run_charts_and_summary(client):
     q2 = summary[2]
     assert q2["run"] == "reply-20261118-100000" and q2["values"]["B"]["value"] == 0.5 and q2["diff"] == 0.0
     assert q2["goal"] is True and summary[1]["run"] is None
+
+
+def test_outcome_mix_splits_success_by_fit_and_failures_by_cause(client):
+    """결과 구성: 생성 성공은 적합 여부로, 실패는 원인으로. fail_cause 가 없는 예전 줄은 그 폴더의 실행 기록으로 가른다."""
+    mix = client.get("/api/dev_tools/evals/run", params={"id": "reply-20261118-100000"}).json()["charts"]["q2"]["outcome_mix"]
+    assert mix["systems"] == {"A": {"success_fit": 1}, "B": {"no_submit": 1}}  # B 실행 rb1 은 제출 없이 끝난 기록
+    assert [o["key"] for o in mix["order"]][:3] == ["success_fit", "success_unfit", "transport"]

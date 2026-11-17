@@ -8,7 +8,8 @@
 시트 gold 의 열 → 사례
   case_id                      case_id
   플랫폼                        platform   네이버플레이스 NAVER, 쿠팡이츠 COUPANG, 배달의민족 BAEMIN
-  배달상황키워드, 플랫폼          order_channel  배달상황키워드가 있거나 배달 플랫폼(쿠팡이츠·배달의민족)이면 delivery, 아니면 hall
+  배달상황키워드, 플랫폼, 리뷰    order_channel  배달상황키워드가 있거나, 배달 플랫폼(쿠팡이츠·배달의민족)이거나,
+                                               리뷰 글에 배달 말(DELIVERY_TEXT_RE: 배달, 라이더, 배송)이 있으면 delivery, 아니면 hall
   별점                          rating     없으면 None
   주문일                        written_at YYYY-MM-DD
   손님 리뷰                      text       그대로 둔다. 모델에 보낼 때 mask_personal_info 를 거친다
@@ -28,6 +29,7 @@ import argparse
 import datetime as dt
 import json
 import os
+import re
 from collections import Counter
 from collections.abc import Mapping
 from pathlib import Path
@@ -41,6 +43,7 @@ SHA_ENV = "DONA_EVAL_GOLD_SHA256"
 
 PLATFORMS = {"네이버플레이스": "NAVER", "쿠팡이츠": "COUPANG", "배달의민족": "BAEMIN"}
 DELIVERY_PLATFORMS = {"COUPANG", "BAEMIN"}
+DELIVERY_TEXT_RE = re.compile(r"배달|라이더|배송")  # 포장은 가져가는 손님도 써서 넣지 않는다
 SENTIMENTS = ("POSITIVE", "NEGATIVE", "MIXED")
 EVAL_SETS = ("balanced", "full_only")
 SPLITS = ("tune", "holdout", "")
@@ -137,7 +140,8 @@ def row_to_case(row: Mapping[str, object]) -> dict:
         "case_id": case_id,
         "store": STORE_ID,
         "platform": platform,
-        "order_channel": "delivery" if delivery_keywords or platform in DELIVERY_PLATFORMS else "hall",
+        "order_channel": ("delivery" if delivery_keywords or platform in DELIVERY_PLATFORMS
+                          or DELIVERY_TEXT_RE.search(_text(row["손님 리뷰"])) else "hall"),
         "rating": _rating(row["별점"], case_id),
         "written_at": _date(row["주문일"]),
         "text": _text(row["손님 리뷰"]),

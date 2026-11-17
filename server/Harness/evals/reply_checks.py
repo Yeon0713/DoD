@@ -1,15 +1,17 @@
 """답글 코드 검사 (CLOVA 없음). server/scripts/eval_review_reply.py 의 judge() 에서 리뷰 답글 부분을 옮겨 왔다 (원래 스크립트는 그대로 둔다).
 
 checks(text, review_text, order_channel, sentiment, complaint_types, own_menus, other_menus, today) → 검사 이름 → 값
-  length_ok     2~4문장, 250자 이하
+  length_ok     10~300자
+  blank_bad     채우지 않은 빈칸(자리 표시: [가게명], {이름}, ○○, OO, XX, ___)이 남음
   emoji_bad     이모지 2개 이상
   season_bad    11~2월에 여름 말, 6~8월에 겨울 말
   hall_ok       홀(배달 아님) 리뷰에 배달·포장 말이 없음 (원래 스크립트는 플랫폼 NAVER 로 봤다. 정답지에는 주문 경로가 있어 그것을 쓴다)
-  other_menus   다른 가게 메뉴 이름
+  other_menus   가게 메뉴 목록에 없는 메뉴 이름 (알려진 메뉴 이름 중 이 가게 목록에 없는 것)
+  sentence_count 문장 수 (참고 값)
   apology_ok    불만이 있으면 사과가 있음, 불만이 없고 혼합이 아니면 사과가 없음 (해당 없으면 없음)
   picks_review  리뷰에 나온 메뉴·말을 답글이 짚음 (리뷰에 짚을 말이 없으면 없음)
-형식 조건(format_ok)은 length_ok, emoji_bad, season_bad, hall_ok, other_menus 로 본다. apology_ok·picks_review 는 응대·핵심 내용을
-심판이 보므로 기록만 한다.
+형식 조건(format_ok)은 기준 문서("도나 신뢰성 평가 계획" v2)의 여섯 가지: length_ok, blank_bad, emoji_bad, hall_ok, season_bad,
+other_menus. apology_ok·picks_review·sentence_count 는 참고 값이라 적합에 넣지 않는다 (응대·핵심 내용은 심판이 본다).
 """
 
 import re
@@ -24,7 +26,11 @@ REVIEW_WORDS = [  # 리뷰 말 집기: 리뷰와 답글에 같이 나오면 짚�
     r"소스", r"국물", r"면", r"위생", r"머리카락", r"이물질", r"가격|비싸", r"고기", r"튀김", r"맥주", r"안주",
     r"주차", r"웨이팅|대기", r"분위기", r"깨끗", r"환불", r"서비스",
 ]
-FORMAT_KEYS = ("length_ok", "emoji_bad", "season_bad", "hall_ok", "other_menus")
+BLANK_RE = re.compile(r"\[[^\]]*\]|\{[^}]*\}|○○|OO|XX|_{3,}")
+MIN_CHARS, MAX_CHARS = 10, 300
+FORMAT_KEYS = ("length_ok", "blank_bad", "emoji_bad", "hall_ok", "season_bad", "other_menus")
+FAILURE_NAMES = {"length_ok": f"길이({MIN_CHARS}~{MAX_CHARS}자)", "blank_bad": "빈칸", "emoji_bad": "이모지",
+                 "hall_ok": "매장 리뷰에 배달 말", "season_bad": "반대 계절", "other_menus": "메뉴 목록 외 메뉴"}
 
 
 def sentences(text: str) -> list[str]:
@@ -53,12 +59,13 @@ def other_store_menus(text: str, own: list[str], others: list[str]) -> list[str]
 
 def checks(text: str, *, review_text: str, order_channel: str | None, sentiment: str, complaint_types: list[str],
            own_menus: list[str], other_menus: list[str], today: str) -> dict:
-    count = len(sentences(text))
     result: dict = {
-        "length_ok": 2 <= count <= 4 and len(text) <= 250,
+        "length_ok": MIN_CHARS <= len(text) <= MAX_CHARS,
+        "blank_bad": bool(BLANK_RE.search(text)),
         "emoji_bad": len(EMOJI_RE.findall(text)) > 1,
         "season_bad": season_violation(text, today),
         "other_menus": other_store_menus(text, own_menus, other_menus),
+        "sentence_count": len(sentences(text)),
     }
     if order_channel != "delivery":
         result["hall_ok"] = not DELIVERY_RE.search(text)
@@ -73,13 +80,10 @@ def checks(text: str, *, review_text: str, order_channel: str | None, sentiment:
     return result
 
 
-def format_ok(result: dict) -> bool:
-    return (result["length_ok"] and not result["emoji_bad"] and not result["season_bad"] and result.get("hall_ok", True)
-            and not result["other_menus"])
-
-
 def format_failures(result: dict) -> list[str]:
-    names = {"length_ok": "길이(2~4문장, 250자)", "emoji_bad": "이모지", "season_bad": "계절", "hall_ok": "홀 리뷰에 배달 말",
-             "other_menus": "다른 가게 메뉴"}
     bad = [key for key in FORMAT_KEYS if (result.get(key) is False if key in ("length_ok", "hall_ok") else bool(result.get(key)))]
-    return [names[key] for key in bad]
+    return [FAILURE_NAMES[key] for key in bad]
+
+
+def format_ok(result: dict) -> bool:
+    return not format_failures(result)

@@ -197,3 +197,12 @@ def test_namespace_without_gold_uses_env(monkeypatch, fake_gold):
     monkeypatch.setenv(gold.GOLD_ENV, str(path))
     monkeypatch.setenv(gold.SHA_ENV, sha)
     assert len(gold.from_args(argparse.Namespace())[2]) == 3
+
+
+def test_delivery_words_in_review_make_delivery_channel(tmp_path):
+    from Harness.tests.fake_gold import HEADER, ROWS
+
+    rows = [list(ROWS[0])]
+    rows[0][HEADER.index("손님 리뷰")] = "라이더분이 친절했어요"
+    cases = gold.load_gold(*write_gold(tmp_path / "gold.xlsx", rows=rows))
+    assert cases[0]["platform"] == "NAVER" and cases[0]["order_channel"] == "delivery"

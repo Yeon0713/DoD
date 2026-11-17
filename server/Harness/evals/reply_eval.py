@@ -8,12 +8,14 @@
   voice 의 B 는 VOICE_AGENT_REPLY 스위치를 본다. 실행 안에서만 켜고(환경 변수) 끝나면 되돌린다. 켠 값을 config 에 적는다.
 
 서버 경로 가게 (사례마다 새로)
-  Harness/tests/fakes.make_snapshot 의 t001 가게·메뉴·주문에 정답 리뷰 하나만 넣는다 (반복 불만·단골 주기는 비운다).
+  Harness/tests/fakes.make_snapshot 의 t001 가게·주문에 정답 리뷰 하나만 넣는다 (반복 불만·단골 주기는 비운다).
+  메뉴는 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json, 확인 전, 가격 모름 → 0)로 바꾼다.
   할 일은 REVISIT_REPLY 하나. 손님 키가 없어 revisit_class 는 불만이 있으면 QUICK, 아니면 BASIC. 시각은 fakes.NOW, 리뷰는 12시간 전.
   리뷰 분류는 정답(--labels gold), --labels rule 이면 app/analysis/review/keyword_rules 를 거친다.
 
 음성 경로 가게 보기 (사례마다 새로, 실제 voice.db 는 건드리지 않는다)
-  voice/fixtures/s005_choongjang.json 의 가게·메뉴·날씨·행사·경기에 정답 세트의 리뷰 하나만 넣는다. 시각은 시연 시각(demo.now),
+  voice/fixtures/s005_choongjang.json 의 가게·날씨·행사·경기에 정답 세트의 리뷰 하나만 넣는다.
+  메뉴는 시연 메뉴 4개 대신 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json: 정답 리뷰·답변에 나온 이름, 확인 전). 시각은 시연 시각(demo.now),
   리뷰는 그 12시간 전에 쓰인 것으로 둔다. 가게 사실(facts)은 사람 확인 전이라 비어 있다.
   리뷰 분류는 정답(--labels gold, 기본)을 음성 체계로 바꿔 넣는다: POSITIVE → positive, NEGATIVE·MIXED → negative,
   주제는 첫 불만 유형(배달 지연 → delivery …, 없으면 other). --labels rule 이면 voice/jobs/label.classify 를 거친다(끝까지 실행).
@@ -74,6 +76,7 @@ PATHS = ("server", "voice")
 SERVER_DIR = Path(__file__).resolve().parents[2]
 FIXTURE = SERVER_DIR / "voice" / "fixtures" / "s005_choongjang.json"
 OTHER_FIXTURES = [SERVER_DIR / "voice" / "fixtures" / "s001_baseline.json"]  # 다른 가게 메뉴 검사용
+EVAL_MENUS = Path(__file__).resolve().parent / "data" / "store_menu_choongjang.json"  # 정답 리뷰 가게의 메뉴 후보 (확인 전)
 PREP_BUDGET_SECONDS = 15  # 기준 문서 v2 의 답글 준비 시간 예산 (에이전트 자체 Budget 과는 따로 잰다)
 JUDGE_DEADLINE_SECONDS = 600  # 심판 한 사례(4조건 × 3표)에 쓰는 시간 상한
 REVIEW_AGE = dt.timedelta(hours=12)
@@ -95,6 +98,18 @@ def fixture_now(fixture: dict) -> dt.datetime:
     from voice.clock import parse
 
     return parse(fixture["demo"]["now"])
+
+
+def eval_menus(path: Path = EVAL_MENUS) -> list[dict]:
+    """평가용 초옹장 메뉴 (시연 fixture 메뉴 4개 대신). 다른 표기(aliases)도 한 줄씩 넣어 메뉴 검사에서 같은 메뉴로 통과하게 한다.
+    가격은 모른다(None)."""
+    body = json.loads(path.read_text(encoding="utf-8"))
+    out = []
+    for menu in body["menus"]:
+        for n, name in enumerate([menu["name"], *menu.get("aliases", [])]):
+            out.append({"id": menu["id"] if n == 0 else f"{menu['id']}_{n}", "name": name, "price": menu.get("price"),
+                        "category": menu.get("category", "MAIN")})
+    return out
 
 
 def other_menus(paths: list[Path] = OTHER_FIXTURES) -> list[str]:
@@ -128,7 +143,7 @@ def make_view(fixture: dict, review: dict, now: dt.datetime):
 
     data = {"review": [review], "weather": list(fixture.get("weather", [])), "event": list(fixture.get("events", [])),
             "game": list(fixture.get("games", []))}
-    store = {**fixture["store"], "facts": []}
+    store = {**fixture["store"], "menus": eval_menus(), "facts": []}
     return VoiceStore(store["id"], store, data, now)
 
 
@@ -220,10 +235,18 @@ def server_snapshot(case: dict, labels: str):
                     revisit_class="QUICK" if types else "BASIC")
     snap.reviews = [review]
     snap.inputs.reviews = [review]
+    snap.inputs.menus = server_menus()
     snap.risk_signals = []
     snap.customer_cycles = []
     snap.plan = PlanResult(plan_items=[item], notice_items=[], batches=[])
     return snap, item
+
+
+def server_menus() -> list:
+    """서버 경로 가게(t001)의 메뉴를 평가용 초옹장 메뉴로. Menu 는 가격이 정수여야 해서 모르는 가격은 0 으로 둔다."""
+    from app.analysis.input_shapes import Menu
+
+    return [Menu(menu_id=m["id"], name=m["name"], category=m["category"], price=m["price"] or 0) for m in eval_menus()]
 
 
 def server_written(proposal) -> dict:
@@ -430,7 +453,7 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, workers: int
 
     fixture = fixture or load_fixture()
     now = fixture_now(fixture)
-    others = other_menus([FIXTURE, *OTHER_FIXTURES] if path == "server" else OTHER_FIXTURES)
+    others = other_menus(OTHER_FIXTURES)  # 두 경로 모두 평가용 초옹장 메뉴를 쓴다
     thread_post = ThreadPost(post or httpx.post, error_log)
     saved_record = trace.record
 

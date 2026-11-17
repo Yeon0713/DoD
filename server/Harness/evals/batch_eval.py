@@ -128,14 +128,14 @@ def _diagnosis_voice(system: str, view, now: dt.datetime) -> dict:
 
 def voice_view(gold_rows: list[dict]):
     """d4 의 초옹장 보기 (사례마다 새로). 정답 세트 리뷰를 날짜만 옮겨 넣는다."""
-    from Harness.evals.reply_eval import fixture_now, load_fixture
+    from Harness.evals.reply_eval import eval_menus, fixture_now, load_fixture
     from voice.context import VoiceStore
 
     fixture = load_fixture()
     now = fixture_now(fixture)
     reviews, topic = scenarios.voice_reviews(gold_rows, now)
     data = {"review": reviews, "weather": list(fixture.get("weather", [])), "event": [], "game": []}
-    store = {**fixture["store"], "facts": []}
+    store = {**fixture["store"], "menus": eval_menus(), "facts": []}  # 시연 메뉴 대신 평가용 초옹장 메뉴 (확인 전)
     return VoiceStore(store["id"], store, data, now), now, topic
 
 

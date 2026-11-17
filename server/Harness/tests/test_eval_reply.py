@@ -321,3 +321,22 @@ def test_cli_reply_defaults_to_server_path(tmp_path, monkeypatch):
     args = cli.build_parser().parse_args(["reply"])
     assert args.path == "server"
     assert cli.build_parser().parse_args(["reply", "--path", "voice"]).path == "voice"
+
+
+def test_eval_menus_replace_demo_menus(gold_rows):
+    """reply 두 경로와 batch d4 의 가게 보기는 시연 메뉴 대신 평가용 초옹장 메뉴(확인 전)를 쓴다."""
+    import json as _json
+
+    from Harness.evals import batch_eval
+
+    body = _json.loads(reply_eval.EVAL_MENUS.read_text(encoding="utf-8"))
+    assert body["verified"] is False and body["status"] == "확인 전"
+    names = {m["name"] for m in reply_eval.eval_menus()}
+    assert {"초계국수", "감자전", "초계비빔국수"} <= names  # 다른 표기(aliases)도 들어간다
+    fixture = reply_eval.load_fixture()
+    now = reply_eval.fixture_now(fixture)
+    view = reply_eval.make_view(fixture, reply_eval.make_review(gold_rows[1], now, "gold"), now)
+    assert {m["name"] for m in view.menus} == names
+    snap, _ = reply_eval.server_snapshot(gold_rows[1], "gold")
+    assert {m.name for m in snap.inputs.menus} == names
+    assert {m["name"] for m in batch_eval.voice_view(gold_rows)[0].menus} == names

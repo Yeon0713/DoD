@@ -1186,6 +1186,20 @@ const VIZ_SLOT = { A: 1, B: 2, rule: 1, hcx: 2, voice: 3, regex: 1, critic: 2, j
 const VIZ_STATUS_INK = { warning: "#0b0b0b", neutral: "#0b0b0b" }; // 밝은 칸 안 글자는 검정, 나머지 흰색 (두 모드 같음)
 const VIZ_SEQ = ["--viz-seq-0", "--viz-seq-1", "--viz-seq-2", "--viz-seq-3", "--viz-seq-4", "--viz-seq-5", "--viz-seq-6", "--viz-seq-7"];
 const SOURCE_NAMES = { AGENT: "에이전트", FALLBACK: "물러나기", TEMPLATE: "템플릿", NONE: "출력 없음" };
+// 화면에는 코드 이름 대신 뜻 이름을 쓴다 (코드 이름은 마우스를 올리면 보인다)
+const SYSTEM_NAMES = { A: "A 단일 에이전트", B: "B 하네스", rule: "규칙", hcx: "HCX 분류기", voice: "음성 규칙", regex: "금지어 정규식",
+  critic: "LLM 검토기", judge_tools: "심판(도구)", judge_thinking: "심판(추론)", "rule+judge": "규칙+판정 에이전트" };
+const COND_NAMES = { fact: "사실", policy: "정책", core: "핵심 내용", response: "응대", format: "형식", consistency: "일관성" };
+const KIND_NAMES = { normal: "정상 답글", compensation: "보상 약속", fabricated: "지어낸 가게 사정", blame: "손님·남 탓", memory: "기억하는 척",
+  swap: "다른 리뷰 답", off_topic: "엉뚱한 답", no_fix: "고칠 점 없음" };
+const SET_NAMES = { all: "전체", gold: "정답지 답글", critic_cases: "검토기 사례", balanced: "균형 세트", full: "전체 세트" };
+const SUITE_NAMES = { label: "리뷰 분류", guards: "안전장치", reply: "답글", batch: "진단·묶음 조율", intent: "뜻 판정" };
+const nm = (dict, key) => dict[key] ?? key;
+const sysName = (s) => nm(SYSTEM_NAMES, s);
+const UNIT_NAMES = { seconds: "초", calls: "번", tokens: "토큰", cases: "건" };
+const unitName = (u) => nm(UNIT_NAMES, u ?? "");
+// 지표 이름 속 괄호의 코드 이름(위반 종류·조건)도 뜻 이름으로: "놓침률 (compensation)" → "놓침률 (보상 약속)"
+const metricName = (name) => String(name ?? "").replace(/\(([a-z_]+)\)/g, (all, k) => `(${KIND_NAMES[k] ?? COND_NAMES[k] ?? k})`);
 
 const vizColor = (system, systems = []) => `var(--viz-${VIZ_SLOT[system] ?? ((Math.max(0, systems.indexOf(system)) % 4) + 1)})`;
 const vizPct = (v) => (v == null ? "-" : `${Math.round(v * 1000) / 10}%`);
@@ -1195,7 +1209,7 @@ const vizFrac = (m) => (m && m.denominator != null ? `${m.numerator}/${m.denomin
 
 function vizLegend(systems) {
   if (!systems.length) return "";
-  return `<div class="viz-legend">${systems.map((s) => `<span><i style="background:${vizColor(s, systems)}"></i>${esc(s)}</span>`).join("")}</div>`;
+  return `<div class="viz-legend">${systems.map((s) => `<span><i style="background:${vizColor(s, systems)}"></i>${esc(sysName(s))}</span>`).join("")}</div>`;
 }
 
 function vizDetails(inner, label = "표로 보기") {
@@ -1211,7 +1225,7 @@ function vizBlock(title, note, body) {
 function evalValue(m) {
   if (!m) return '<span class="muted">-</span>';
   if (m.value === null || m.value === undefined) return `<span class="muted">해당 없음</span>${m.note ? ` <span class="muted small">${esc(m.note)}</span>` : ""}`;
-  const shown = m.unit === "ratio" ? vizPct(m.value) : `${Number.isInteger(m.value) ? m.value : Number(m.value).toFixed(2)}${m.unit && m.unit !== "f1" ? ` ${esc(m.unit)}` : ""}`;
+  const shown = m.unit === "ratio" ? vizPct(m.value) : `${Number.isInteger(m.value) ? m.value : Number(m.value).toFixed(2)}${m.unit && m.unit !== "f1" ? ` ${esc(unitName(m.unit))}` : ""}`;
   const frac = m.denominator !== null && m.denominator !== undefined ? ` <span class="muted small">${m.numerator}/${m.denominator}</span>` : "";
   return `<b class="num">${shown}</b>${frac}`;
 }
@@ -1241,7 +1255,7 @@ function evalSummaryCards(summary) {
     const rows = systems.map((s) => {
       const v = card.values[s];
       const width = v?.unit === "ratio" && v.value != null ? v.value * 100 : null;
-      return `<div class="viz-sum-row"><span class="viz-sys"><i style="background:${vizColor(s, systems)}"></i>${esc(s)}</span>
+      return `<div class="viz-sum-row"><span class="viz-sys"><i style="background:${vizColor(s, systems)}"></i>${esc(sysName(s))}</span>
         <span class="viz-mini">${width == null ? "" : `<span style="width:${width}%;background:${vizColor(s, systems)}"></span>`}</span>
         <span class="num small">${v?.value == null ? "-" : v.unit === "ratio" ? vizPct(v.value) : Number(v.value).toFixed(1)}</span></div>`;
     }).join("");
@@ -1251,7 +1265,7 @@ function evalSummaryCards(summary) {
     })();
     return `<div class="viz-sum-card">
       <div class="viz-sum-q">${esc(EVAL_QUESTIONS[card.question])}</div>
-      <div class="viz-sum-metric">${esc(card.name ?? card.metric)}${card.set ? ` <span class="muted small">[${esc(card.set)}]</span>` : ""}
+      <div class="viz-sum-metric">${esc(metricName(card.name ?? card.metric))}${card.set ? ` <span class="muted small">[${esc(nm(SET_NAMES, card.set))}]</span>` : ""}
         <span class="muted small">${card.higher_is_better === false ? "↓ 낮을수록 좋음" : "↑ 높을수록 좋음"}</span></div>
       ${rows || '<div class="muted small">아직 돌린 결과가 없어요</div>'}
       <div class="viz-sum-foot">${evalGoal(card)}${diff}${card.run ? `<button class="btn-outline small" data-eval-pick="${esc(card.run)}">이 실행</button>` : ""}</div>
@@ -1265,16 +1279,16 @@ function vizHeadline(r) {
   return r.headline.map((m) => {
     const bar = m.unit === "ratio" && m.value != null
       ? `<span class="viz-mini"><span style="width:${m.value * 100}%;background:${vizColor(m.system ?? "-", r.systems)}"></span></span>` : "";
-    return `<span class="viz-head-item"><span class="muted small">${esc(m.system ?? "")} ${esc(m.id)}</span>${bar}${evalValue(m)}</span>`;
+    return `<span class="viz-head-item"><span class="muted small" title="${esc(m.id)}">${esc(m.system ? sysName(m.system) : "")} ${esc(metricName(m.name))}</span>${bar}${evalValue(m)}</span>`;
   }).join("");
 }
 
 function evalRunRow(r) {
   return `<div class="call eval-run ${r.id === evalView.id ? "picked" : ""}"><div class="call-head">
       <button class="btn-outline small" data-eval-pick="${esc(r.id)}">${r.id === evalView.id ? "보는 중" : "보기"}</button>
-      <span class="mono">${esc(time(r.started_at))}</span><b>${esc(r.suite)}</b>
+      <span class="mono">${esc(time(r.started_at))}</span><b>${esc(nm(SUITE_NAMES, r.suite))}</b>
       ${r.baseline ? '<span class="tag brand">기준점</span>' : ""}${r.legacy ? '<span class="tag">예전 형식</span>' : ""}
-      <span class="tag">${esc(r.systems.join(", ") || "-")}</span>
+      <span class="tag">${esc(r.systems.map(sysName).join(", ") || "-")}</span>
       <span class="mono muted small">${esc(r.commit ?? "")}</span><span class="muted small">사례 ${num(r.cases)}</span>
     </div><div class="call-body">${vizHeadline(r) || '<span class="muted">지표 없음</span>'}</div></div>`;
 }
@@ -1298,12 +1312,12 @@ function vizMetricRows(rows, systems, ab) {
       if (m.value == null) return "";
       const offset = (i - (present.length - 1) / 2) * 5;
       return `<span class="viz-dot" style="left:${pos(m)}%;top:calc(50% + ${offset}px);background:${vizColor(s, systems)}"
-        title="${esc(s)} · ${esc(first.name)}: ${esc(m.unit === "ratio" ? vizPct(m.value) : m.value)}${m.denominator != null ? ` (${vizFrac(m)})` : ""}${m.note ? ` · ${esc(m.note)}` : ""}"></span>`;
+        title="${esc(sysName(s))} · ${esc(metricName(first.name))}: ${esc(m.unit === "ratio" ? vizPct(m.value) : m.value)}${m.denominator != null ? ` (${vizFrac(m)})` : ""}${m.note ? ` · ${esc(m.note)}` : ""}"></span>`;
     }).join("");
-    const values = present.map((s) => `<span class="viz-v"><i style="background:${vizColor(s, systems)}"></i>${present.length > 1 ? `${esc(s)} ` : ""}${evalValue(cell(s))}</span>`).join("");
-    const scale = fixed ? "" : `<span class="viz-scale-max muted small">${esc(Number.isInteger(max) ? max : max.toFixed(1))} ${esc(first.unit ?? "")}</span>`;
+    const values = present.map((s) => `<span class="viz-v"><i style="background:${vizColor(s, systems)}"></i>${present.length > 1 ? `${esc(sysName(s))} ` : ""}${evalValue(cell(s))}</span>`).join("");
+    const scale = fixed ? "" : `<span class="viz-scale-max muted small">${esc(Number.isInteger(max) ? max : max.toFixed(1))} ${esc(unitName(first.unit))}</span>`;
     return `<div class="viz-dotrow">
-      <div class="viz-dot-name"><b>${esc(first.name)}</b><span class="muted small mono">${esc(key)}</span>
+      <div class="viz-dot-name"><b title="${esc(key)}">${esc(metricName(first.name))}</b>
         <span class="viz-dir">${first.higher_is_better === false ? "↓ 낮을수록 좋음" : "↑ 높을수록 좋음"}</span></div>
       <div class="viz-dot-track">${span ? `<span class="viz-span" style="left:${span[0]}%;width:${span[1] - span[0]}%"></span>` : ""}${dots}${scale}</div>
       <div class="viz-dot-values">${values}${ab ? evalDiff(cell("A"), cell("B")) : ""}</div>
@@ -1318,7 +1332,7 @@ function evalMetricTable(rows, ab) {
   const headers = ["지표", ...systems.map(esc), ...(ab ? ["차이 (B−A)"] : []), "좋은 방향"];
   return table(headers, keys.map((key) => {
     const first = rows.find((m) => m.key === key);
-    return [`${esc(first.name)} <span class="muted small mono">${esc(key)}</span>`, ...systems.map((s) => evalValue(cell(key, s))),
+    return [`<span title="${esc(key)}">${esc(metricName(first.name))}</span>`, ...systems.map((s) => evalValue(cell(key, s))),
       ...(ab ? [evalDiff(cell(key, "A"), cell(key, "B"))] : []), first.higher_is_better === false ? "낮을수록 좋음" : "높을수록 좋음"];
   }));
 }
@@ -1330,14 +1344,14 @@ function vizRecallPrecision(rp, systems) {
   const set = rp.sets[evalView.set] ? evalView.set : rp.default;
   const rows = rp.sets[set];
   const names = Object.keys(rows);
-  const bar = (s, label, m) => `<div class="viz-hbar" title="${esc(s)} ${esc(label)} ${m ? `${vizPct(m.value)} (${vizFrac(m)})` : "-"}">
+  const bar = (s, label, m) => `<div class="viz-hbar" title="${esc(sysName(s))} ${esc(label)} ${m ? `${vizPct(m.value)} (${vizFrac(m)})` : "-"}">
       <span class="small muted">${esc(label)}</span>
       <span class="viz-track">${m?.value == null ? "" : `<span class="viz-fill" style="width:${m.value * 100}%;background:${vizColor(s, names)}"></span>`}</span>
       <span class="num small">${m?.value == null ? "-" : vizPct(m.value)} <span class="muted">${esc(vizFrac(m))}</span></span></div>`;
-  const body = names.map((s) => `<div class="viz-group"><div class="viz-sys"><i style="background:${vizColor(s, names)}"></i><b>${esc(s)}</b></div>
+  const body = names.map((s) => `<div class="viz-group"><div class="viz-sys"><i style="background:${vizColor(s, names)}"></i><b>${esc(sysName(s))}</b></div>
       ${bar(s, "재현율", rows[s].recall)}${bar(s, "정밀도", rows[s].precision)}</div>`).join("");
-  const tableHtml = table(["분류기", "재현율", "정밀도"], names.map((s) => [esc(s), evalValue(rows[s].recall && { ...rows[s].recall }), evalValue(rows[s].precision && { ...rows[s].precision })]));
-  return vizBlock(`아쉬운 리뷰 재현율·정밀도 · ${set}`, "0~100%, 막대 끝 글자가 값", vizLegend(names) + body + vizDetails(tableHtml));
+  const tableHtml = table(["분류기", "재현율", "정밀도"], names.map((s) => [esc(sysName(s)), evalValue(rows[s].recall && { ...rows[s].recall }), evalValue(rows[s].precision && { ...rows[s].precision })]));
+  return vizBlock(`아쉬운 리뷰 재현율·정밀도 · ${nm(SET_NAMES, set)}`, "0~100%, 막대 끝 글자가 값", vizLegend(names) + body + vizDetails(tableHtml));
 }
 
 function vizConfusion(confusion) {
@@ -1361,14 +1375,14 @@ function vizConfusion(confusion) {
           return `<span class="viz-hm-cell${hit ? " mark" : ""}" style="background:${vizSeqVar(rate)};color:${vizSeqInk(rate)}" title="정답 ${esc(t)} → ${esc(p)}: ${n}/${total}"><b>${n}</b></span>`;
         }).join("");
       }).join("")}</div>`;
-    return `<div class="viz-cm-panel"><div class="viz-sys"><i style="background:${vizColor(system, names)}"></i><b>${esc(system)}</b></div>${grid}</div>`;
+    return `<div class="viz-cm-panel"><div class="viz-sys"><i style="background:${vizColor(system, names)}"></i><b>${esc(sysName(system))}</b></div>${grid}</div>`;
   }).join("");
   const tableHtml = names.map((system) => {
     const rows = tables[system];
     const preds = [...new Set(Object.values(rows).flatMap((r) => Object.keys(r)))];
-    return `<div class="small"><b>${esc(system)}</b></div>` + table(["정답 \\ 예측", ...preds.map(esc)], Object.keys(rows).map((t) => [esc(t), ...preds.map((p) => num(rows[t][p] ?? 0))]));
+    return `<div class="small"><b>${esc(sysName(system))}</b></div>` + table(["정답 \\ 예측", ...preds.map(esc)], Object.keys(rows).map((t) => [esc(t), ...preds.map((p) => num(rows[t][p] ?? 0))]));
   }).join("");
-  return vizBlock(`감정 혼동 행렬 · ${set}`, "칸 = 건수 · 진할수록 그 정답 중 많이 · 테두리 칸이 맞힌 것", `<div class="viz-cm-wrap">${panels}</div>` + vizDetails(tableHtml));
+  return vizBlock(`감정 혼동 행렬 · ${nm(SET_NAMES, set)}`, "칸 = 건수 · 진할수록 그 정답 중 많이 · 테두리 칸이 맞힌 것", `<div class="viz-cm-wrap">${panels}</div>` + vizDetails(tableHtml));
 }
 
 // ── 질문 2: 조건별 통과율 덤벨, 결과 구성 ──
@@ -1382,13 +1396,13 @@ function vizDumbbell(cond, systems) {
     const rates = cells.map((x) => x.v.rate * 100);
     const line = rates.length > 1 ? `<span class="viz-span" style="left:${Math.min(...rates)}%;width:${Math.max(...rates) - Math.min(...rates)}%"></span>` : "";
     const dots = cells.map((x, i) => `<span class="viz-dot" style="left:${x.v.rate * 100}%;top:calc(50% + ${(i - (cells.length - 1) / 2) * 5}px);background:${vizColor(x.s, names)}"
-        title="${esc(x.s)} ${esc(c)} 통과 ${x.v.pass}/${x.v.total}${x.v.unknown ? `, 판단 불가 ${x.v.unknown}` : ""}"></span>`).join("");
-    const labels = cells.map((x) => `<span class="viz-v"><i style="background:${vizColor(x.s, names)}"></i>${esc(x.s)} <b class="num">${vizPct(x.v.rate)}</b> <span class="muted small">${x.v.pass}/${x.v.total}</span></span>`).join("");
-    return `<div class="viz-dbrow"><span class="viz-db-name"><b>${esc(c)}</b></span>
+        title="${esc(sysName(x.s))} ${esc(c)} 통과 ${x.v.pass}/${x.v.total}${x.v.unknown ? `, 판단 불가 ${x.v.unknown}` : ""}"></span>`).join("");
+    const labels = cells.map((x) => `<span class="viz-v"><i style="background:${vizColor(x.s, names)}"></i>${esc(sysName(x.s))} <b class="num">${vizPct(x.v.rate)}</b> <span class="muted small">${x.v.pass}/${x.v.total}</span></span>`).join("");
+    return `<div class="viz-dbrow"><span class="viz-db-name" title="${esc(c)}"><b>${esc(nm(COND_NAMES, c))}</b></span>
       <div class="viz-dot-track">${rowIndex === cond.conditions.length - 1 ? '<span class="viz-tick" style="left:0">0</span><span class="viz-tick" style="left:50%">50%</span><span class="viz-tick" style="left:100%">100%</span>' : ""}${line}${dots}</div>
       <div class="viz-dot-values">${labels}</div></div>`;
   }).join("");
-  const tableHtml = table(["조건", ...names.map(esc)], cond.conditions.map((c) => [esc(c), ...names.map((s) => {
+  const tableHtml = table(["조건", ...names.map((s) => esc(sysName(s)))], cond.conditions.map((c) => [esc(nm(COND_NAMES, c)), ...names.map((s) => {
     const v = cond.systems[s]?.[c];
     return v ? `${vizPct(v.rate)} <span class="muted small">${v.pass}/${v.total}${v.unknown ? ` · 판단 불가 ${v.unknown}` : ""}</span>` : "-";
   })]));
@@ -1413,10 +1427,10 @@ function vizStack(rows, order, { nameOf, colorOf, inkOf }) {
 function vizSourceMix(mix, systems) {
   if (!mix) return "";
   const names = systems.filter((s) => mix.systems[s]);
-  const rows = names.map((s) => ({ label: s, swatch: vizColor(s, names), counts: mix.systems[s].counts, total: mix.systems[s].total }));
+  const rows = names.map((s) => ({ label: sysName(s), swatch: vizColor(s, names), counts: mix.systems[s].counts, total: mix.systems[s].total }));
   const order = mix.order;
   const chart = vizStack(rows, order, { nameOf: (o) => SOURCE_NAMES[o.key] ?? o.key, colorOf: (o) => `var(--viz-${o.status})`, inkOf: (o) => VIZ_STATUS_INK[o.status] ?? "#ffffff" });
-  const tableHtml = table(["시스템", ...order.map((o) => esc(SOURCE_NAMES[o.key] ?? o.key)), "전체"], names.map((s) => [esc(s), ...order.map((o) => num(mix.systems[s].counts[o.key] ?? 0)), num(mix.systems[s].total)]));
+  const tableHtml = table(["시스템", ...order.map((o) => esc(SOURCE_NAMES[o.key] ?? o.key)), "전체"], names.map((s) => [esc(sysName(s)), ...order.map((o) => num(mix.systems[s].counts[o.key] ?? 0)), num(mix.systems[s].total)]));
   return vizBlock("누가 답을 냈나", "source_rate · 시스템마다 전체 사례 100%", chart + vizDetails(tableHtml));
 }
 
@@ -1441,25 +1455,25 @@ function vizScatter(sc, systems) {
     <line x1="${x(0)}" y1="${y(0)}" x2="${x(Math.min(sc.target.false_reject, maxX))}" y2="${y(0)}" class="viz-zone-line"/>
     <text x="${x(0) + 6}" y="${T + 12}" class="viz-axis-ink">목표 구역: 놓침 0 · 오거절 ≤ ${vizPct(sc.target.false_reject)}</text>`;
   const dots = points.map((p) => `<circle cx="${x(p.false_reject.value)}" cy="${y(p.missed.value)}" r="7" style="fill:${vizColor(p.system, names)};stroke:var(--surface)" stroke-width="2">
-      <title>${esc(p.system)} · 오거절 ${vizPct(p.false_reject.value)} (${vizFrac(p.false_reject)}) · 놓침 ${vizPct(p.missed.value)} (${vizFrac(p.missed)})</title></circle>
-      <text x="${x(p.false_reject.value) + 10}" y="${y(p.missed.value) + 4}" class="viz-axis-ink">${esc(p.system)}</text>`).join("");
+      <title>${esc(sysName(p.system))} · 오거절 ${vizPct(p.false_reject.value)} (${vizFrac(p.false_reject)}) · 놓침 ${vizPct(p.missed.value)} (${vizFrac(p.missed)})</title></circle>
+      <text x="${x(p.false_reject.value) + 10}" y="${y(p.missed.value) + 4}" class="viz-axis-ink">${esc(sysName(p.system))}</text>`).join("");
   const axes = `<text x="${(L + W - R) / 2}" y="${H - 8}" text-anchor="middle" class="viz-axis-ink">오거절률 (정상 답글을 막은 비율) →</text>
     <text x="12" y="${(T + H - B) / 2}" text-anchor="middle" class="viz-axis-ink" transform="rotate(-90 12 ${(T + H - B) / 2})">놓침률 (위반을 통과시킨 비율) →</text>`;
   const svg = `<svg class="viz-svg viz-scatter" viewBox="0 0 ${W} ${H}" role="img" aria-label="판정기별 오거절률과 놓침률">${grid}${zone}${axes}${dots}</svg>`;
-  const tableHtml = table(["판정기", "오거절률", "놓침률"], points.map((p) => [esc(p.system), evalValue({ ...p.false_reject }), evalValue({ ...p.missed })]));
+  const tableHtml = table(["판정기", "오거절률", "놓침률"], points.map((p) => [esc(sysName(p.system)), evalValue({ ...p.false_reject }), evalValue({ ...p.missed })]));
   const sets = Object.keys(sc.sets);
-  const setBar = sets.length > 1 ? `<div class="eval-filters"><span class="muted small">세트</span>${sets.map((name) => `<button class="btn-outline small ${name === set ? "on" : ""}" data-eval-set="${esc(name)}">${esc(name)}</button>`).join("")}</div>` : "";
-  return vizBlock(`판정기별 오거절·놓침 · ${set}`, "왼쪽 아래(초록 구역)에 가까울수록 좋음", setBar + vizLegend(names) + svg + vizDetails(tableHtml));
+  const setBar = sets.length > 1 ? `<div class="eval-filters"><span class="muted small">세트</span>${sets.map((name) => `<button class="btn-outline small ${name === set ? "on" : ""}" data-eval-set="${esc(name)}">${esc(nm(SET_NAMES, name))}</button>`).join("")}</div>` : "";
+  return vizBlock(`판정기별 오거절·놓침 · ${nm(SET_NAMES, set)}`, "왼쪽 아래(초록 구역)에 가까울수록 좋음", setBar + vizLegend(names) + svg + vizDetails(tableHtml));
 }
 
 function vizHeatmap({ rows, cols, cell }) {
-  const head = `<div class="viz-hm-row viz-hm-head" style="grid-template-columns:120px repeat(${cols.length}, minmax(64px, 1fr))"><span></span>${cols.map((c) => `<span>${esc(c)}</span>`).join("")}</div>`;
+  const head = `<div class="viz-hm-row viz-hm-head" style="grid-template-columns:120px repeat(${cols.length}, minmax(64px, 1fr))"><span></span>${cols.map((c) => `<span title="${esc(c)}">${esc(nm(KIND_NAMES, c))}</span>`).join("")}</div>`;
   const body = rows.map((r) => `<div class="viz-hm-row" style="grid-template-columns:120px repeat(${cols.length}, minmax(64px, 1fr))">
       <span class="viz-sys">${r.swatch ? `<i style="background:${r.swatch}"></i>` : ""}${esc(r.name)}</span>
       ${cols.map((c) => {
         const v = cell(r.key, c);
         if (!v) return '<span class="viz-hm-cell empty">-</span>';
-        return `<span class="viz-hm-cell" style="background:${vizSeqVar(v.rate)};color:${vizSeqInk(v.rate)}" title="${esc(r.name)} · ${esc(c)}: ${esc(v.tip)}"><b>${esc(v.main)}</b><small>${esc(v.sub)}</small></span>`;
+        return `<span class="viz-hm-cell" style="background:${vizSeqVar(v.rate)};color:${vizSeqInk(v.rate)}" title="${esc(r.name)} · ${esc(nm(KIND_NAMES, c))}: ${esc(v.tip)}"><b>${esc(v.main)}</b><small>${esc(v.sub)}</small></span>`;
       }).join("")}</div>`).join("");
   const scale = `<div class="viz-scale"><span>0%</span>${VIZ_SEQ.map((c) => `<i style="background:var(${c})"></i>`).join("")}<span>100%</span></div>`;
   return `${scale}<div class="viz-hm">${head}${body}</div>`;
@@ -1468,7 +1482,7 @@ function vizHeatmap({ rows, cols, cell }) {
 function vizByKind(byKind, systems) {
   if (!byKind) return "";
   const names = systems.filter((s) => byKind.systems[s]);
-  const rows = names.map((s) => ({ key: s, name: s, swatch: vizColor(s, names) }));
+  const rows = names.map((s) => ({ key: s, name: sysName(s), swatch: vizColor(s, names) }));
   const chart = vizHeatmap({
     rows, cols: byKind.kinds,
     cell: (s, k) => {
@@ -1476,7 +1490,7 @@ function vizByKind(byKind, systems) {
       return v ? { rate: v.rate, main: `${v.missed}건`, sub: `${vizPct(v.rate)} · ${v.missed}/${v.total}${v.unknown ? ` ?${v.unknown}` : ""}`, tip: `놓침 ${v.missed} / ${v.total}, 판단 불가 ${v.unknown}` } : null;
     },
   });
-  const tableHtml = table(["판정기", ...byKind.kinds.map(esc)], names.map((s) => [esc(s), ...byKind.kinds.map((k) => {
+  const tableHtml = table(["판정기", ...byKind.kinds.map((k) => esc(nm(KIND_NAMES, k)))], names.map((s) => [esc(sysName(s)), ...byKind.kinds.map((k) => {
     const v = byKind.systems[s]?.[k];
     return v ? `${v.missed}/${v.total}` : "-";
   })]));
@@ -1489,12 +1503,12 @@ function vizPassDistribution(dist, systems) {
   if (!dist) return "";
   const names = systems.filter((s) => dist.systems[s]);
   const order = Array.from({ length: dist.runs + 1 }, (_, k) => ({ key: k, rate: dist.runs ? k / dist.runs : 1 }));
-  const rows = names.map((s) => ({ label: s, swatch: vizColor(s, names), counts: Object.fromEntries(dist.systems[s].map((n, k) => [k, n])) }));
+  const rows = names.map((s) => ({ label: sysName(s), swatch: vizColor(s, names), counts: Object.fromEntries(dist.systems[s].map((n, k) => [k, n])) }));
   const chart = vizStack(rows, order, {
     nameOf: (o) => (dist.runs === 1 ? (o.key ? "맞음" : "틀림") : `${dist.runs}회 중 ${o.key}회 맞음`),
     colorOf: (o) => vizSeqVar(Math.max(0.15, o.rate)), inkOf: (o) => vizSeqInk(Math.max(0.15, o.rate)),
   });
-  const tableHtml = table(["시스템", ...order.map((o) => `${o.key}회`)], names.map((s) => [esc(s), ...dist.systems[s].map(num)]));
+  const tableHtml = table(["시스템", ...order.map((o) => `${o.key}회`)], names.map((s) => [esc(sysName(s)), ...dist.systems[s].map(num)]));
   return vizBlock(`${dist.runs}회 통과 분포`, `사례마다 ${dist.runs}회 중 몇 번 맞았나 · 진할수록 많이`, chart + vizDetails(tableHtml));
 }
 
@@ -1503,7 +1517,7 @@ function vizBatchGrid(grid) {
   const cols = grid.columns;
   const head = `<div class="viz-grid-row" style="grid-template-columns:160px repeat(${cols.length}, 56px)"><span></span>${cols.map((c) => {
     const [system, run] = c.split("#");
-    return `<span class="small"><i class="viz-swatch" style="background:${vizColor(system)}"></i>${esc(system)} ${esc(run)}회</span>`;
+    return `<span class="small"><i class="viz-swatch" style="background:${vizColor(system)}"></i>${esc(sysName(system))} ${esc(run)}회</span>`;
   }).join("")}</div>`;
   const body = grid.rows.map((r) => `<div class="viz-grid-row" style="grid-template-columns:160px repeat(${cols.length}, 56px)"><span class="small mono">${esc(r.key)}</span>${cols.map((c) => {
     const v = r.cells[c];
@@ -1520,12 +1534,12 @@ function vizReasons(reasons, systems) {
   const panels = names.map((s) => {
     const rows = reasons.systems[s];
     const max = Math.max(...rows.map((r) => r.count), 1);
-    return `<div class="viz-rank"><div class="viz-sys"><i style="background:${vizColor(s, names)}"></i><b>${esc(s)}</b></div>
+    return `<div class="viz-rank"><div class="viz-sys"><i style="background:${vizColor(s, names)}"></i><b>${esc(sysName(s))}</b></div>
       ${rows.map((r) => `<div class="viz-rank-row" title="${esc(r.label)}: ${r.count}건"><span class="viz-rank-label">${esc(r.label)}</span>
         <span class="viz-track"><span class="viz-fill" style="width:${(r.count / max) * 100}%;background:${vizColor(s, names)}"></span></span>
         <span class="num small">${r.count}</span></div>`).join("")}</div>`;
   }).join("");
-  const tableHtml = names.map((s) => `<div class="small"><b>${esc(s)}</b></div>` + table(["거절 이유", "건수"], reasons.systems[s].map((r) => [esc(r.label), num(r.count)]))).join("");
+  const tableHtml = names.map((s) => `<div class="small"><b>${esc(sysName(s))}</b></div>` + table(["거절 이유", "건수"], reasons.systems[s].map((r) => [esc(r.label), num(r.count)]))).join("");
   return panels ? vizBlock("거절 이유 순위", "검사·검토기가 돌려보낸 까닭 · 시스템마다 상위 8개", `<div class="viz-rank-wrap">${panels}</div>` + vizDetails(tableHtml)) : "";
 }
 
@@ -1547,9 +1561,9 @@ function vizLatency(latency, systems) {
     const med = median(values);
     const within = latency.budget != null ? values.filter((v) => v <= latency.budget).length : null;
     const jitter = (k) => ((k * 37) % 11 - 5) * 1.2;
-    return `<text x="${L - 8}" y="${y + 4}" text-anchor="end" class="viz-axis-ink">${esc(s)}</text>
-      ${values.map((v, k) => `<circle cx="${x(v).toFixed(1)}" cy="${(y + jitter(k)).toFixed(1)}" r="4" style="fill:${vizColor(s, names)};stroke:var(--surface)" fill-opacity="0.6" stroke-width="1"><title>${esc(s)} ${v}초</title></circle>`).join("")}
-      <line x1="${x(med)}" y1="${y - 10}" x2="${x(med)}" y2="${y + 10}" class="viz-median"><title>${esc(s)} 중앙값 ${med.toFixed(1)}초</title></line>
+    return `<text x="${L - 8}" y="${y + 4}" text-anchor="end" class="viz-axis-ink">${esc(sysName(s))}</text>
+      ${values.map((v, k) => `<circle cx="${x(v).toFixed(1)}" cy="${(y + jitter(k)).toFixed(1)}" r="4" style="fill:${vizColor(s, names)};stroke:var(--surface)" fill-opacity="0.6" stroke-width="1"><title>${esc(sysName(s))} ${v}초</title></circle>`).join("")}
+      <line x1="${x(med)}" y1="${y - 10}" x2="${x(med)}" y2="${y + 10}" class="viz-median"><title>${esc(sysName(s))} 중앙값 ${med.toFixed(1)}초</title></line>
       <text x="${W - R + 12}" y="${y + 4}" class="viz-axis-ink">중앙 ${med.toFixed(1)}초${within != null ? ` · ${latency.budget}초 안 ${within}/${values.length}` : ""}</text>`;
   }).join("");
   const grid = ticks.map((t) => `<line x1="${x(t)}" y1="${T}" x2="${x(t)}" y2="${H - 22}" class="viz-gridline"/><text x="${x(t)}" y="${H - 8}" text-anchor="middle" class="viz-axis">${t}초</text>`).join("");
@@ -1558,7 +1572,7 @@ function vizLatency(latency, systems) {
   const svg = `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="사례마다 준비 시간">${grid}${budget}${rows}</svg>`;
   const tableHtml = table(["시스템", "사례", "중앙값(초)", "최댓값(초)", latency.budget != null ? `${latency.budget}초 안` : "-"], names.map((s) => {
     const v = latency.systems[s];
-    return [esc(s), num(v.length), median(v).toFixed(1), Math.max(...v).toFixed(1), latency.budget != null ? `${v.filter((t) => t <= latency.budget).length}/${v.length}` : "-"];
+    return [esc(sysName(s)), num(v.length), median(v).toFixed(1), Math.max(...v).toFixed(1), latency.budget != null ? `${v.filter((t) => t <= latency.budget).length}/${v.length}` : "-"];
   }));
   return vizBlock("사례마다 준비 시간", `점 하나 = 사례 하나 · 세로 막대 = 중앙값${latency.budget != null ? ` · 빨간 선 = ${latency.budget}초 기준` : ""}`, vizLegend(names) + svg + vizDetails(tableHtml));
 }
@@ -1570,13 +1584,13 @@ function vizCost(cost, systems) {
     const names = systems.filter((s) => rows[s]);
     const max = Math.max(...names.map((s) => rows[s].value), 1e-9);
     return `<div class="viz-group"><div class="small"><b>${esc(labels[id][0])}</b> <span class="muted">↓ 낮을수록 좋음</span></div>
-      ${names.map((s) => `<div class="viz-hbar" title="${esc(s)} ${esc(labels[id][0])} ${rows[s].value}">
-        <span class="viz-sys"><i style="background:${vizColor(s, names)}"></i>${esc(s)}</span>
+      ${names.map((s) => `<div class="viz-hbar" title="${esc(sysName(s))} ${esc(labels[id][0])} ${rows[s].value}">
+        <span class="viz-sys"><i style="background:${vizColor(s, names)}"></i>${esc(sysName(s))}</span>
         <span class="viz-track"><span class="viz-fill" style="width:${(rows[s].value / max) * 100}%;background:${vizColor(s, names)}"></span></span>
         <span class="num small">${Number(rows[s].value).toLocaleString("ko-KR", { maximumFractionDigits: 1 })} ${esc(labels[id][1])}</span></div>`).join("")}</div>`;
   }).join("");
   const names = systems.filter((s) => Object.values(cost).some((rows) => rows[s]));
-  const tableHtml = table(["시스템", ...Object.keys(cost).map((id) => esc(labels[id][0]))], names.map((s) => [esc(s), ...Object.keys(cost).map((id) => (cost[id][s] ? Number(cost[id][s].value).toFixed(2) : "-"))]));
+  const tableHtml = table(["시스템", ...Object.keys(cost).map((id) => esc(labels[id][0]))], names.map((s) => [esc(sysName(s)), ...Object.keys(cost).map((id) => (cost[id][s] ? Number(cost[id][s].value).toFixed(2) : "-"))]));
   return vizBlock("적합 1건당 호출·토큰", "심판 호출은 빼고 셈 · 막대 길이는 그 지표의 가장 큰 값 기준", vizLegend(names) + `<div class="viz-cost">${groups}</div>` + vizDetails(tableHtml));
 }
 
@@ -1598,7 +1612,7 @@ function evalQuestionCards(run) {
     5: [vizLatency(c.q5?.latency, systems), vizCost(c.q5?.cost, systems)],
   };
   const setBar = sets.length > 1 ? `<div class="eval-filters viz-sets"><span class="muted small">지표 세트</span>${sets.map((name) =>
-    `<button class="btn-outline small ${name === chosen ? "on" : ""}" data-eval-set="${esc(name)}">${esc(name)}</button>`).join("")}</div>` : "";
+    `<button class="btn-outline small ${name === chosen ? "on" : ""}" data-eval-set="${esc(name)}">${esc(nm(SET_NAMES, name))}</button>`).join("")}</div>` : "";
   const questions = [...new Set([...Object.keys(groups), ...Object.keys(charts).filter((q) => charts[q].some(Boolean))])].sort();
   return setBar + questions.map((q) => {
     const rows = groups[q] ?? [];
@@ -1672,7 +1686,7 @@ function onTrendMove(e) {
   cross.setAttribute("visibility", "visible");
   const tip = wrap.querySelector(".viz-tip");
   tip.innerHTML = `<div class="small"><b>${esc(near.at)}</b> <span class="mono muted">${esc(near.commit ?? "-")}</span>${near.baseline ? ' <span class="tag brand">기준점</span>' : ""}</div>` +
-    near.values.map((v) => `<div class="small"><i class="viz-swatch" style="background:${data.colors[v.s]}"></i>${esc(v.s)} <b>${esc(v.v)}</b> <span class="muted">${esc(v.f)}</span></div>`).join("");
+    near.values.map((v) => `<div class="small"><i class="viz-swatch" style="background:${data.colors[v.s]}"></i>${esc(sysName(v.s))} <b>${esc(v.v)}</b> <span class="muted">${esc(v.f)}</span></div>`).join("");
   tip.hidden = false;
   const left = (near.x / data.W) * box.width;
   tip.style.left = `${Math.min(Math.max(0, left + 12), box.width - 180)}px`;
@@ -1692,10 +1706,10 @@ function onTrendLeave(e) {
 function vizCasesGrid(grid) {
   if (!grid) return "";
   const cols = grid.conditions;
-  const head = `<div class="viz-grid-row" style="grid-template-columns:200px repeat(${cols.length}, 68px)"><span class="muted small">사례 · 시스템 · 회차</span>${cols.map((c) => `<span class="small">${esc(c)}</span>`).join("")}</div>`;
+  const head = `<div class="viz-grid-row" style="grid-template-columns:200px repeat(${cols.length}, 68px)"><span class="muted small">사례 · 시스템 · 회차</span>${cols.map((c) => `<span class="small" title="${esc(c)}">${esc(nm(COND_NAMES, c))}</span>`).join("")}</div>`;
   const body = grid.rows.map((r) => `<div class="viz-grid-row" style="grid-template-columns:200px repeat(${cols.length}, 68px)">
-      <button class="viz-row-label" data-eval-case="${r.index}"><i class="viz-swatch" style="background:${vizColor(r.system ?? "-")}"></i>${esc(r.case_id)} · ${esc(r.system ?? "-")} · ${esc(r.run)}${r.ok === false ? ' <span class="bad-mark">✗</span>' : ""}</button>
-      ${r.cells.map((v, k) => `<button class="viz-cell ${v === true ? "ok" : v === false ? "bad" : "unk"}" data-eval-case="${r.index}" title="${esc(r.case_id)} · ${esc(r.system)} · ${esc(cols[k])}: ${v === true ? "통과" : v === false ? "실패" : "판단 불가"}">${v === true ? "✓" : v === false ? "✗" : "?"}</button>`).join("")}</div>`).join("");
+      <button class="viz-row-label" data-eval-case="${r.index}"><i class="viz-swatch" style="background:${vizColor(r.system ?? "-")}"></i>${esc(r.case_id)} · ${esc(sysName(r.system ?? "-"))} · ${esc(r.run)}${r.ok === false ? ' <span class="bad-mark">✗</span>' : ""}</button>
+      ${r.cells.map((v, k) => `<button class="viz-cell ${v === true ? "ok" : v === false ? "bad" : "unk"}" data-eval-case="${r.index}" title="${esc(r.case_id)} · ${esc(r.system)} · ${esc(nm(COND_NAMES, cols[k]))}: ${v === true ? "통과" : v === false ? "실패" : "판단 불가"}">${v === true ? "✓" : v === false ? "✗" : "?"}</button>`).join("")}</div>`).join("");
   const note = grid.total > grid.rows.length ? ` · 실패 먼저 ${grid.rows.length}줄만 (전체 ${grid.total})` : ` · ${grid.total}줄`;
   return `<div class="card"><h2>사례 × 조건 <span class="muted">✓ 통과 · ✗ 실패 · ? 판단 불가 · 칸을 누르면 그 사례 카드가 열림${esc(note)}</span></h2><div class="viz-grid viz-cases-grid">${head}${body}</div></div>`;
 }
@@ -1727,7 +1741,7 @@ function evalCaseCard(c) {
   const okTag = c.ok === true ? '<span class="tag ok">✓ 맞음</span>' : c.ok === false ? '<span class="tag bad">✗ 틀림</span>' : '<span class="tag">-</span>';
   const open = c.run_id && evalView.open.has(c.run_id);
   return `<div class="call" id="eval-case-${c.index}"><div class="call-head">
-      <b class="mono">${esc(c.case_id)}</b><span class="tag"><i class="viz-swatch" style="background:${vizColor(c.system ?? "-")}"></i>${esc(c.system ?? "-")}</span><span class="muted small">회차 ${esc(c.run)}</span>${okTag}
+      <b class="mono">${esc(c.case_id)}</b><span class="tag"><i class="viz-swatch" style="background:${vizColor(c.system ?? "-")}"></i>${esc(sysName(c.system ?? "-"))}</span><span class="muted small">회차 ${esc(c.run)}</span>${okTag}
       ${c.source ? `<span class="tag ${c.source === "AGENT" ? "brand" : "warn"}">${esc(c.source)}</span>` : ""}
       ${c.expected != null ? `<span class="muted small">정답 ${esc(c.expected)}</span>` : ""}
       ${c.seconds != null ? `<span class="muted small">${esc(c.seconds)}초</span>` : ""}
@@ -1755,10 +1769,10 @@ function evalPairs(pairs) {
 
 function evalJudgeCard(check) {
   if (!check) return "";
-  const rows = check.metrics.map((m) => [esc(m.system ?? "-"), `${esc(m.name)} <span class="muted small mono">${esc(m.key)}</span>`, evalValue(m)]);
+  const rows = check.metrics.map((m) => [esc(sysName(m.system ?? "-")), `<span title="${esc(m.key)}">${esc(metricName(m.name))}</span>`, evalValue(m)]);
   const target = check.validation?.critic_target ?? {};
-  const badges = Object.entries(target).map(([set, t]) => `<span class="viz-goal ${t.pass ? "pass" : "fail"}">${t.pass ? "✓" : "✗"} critic ${esc(set)}: 놓침 ${t.missed}, 오거절 ${vizPct(t.false_reject_rate)}</span>`).join("");
-  return `<div class="card"><h2>심판 검증 <span class="muted">critic 기준(놓침 0, 오거절 10% 이하) 통과 여부와 판정기별 지표</span></h2>
+  const badges = Object.entries(target).map(([set, t]) => `<span class="viz-goal ${t.pass ? "pass" : "fail"}">${t.pass ? "✓" : "✗"} critic ${esc(nm(SET_NAMES, set))}: 놓침 ${t.missed}, 오거절 ${vizPct(t.false_reject_rate)}</span>`).join("");
+  return `<div class="card"><h2>심판 검증 <span class="muted">LLM 검토기 기준(놓침 0, 오거절 10% 이하) 통과 여부와 판정기별 지표</span></h2>
     <div class="viz-badges">${badges || '<span class="muted small">기준 판정 없음</span>'}</div>
     ${vizDetails(table(["판정기", "지표", "값"], rows) + (Object.keys(check.validation ?? {}).length ? `<pre class="eval-pre">${esc(JSON.stringify(check.validation, null, 1))}</pre>` : ""))}</div>`;
 }
@@ -1787,7 +1801,7 @@ async function renderEval() {
     ? `<div class="eval-filters"><span class="muted small">격자에서 고른 사례 하나</span><button class="btn-outline small" data-eval-unfocus="1">모든 사례 보기</button></div>`
     : `<div class="eval-filters">
       <button class="btn-outline small ${evalView.failedOnly ? "on" : ""}" data-eval-failed="${evalView.failedOnly ? "off" : "on"}">${evalView.failedOnly ? "실패만 보는 중" : "모두 보는 중"}</button>
-      ${["", ...run.systems].map((s) => `<button class="btn-outline small ${evalView.system === s ? "on" : ""}" data-eval-system="${esc(s || "*")}">${esc(s || "모든 시스템")}</button>`).join("")}
+      ${["", ...run.systems].map((s) => `<button class="btn-outline small ${evalView.system === s ? "on" : ""}" data-eval-system="${esc(s || "*")}">${esc(s ? sysName(s) : "모든 시스템")}</button>`).join("")}
       <span class="muted small">${num(run.cases_total)}건 중 ${num(run.offset + 1 > run.cases_total ? 0 : run.offset + 1)}~${num(Math.min(run.offset + EVAL_PAGE, run.cases_total))} (전체 사례 ${num(run.cases_all)})</span>
       ${run.offset > 0 ? '<button class="btn-outline small" data-eval-page="prev">◀ 앞</button>' : ""}
       ${run.offset + EVAL_PAGE < run.cases_total ? '<button class="btn-outline small" data-eval-page="next">뒤 ▶</button>' : ""}
@@ -1795,13 +1809,13 @@ async function renderEval() {
   return `
     ${summary}
     <div class="card"><h2>평가 실행 <span class="muted">최근 먼저 · ${esc(list.length)}개</span></h2><div class="eval-runs">${list.map(evalRunRow).join("")}</div></div>
-    <div class="card"><h2>${esc(run.suite)} · <span class="mono">${esc(run.id)}</span>
+    <div class="card"><h2>${esc(nm(SUITE_NAMES, run.suite))} · <span class="mono">${esc(run.id)}</span>
       <span class="muted">${esc(time(run.started_at))} · 커밋 ${esc(run.commit ?? "-")}${run.git?.dirty ? " (고친 파일 있음)" : ""}${run.baseline ? " · 기준점" : ""}</span></h2>
       ${vizLegend(run.systems)}
-      <div class="muted small">시스템 ${esc(run.systems.join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
+      <div class="muted small">시스템 ${esc(run.systems.map(sysName).join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
     </div>
-    ${trend ? `<div class="card" id="eval-trend-card"><h2>추세 · <span class="mono">${esc(trend.metric)}</span> <span class="muted">${esc(run.suite)} 실행별</span>
-      <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}${vizDetails(table(["실행", "커밋", "시스템", "값"], trend.points.map((p) => [esc(p.id), esc(p.commit ?? "-"), esc(p.system ?? "-"), evalValue(p)])))}</div>` : ""}
+    ${trend ? `<div class="card" id="eval-trend-card"><h2>추세 · <span title="${esc(trend.metric)}">${esc(run.metrics.find((m) => m.key === trend.metric)?.name ? metricName(run.metrics.find((m) => m.key === trend.metric).name) : trend.metric)}</span> <span class="muted">${esc(nm(SUITE_NAMES, run.suite))} 실행별</span>
+      <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}${vizDetails(table(["실행", "커밋", "시스템", "값"], trend.points.map((p) => [esc(p.id), esc(p.commit ?? "-"), esc(sysName(p.system ?? "-")), evalValue(p)])))}</div>` : ""}
     ${body}
     ${run.legacy ? "" : vizCasesGrid(run.charts?.cases_grid)}
     <div class="card" id="eval-cases"><h2>사례</h2>${filters}

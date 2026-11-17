@@ -324,7 +324,7 @@ SUMMARY = [  # (질문, 스위트, 지표 id, 세트)
 ]
 # 목표: 기준 문서에 숫자 목표가 없어 코드에 있는 것만 쓴다.
 #   guards → critic 기준(놓침 0, 오거절 10% 이하, guards_eval.critic_target) / A·B 지표 → B 가 A 보다 나쁘지 않음
-GOAL_NOTES = {"ab": "B(하네스)가 A(단일)보다 나쁘지 않음", "critic": "critic 놓침 0, 오거절 10% 이하 (all 세트)",
+GOAL_NOTES = {"ab": "B(하네스)가 A(단일)보다 나쁘지 않음", "critic": "LLM 검토기 기준: 놓침 0, 오거절 10% 이하 (전체 세트)",
               "none": "기준 없음 (비교만)"}
 STATUS_FIXED = {"AGENT": "good", "FALLBACK": "warning", "TEMPLATE": "serious", "NONE": "critical"}
 SOURCES = ["AGENT", "FALLBACK", "TEMPLATE", "NONE"]

@@ -996,6 +996,7 @@ const RENDER = {
   agents: renderAgents,
   controls: renderControls,
   uitext: renderUiText,
+  eval: renderEval,
 };
 
 /** 주소의 탭 이름 → 있는 탭 이름 (예전 이름도 받음). 모르면 null */
@@ -1164,3 +1165,223 @@ content.addEventListener("change", (e) => {
   show();
   setInterval(checkServer, 30000);
 })();
+
+// ── 탭: 평가 (server/db/app_data/harness_eval 결과 폴더) ──
+// 평가 스위트(python -m Harness.evals …)가 남긴 result.json 을 본다. 운영 기록(AI·에이전트 탭)과 섞지 않는다.
+// 실행 목록 → 고른 실행의 질문별 지표 표, 추세, 사례(실패만 기본), 짝 비교(A·B), 심판 검증.
+
+const evalView = { id: null, system: "", failedOnly: true, offset: 0, metric: null, open: new Set(), steps: {} };
+const EVAL_PAGE = 30;
+const EVAL_QUESTIONS = {
+  1: "질문 1. 리뷰를 바르게 가르는가",
+  2: "질문 2. 글을 믿을 수 있는가",
+  3: "질문 3. 안전장치가 제 역할을 하는가",
+  4: "질문 4. 에이전트가 믿을 만하게 동작하는가",
+  5: "질문 5. 비용과 시간",
+};
+
+function evalValue(m) {
+  if (!m) return '<span class="muted">-</span>';
+  if (m.value === null || m.value === undefined) return `<span class="muted">해당 없음</span>${m.note ? ` <span class="muted small">${esc(m.note)}</span>` : ""}`;
+  const shown = m.unit === "ratio" ? `${(m.value * 100).toFixed(1)}%` : `${Number.isInteger(m.value) ? m.value : Number(m.value).toFixed(2)}${m.unit && m.unit !== "f1" ? ` ${esc(m.unit)}` : ""}`;
+  const frac = m.denominator !== null && m.denominator !== undefined ? ` <span class="muted small">${m.numerator}/${m.denominator}</span>` : "";
+  return `<b class="num">${shown}</b>${frac}`;
+}
+
+function evalDiff(a, b) {
+  if (!a || !b || a.value == null || b.value == null) return '<span class="muted">-</span>';
+  const d = b.value - a.value;
+  if (Math.abs(d) < 1e-9) return '<span class="muted">같음</span>';
+  const good = (d > 0) === (a.higher_is_better !== false);
+  const shown = a.unit === "ratio" ? `${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}%p` : `${d > 0 ? "+" : ""}${d.toFixed(2)}`;
+  return `<span class="tag ${good ? "ok" : "warn"}">B ${shown}</span>`;
+}
+
+function evalRunRow(r) {
+  const head = r.headline.map((m) => `<span class="muted small">${esc(m.system ?? "")} ${esc(m.id)}</span> ${evalValue(m)}`).join(" · ");
+  return `<div class="call eval-run ${r.id === evalView.id ? "picked" : ""}"><div class="call-head">
+      <button class="btn-outline small" data-eval-pick="${esc(r.id)}">${r.id === evalView.id ? "보는 중" : "보기"}</button>
+      <span class="mono">${esc(time(r.started_at))}</span><b>${esc(r.suite)}</b>
+      ${r.baseline ? '<span class="tag brand">기준점</span>' : ""}${r.legacy ? '<span class="tag">예전 형식</span>' : ""}
+      <span class="tag">${esc(r.systems.join(", ") || "-")}</span>
+      <span class="mono muted small">${esc(r.commit ?? "")}</span><span class="muted small">사례 ${num(r.cases)}</span>
+    </div><div class="call-body">${head || '<span class="muted">지표 없음</span>'}</div></div>`;
+}
+
+function evalMetricTables(run) {
+  const groups = {};
+  for (const m of run.metrics) (groups[m.question ?? "etc"] ??= []).push(m);
+  const ab = run.systems.includes("A") && run.systems.includes("B");
+  return Object.keys(groups).sort().map((q) => {
+    const rows = groups[q];
+    const systems = [...new Set(rows.map((m) => m.system ?? "-"))];
+    const keys = [...new Set(rows.map((m) => m.key))];
+    const cell = (key, s) => rows.find((m) => m.key === key && (m.system ?? "-") === s);
+    const headers = ["지표", ...systems.map(esc), ...(ab ? ["차이 (B−A)"] : []), "좋은 방향", ""];
+    const body = keys.map((key) => {
+      const first = rows.find((m) => m.key === key);
+      return [
+        `${esc(first.name)} <span class="muted small mono">${esc(key)}</span>`,
+        ...systems.map((s) => evalValue(cell(key, s))),
+        ...(ab ? [evalDiff(cell(key, "A"), cell(key, "B"))] : []),
+        first.higher_is_better === false ? "낮을수록 좋음" : "높을수록 좋음",
+        `<button class="btn-outline small" data-eval-metric="${esc(key)}">추세</button>`,
+      ];
+    });
+    return `<div class="card"><h2>${esc(EVAL_QUESTIONS[q] ?? "기타 지표")}</h2>${table(headers, body)}</div>`;
+  }).join("");
+}
+
+function evalTrendSvg(t) {
+  const points = t.points.filter((p) => p.value !== null && p.value !== undefined);
+  if (!points.length) return '<div class="empty">값이 있는 실행이 없어요</div>';
+  const runs = [...new Map(t.points.map((p) => [p.id, p])).values()];
+  const systems = [...new Set(points.map((p) => p.system ?? "-"))];
+  const colors = ["var(--brand)", "var(--blue)", "var(--warn)", "var(--bad)", "var(--ink-3)"];
+  const W = 640, H = 170, L = 44, R = 16, T = 12, B = 34;
+  const values = points.map((p) => p.value);
+  const lo = Math.min(0, ...values), hi = Math.max(...values, t.points[0]?.unit === "ratio" ? 1 : lo + 1);
+  const x = (i) => L + (runs.length === 1 ? (W - L - R) / 2 : (i * (W - L - R)) / (runs.length - 1));
+  const y = (v) => T + (1 - (v - lo) / (hi - lo || 1)) * (H - T - B);
+  const fmtV = (v) => (t.points[0]?.unit === "ratio" ? `${Math.round(v * 100)}%` : Number(v).toFixed(1));
+  const lines = systems.map((s, si) => {
+    const pts = runs.map((r, i) => [i, points.find((p) => p.id === r.id && (p.system ?? "-") === s)]).filter(([, p]) => p);
+    const path = pts.map(([i, p], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(" ");
+    return `<path d="${path}" fill="none" stroke="${colors[si % colors.length]}" stroke-width="2"/>` +
+      pts.map(([i, p]) => `<circle cx="${x(i)}" cy="${y(p.value)}" r="${runs[i].baseline ? 5 : 3}" fill="${runs[i].baseline ? "var(--surface)" : colors[si % colors.length]}" stroke="${colors[si % colors.length]}" stroke-width="2"><title>${esc(s)} ${esc(fmtV(p.value))} · ${esc(runs[i].id)}</title></circle>`).join("");
+  }).join("");
+  const axis = `<line x1="${L}" y1="${y(lo)}" x2="${W - R}" y2="${y(lo)}" stroke="var(--line)"/>
+    <text x="${L - 6}" y="${y(hi) + 4}" text-anchor="end" class="eval-axis">${esc(fmtV(hi))}</text>
+    <text x="${L - 6}" y="${y(lo) + 4}" text-anchor="end" class="eval-axis">${esc(fmtV(lo))}</text>` +
+    runs.map((r, i) => `<text x="${x(i)}" y="${H - 18}" text-anchor="middle" class="eval-axis mono">${esc(r.commit ?? "-")}</text>
+      <text x="${x(i)}" y="${H - 5}" text-anchor="middle" class="eval-axis">${esc(time(r.started_at).slice(0, 5))}</text>`).join("");
+  const legend = systems.map((s, si) => `<span class="eval-legend"><i style="background:${colors[si % colors.length]}"></i>${esc(s)}</span>`).join("");
+  return `<svg class="eval-trend" viewBox="0 0 ${W} ${H}" role="img">${axis}${lines}</svg>
+    <div class="muted small">${legend} · 큰 빈 동그라미는 기준점 · 아래는 커밋과 날짜 · ${t.higher_is_better === false ? "낮을수록 좋음" : "높을수록 좋음"}</div>`;
+}
+
+function evalVotes(verdicts) {
+  const names = Object.keys(verdicts);
+  if (!names.length) return "";
+  const mark = (v) => (v === true ? '<span class="ok-mark">✓</span>' : v === false ? '<span class="bad-mark">✗</span>' : '<span class="muted">?</span>');
+  return `<div class="eval-votes">${names.map((n) => `<span class="eval-vote"><b>${esc(n)}</b> ${verdicts[n].vote.map(mark).join("")}</span>`).join("")}</div>`;
+}
+
+function evalChecks(checks) {
+  const entries = Object.entries(checks ?? {});
+  if (!entries.length) return "";
+  return `<div class="eval-checks">${entries.map(([k, v]) => {
+    const bad = (k.endsWith("_bad") && v) || (k.endsWith("_ok") && v === false) || (Array.isArray(v) && v.length);
+    return `<span class="tag ${bad ? "warn" : ""}">${esc(k)} ${esc(Array.isArray(v) ? v.join(", ") || "없음" : String(v))}</span>`;
+  }).join("")}</div>`;
+}
+
+function evalStepsHtml(runId) {
+  const steps = evalView.steps[runId];
+  if (!steps) return `<div class="run-steps"><span class="muted">불러오는 중…</span></div>`;
+  agentView.steps[runId] = steps; // 에이전트 탭의 단계 보기 모양을 그대로 쓴다
+  return agentStepsHtml(runId);
+}
+
+function evalCaseCard(c) {
+  const okTag = c.ok === true ? '<span class="tag ok">맞음</span>' : c.ok === false ? '<span class="tag bad">틀림</span>' : '<span class="tag">-</span>';
+  const open = c.run_id && evalView.open.has(c.run_id);
+  return `<div class="call"><div class="call-head">
+      <b class="mono">${esc(c.case_id)}</b><span class="tag">${esc(c.system ?? "-")}</span><span class="muted small">회차 ${esc(c.run)}</span>${okTag}
+      ${c.source ? `<span class="tag ${c.source === "AGENT" ? "brand" : "warn"}">${esc(c.source)}</span>` : ""}
+      ${c.expected != null ? `<span class="muted small">정답 ${esc(c.expected)}</span>` : ""}
+      ${c.seconds != null ? `<span class="muted small">${esc(c.seconds)}초</span>` : ""}
+      ${c.run_id ? `<button class="btn-outline small" data-eval-trace="${esc(c.run_id)}">${open ? "단계 접기" : "단계 보기"}</button>` : ""}
+    </div>
+    ${c.problems.length ? `<ul class="eval-problems">${c.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>` : ""}
+    <div class="eval-io">
+      <div><div class="muted small">입력</div><div class="eval-text">${esc(c.input ?? "-")}</div></div>
+      <div><div class="muted small">출력</div><div class="eval-text">${esc(c.output ?? "(출력 없음)")}</div></div>
+    </div>
+    ${evalChecks(c.checks)}${evalVotes(c.verdicts)}
+    ${open ? evalStepsHtml(c.run_id) : ""}</div>`;
+}
+
+function evalPairs(pairs) {
+  if (!pairs.length) return "";
+  const side = (name, p) => `<div><div class="muted small">${name} ${p.ok ? '<span class="tag ok">맞음</span>' : '<span class="tag bad">틀림</span>'} <span class="tag">${esc(p.source ?? "-")}</span></div>
+    <div class="eval-text">${esc(p.output ?? "(출력 없음)")}</div>${p.problems.length ? `<div class="muted small">${p.problems.map(esc).join(" · ")}</div>` : ""}</div>`;
+  return `<div class="card"><h2>짝 비교 <span class="muted">같은 사례·회차의 A 와 B. 한쪽만 맞은 쌍 먼저</span></h2>
+    ${pairs.map((p) => `<div class="call"><div class="call-head"><b class="mono">${esc(p.case_id)}</b><span class="muted small">회차 ${esc(p.run)}</span>
+      ${p.only ? `<span class="tag blue">${esc(p.only)} 만 맞음</span>` : ""}</div>
+      <div class="eval-text muted">${esc(p.input ?? "")}</div>
+      <div class="eval-io">${side("A", p.A)}${side("B", p.B)}</div></div>`).join("")}</div>`;
+}
+
+function evalJudgeCard(check) {
+  if (!check) return "";
+  const rows = check.metrics.map((m) => [esc(m.system ?? "-"), `${esc(m.name)} <span class="muted small mono">${esc(m.key)}</span>`, evalValue(m)]);
+  return `<div class="card"><h2>심판 검증 <span class="muted">판정기별 놓침·오거절, 목표 통과 여부</span></h2>
+    ${table(["판정기", "지표", "값"], rows)}
+    ${Object.keys(check.validation ?? {}).length ? `<pre class="eval-pre">${esc(JSON.stringify(check.validation, null, 1))}</pre>` : ""}</div>`;
+}
+
+async function renderEval() {
+  const list = (await api(`${API}/evals`)).runs;
+  if (!list.length) return `<div class="card"><div class="empty">평가 결과가 없어요. server 에서 <span class="mono">python -m Harness.evals &lt;스위트&gt;</span> 를 돌리면 ${esc("db/app_data/harness_eval/")} 에 남아요.</div></div>`;
+  if (!list.some((r) => r.id === evalView.id)) evalView.id = (list.find((r) => !r.legacy) ?? list[0]).id;
+  const params = new URLSearchParams({ id: evalView.id, limit: EVAL_PAGE, offset: evalView.offset, failed_only: evalView.failedOnly });
+  if (evalView.system) params.set("system", evalView.system);
+  const run = await api(`${API}/evals/run?${params}`);
+  await Promise.all([...evalView.open].filter((id) => !evalView.steps[id]).map(async (id) => {
+    evalView.steps[id] = (await api(`${API}/evals/trace?id=${encodeURIComponent(run.id)}&run_id=${encodeURIComponent(id)}`)).steps;
+  }));
+  if (evalView.metric && !run.metrics.some((m) => m.key === evalView.metric)) evalView.metric = null;
+  const trend = evalView.metric ? await api(`${API}/evals/trend?suite=${encodeURIComponent(run.suite)}&metric=${encodeURIComponent(evalView.metric)}`) : null;
+  const legacy = run.legacy
+    ? `<div class="card"><h2>요약 <span class="muted">예전 형식 결과 (숫자만)</span></h2>${table(["항목", "값"], Object.entries(run.summary ?? {}).map(([k, v]) => [esc(k), `<span class="mono">${esc(typeof v === "object" ? JSON.stringify(v) : v)}</span>`]))}</div>`
+    : evalMetricTables(run);
+  const filters = `<div class="eval-filters">
+      <button class="btn-outline small ${evalView.failedOnly ? "on" : ""}" data-eval-failed="${evalView.failedOnly ? "off" : "on"}">${evalView.failedOnly ? "실패만 보는 중" : "모두 보는 중"}</button>
+      ${["", ...run.systems].map((s) => `<button class="btn-outline small ${evalView.system === s ? "on" : ""}" data-eval-system="${esc(s || "*")}">${esc(s || "모든 시스템")}</button>`).join("")}
+      <span class="muted small">${num(run.cases_total)}건 중 ${num(run.offset + 1 > run.cases_total ? 0 : run.offset + 1)}~${num(Math.min(run.offset + EVAL_PAGE, run.cases_total))} (전체 사례 ${num(run.cases_all)})</span>
+      ${run.offset > 0 ? '<button class="btn-outline small" data-eval-page="prev">◀ 앞</button>' : ""}
+      ${run.offset + EVAL_PAGE < run.cases_total ? '<button class="btn-outline small" data-eval-page="next">뒤 ▶</button>' : ""}
+    </div>`;
+  return `
+    <div class="card"><h2>평가 실행 <span class="muted">최근 먼저 · ${esc(list.length)}개</span></h2><div class="eval-runs">${list.map(evalRunRow).join("")}</div></div>
+    <div class="card"><h2>${esc(run.suite)} · <span class="mono">${esc(run.id)}</span>
+      <span class="muted">${esc(time(run.started_at))} · 커밋 ${esc(run.commit ?? "-")}${run.git?.dirty ? " (고친 파일 있음)" : ""}${run.baseline ? " · 기준점" : ""}</span></h2>
+      <div class="muted small">시스템 ${esc(run.systems.join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
+    </div>
+    ${legacy}
+    ${trend ? `<div class="card"><h2>추세 · <span class="mono">${esc(trend.metric)}</span> <span class="muted">${esc(run.suite)} 실행별</span>
+      <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}</div>` : ""}
+    ${evalJudgeCard(run.judge_check)}
+    ${evalPairs(run.pairs)}
+    <div class="card"><h2>사례</h2>${filters}
+      ${run.cases.length ? run.cases.map(evalCaseCard).join("") : `<div class="empty">${evalView.failedOnly ? "실패한 사례가 없어요" : "사례가 없어요"}</div>`}</div>`;
+}
+
+async function onEvalClick(button) {
+  const { evalPick, evalMetric, evalFailed, evalSystem, evalPage, evalTrace } = button.dataset;
+  if (evalPick !== undefined) Object.assign(evalView, { id: evalPick, offset: 0, system: "", metric: null, open: new Set(), steps: {} });
+  if (evalMetric !== undefined) evalView.metric = evalMetric || null;
+  if (evalFailed !== undefined) Object.assign(evalView, { failedOnly: evalFailed === "on", offset: 0 });
+  if (evalSystem !== undefined) Object.assign(evalView, { system: evalSystem === "*" ? "" : evalSystem, offset: 0 });
+  if (evalPage) evalView.offset = Math.max(0, evalView.offset + (evalPage === "next" ? EVAL_PAGE : -EVAL_PAGE));
+  if (evalTrace) {
+    if (evalView.open.has(evalTrace)) evalView.open.delete(evalTrace);
+    else evalView.open.add(evalTrace);
+  }
+  const keep = window.scrollY;
+  content.innerHTML = await renderEval();
+  window.scrollTo(0, keep);
+}
+
+// 평가 탭 버튼은 아래 공통 클릭 처리(화면 전체 새로 그리기)보다 먼저 잡는다
+content.addEventListener("click", async (e) => {
+  const button = e.target.closest("button");
+  if (!button || !Object.keys(button.dataset).some((k) => k.startsWith("eval"))) return;
+  e.stopPropagation();
+  try {
+    await onEvalClick(button);
+  } catch (error) {
+    toast(error.message);
+  }
+}, true);

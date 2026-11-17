@@ -292,3 +292,22 @@ mark { background: #ffe58a; }
 .run-steps .step { display: grid; grid-template-columns: 34px 64px 150px 1fr; gap: 8px; align-items: baseline; }
 .run-steps .step.child { padding-left: 16px; }
 .run-steps .detail { color: var(--ink-3); word-break: break-all; }
+
+/* ── 평가 탭 ── */
+.eval-runs { max-height: 330px; overflow-y: auto; }
+.eval-run.picked { background: var(--brand-soft); border-radius: 8px; padding-left: 8px; padding-right: 8px; }
+.eval-filters { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.eval-filters .btn-outline.on { border-color: var(--brand); color: var(--brand); }
+.eval-io { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 900px) { .eval-io { grid-template-columns: 1fr; } }
+.eval-text { white-space: pre-wrap; font-size: 12px; line-height: 1.5; background: var(--bg); border-radius: 8px; padding: 8px 10px; }
+.eval-problems { margin: 2px 0; padding-left: 18px; font-size: 12px; color: var(--warn); }
+.eval-checks, .eval-votes { display: flex; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.eval-vote { background: var(--bg); border-radius: 6px; padding: 2px 8px; }
+.ok-mark { color: var(--ok); font-weight: 700; }
+.bad-mark { color: #c0392b; font-weight: 700; }
+.eval-trend { width: 100%; max-width: 760px; height: auto; display: block; }
+.eval-axis { font-size: 10px; fill: var(--ink-3); }
+.eval-legend { display: inline-flex; align-items: center; gap: 4px; margin-right: 10px; }
+.eval-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.eval-pre { font-family: var(--mono); font-size: 11px; background: var(--bg); border-radius: 8px; padding: 8px 10px; overflow-x: auto; max-height: 260px; }

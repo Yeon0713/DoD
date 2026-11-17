@@ -290,6 +290,7 @@ def last_json(text: str) -> dict | None:
 
 # ── 모델 오류 감시 ──
 
+CALL_FAILED = "호출 실패"  # 표 오류 앞말. 뒤에 (HTTP 429) 처럼 까닭을 붙인다
 _errors_lock = threading.Lock()
 _model_errors = 0
 
@@ -355,7 +356,9 @@ def one_vote(condition: Condition, judge_input: JudgeInput, *, mode: str, model:
         calls += 1
         _note_call(answer is None, model)
         if answer is None:
-            return Vote(ok=None, error="호출 실패", calls=calls, tokens=tokens)
+            status = _last_http_status()  # 429·5xx 는 --resume 때 다시 판정한다 (guards_eval.retryable)
+            return Vote(ok=None, error=f"{CALL_FAILED} (HTTP {status})" if status else f"{CALL_FAILED} (연결·시간 초과)",
+                        calls=calls, tokens=tokens)
         tokens = [tokens[0] + (answer.input_tokens or 0), tokens[1] + (answer.output_tokens or 0),
                   tokens[2] + (getattr(answer, "thinking_tokens", None) or 0)]
         if mode == "tools":

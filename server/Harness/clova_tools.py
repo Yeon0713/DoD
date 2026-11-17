@@ -189,7 +189,7 @@ def chat_with_tools(
             return None
         if response.status_code == 429 and attempt < limiter.RATE_LIMIT_RETRIES:
             _log(feature, model, store_id, started, "http_error", 429, None, request_text)
-            limiter.sleep(limiter.RATE_LIMIT_WAIT_SECONDS)
+            limiter.wait_after_429(response.headers)  # 헤더의 다시 부를 때를 따른다 (없으면 RATE_LIMIT_WAIT_SECONDS)
             continue
         if response.status_code == 400 and body.get("toolChoice", "auto") != "auto":
             name = body["toolChoice"]["function"]["name"]

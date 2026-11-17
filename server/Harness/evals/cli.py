@@ -177,6 +177,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="reply: 리뷰 분류를 정답으로 줄지(gold), 음성 라벨 규칙을 거칠지(rule, 끝까지 실행)")
     parser.add_argument("--path", choices=("server", "voice"), default="server",
                         help="reply: server(주 실험, reply_agent.draft 대 single_agent) 또는 voice(보조, voice_reply 대 voice_single_agent)")
+    parser.add_argument("--system-concurrency", default="",
+                        help="guards: 판정기마다 CLOVA 동시 호출 (예: judge_thinking=1). 적지 않은 판정기는 --concurrency")
     parser.add_argument("--system-runs", default="",
                         help="guards: 판정기마다 회차 (예: judge_tools=1,judge_thinking=1). 적지 않은 판정기는 --runs")
     parser.add_argument("--baseline", action="store_true",

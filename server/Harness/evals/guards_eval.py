@@ -62,7 +62,7 @@ import httpx
 
 from app.core.config import settings
 from app.review_reply_writer.write_reply_with_clova import rejection_reason
-from Harness import guards
+from Harness import guards, limiter
 from Harness.evals import derive, gold, judge, metrics, report
 
 QUESTION = 3
@@ -97,6 +97,8 @@ SECONDS_PER_CALL = {"critic": 2.0, "judge_tools": 3.7, "judge_thinking": 11.7}  
 
 CALL_TIMEOUT_SECONDS = 60  # 호출 하나 (httpx 제한 시간을 이보다 길게 두지 않는다)
 CASE_DEADLINE_SECONDS = 300  # 사례 하나에 쓰는 시간. 넘기면 다음 호출을 하지 않는다
+SYSTEM_DEADLINE_SECONDS = {"judge_thinking": 900}  # 추론 심판은 호출 하나가 길고(11.7초) 429 기다림도 있어 길게
+GUARDS_RATE_LIMIT_RETRIES = 4  # guards 실행 안에서만 429 뒤 다시 부르는 횟수 (서버 기본은 limiter.RATE_LIMIT_RETRIES)
 MAX_CALLS_PER_CASE = 40  # 사례 하나의 CLOVA 호출 상한 (심판 4조건 × 3표 × 2번 = 24, critic 최대 14)
 CONNECTION_FAILED = "연결 실패"
 
@@ -144,7 +146,7 @@ def parse_judges(text: str) -> list[str]:
     return list(dict.fromkeys(names))
 
 
-def parse_system_runs(text: str, names: list[str], default: int) -> dict[str, int]:
+def parse_system_runs(text: str, names: list[str], default: int, option: str = "--system-runs") -> dict[str, int]:
     """'judge_tools=1,judge_thinking=1' → 판정기마다 회차. 적지 않은 판정기는 default."""
     runs = {name: default for name in names}
     for part in (text or "").split(","):
@@ -153,9 +155,14 @@ def parse_system_runs(text: str, names: list[str], default: int) -> dict[str, in
         name, _, value = part.partition("=")
         name = name.strip()
         if name not in names or not value.strip().isdigit() or int(value) < 1:
-            raise JudgeUnavailable(f"--system-runs 는 고른 판정기({', '.join(names)})=1 이상의 수 모양이어야 해요 (받은 값: {part!r})")
+            raise JudgeUnavailable(f"{option} 는 고른 판정기({', '.join(names)})=1 이상의 수 모양이어야 해요 (받은 값: {part!r})")
         runs[name] = int(value)
     return runs
+
+
+def parse_system_concurrency(text: str, names: list[str], default: int) -> dict[str, int]:
+    """'judge_thinking=1' → 판정기마다 CLOVA 동시 호출. 적지 않은 판정기는 --concurrency."""
+    return parse_system_runs(text, names, default, option="--system-concurrency")
 
 
 # ── 세트 ──
@@ -306,7 +313,7 @@ RUNNERS: dict[str, Callable[..., Judgement]] = {
 def timed(name: str, case: dict, store: Store, post=None) -> Judgement:
     """판정 하나. 오류가 나도 나머지 사례는 계속 잰다 (심판 모델 오류 JudgeModelError 만 멈춘다)."""
     started = time.perf_counter()
-    guarded = GuardedPost(post) if name != "regex" else post
+    guarded = GuardedPost(post, deadline=SYSTEM_DEADLINE_SECONDS.get(name, CASE_DEADLINE_SECONDS)) if name != "regex" else post
     try:
         result = RUNNERS[name](case, store, guarded)
     except judge.JudgeModelError:
@@ -498,12 +505,14 @@ def planned_calls(cases: list[dict], names: list[str], runs: int | dict[str, int
 
 
 def evaluate(cases: list[dict], stores: dict[str, Store], names: list[str], *, runs: int | dict[str, int] = 1,
-             workers: int = 1, post=None,
+             workers: int = 1, post=None, concurrency: dict[str, int] | None = None,
              on_case: Callable[[str, int, dict], None] | None = None,
              on_system: Callable[[str, list[dict]], None] | None = None,
              done: list[dict] | None = None) -> dict:
     """판정하고 채점한다. {"metrics", "cases", "by_kind", "flaky", "critic_target", "judge"}.
-    done 은 이미 끝난 줄 (이어 돌리기). 그 (판정기, 회차, 사례)는 다시 판정하지 않는다."""
+    done 은 이미 끝난 줄 (이어 돌리기). 그 (판정기, 회차, 사례)는 다시 판정하지 않는다.
+    concurrency 는 판정기마다 CLOVA 동시 호출 (그 판정기를 도는 동안만 limiter 를 바꾸고, 일꾼 수도 그 이하로 줄인다.
+    줄이지 않으면 자리를 기다리는 동안 사례 제한 시간이 흐른다)."""
     finished = defaultdict(list)
     for row in done or []:
         finished[row["system"]].append(row)
@@ -523,13 +532,22 @@ def evaluate(cases: list[dict], stores: dict[str, Store], names: list[str], *, r
 
         jobs = [(run, case) for run in range(1, _runs_of(runs, name) + 1) for case in cases
                 if (run, case["case_id"]) not in skip]
-        if name == "regex" or workers <= 1:
-            for run, case in jobs:
-                one(run, case)
-        else:
-            with ThreadPoolExecutor(max_workers=workers) as pool:  # CLOVA 동시 호출은 limiter 가 막는다
-                for future in [pool.submit(one, run, case) for run, case in jobs]:
-                    future.result()
+        limit = (concurrency or {}).get(name)
+        saved_limit = limiter.MAX_CONCURRENT
+        n_workers = min(workers, limit) if limit else workers
+        if limit:
+            limiter.set_max_concurrent(limit)
+        try:
+            if name == "regex" or n_workers <= 1:
+                for run, case in jobs:
+                    one(run, case)
+            else:
+                with ThreadPoolExecutor(max_workers=n_workers) as pool:  # CLOVA 동시 호출은 limiter 가 막는다
+                    for future in [pool.submit(one, run, case) for run, case in jobs]:
+                        future.result()
+        finally:
+            if limit:
+                limiter.set_max_concurrent(saved_limit)
         rows.sort(key=lambda r: (r["run"], r["case_id"]))
         all_rows.extend(rows)
         all_metrics.extend(score(name, rows))
@@ -559,12 +577,14 @@ def build_cases(args: argparse.Namespace) -> tuple[list[dict], dict[str, list[di
     return cases, sets, (path, sha)
 
 
-def print_plan(cases: list[dict], names: list[str], runs: int | dict[str, int], concurrency: int) -> dict:
+def print_plan(cases: list[dict], names: list[str], runs: int | dict[str, int], concurrency: int | dict[str, int]) -> dict:
     counts = Counter(case["set"] for case in cases)
-    print(f"사례 {len(cases)}건 ({', '.join(f'{k} {v}' for k, v in counts.items())}), CLOVA 동시 호출 {concurrency}")
+    by_system = concurrency if isinstance(concurrency, dict) else {name: concurrency for name in names}
+    shown = ", ".join(f"{name} {by_system[name]}" for name in names if name != "regex")
+    print(f"사례 {len(cases)}건 ({', '.join(f'{k} {v}' for k, v in counts.items())}), CLOVA 동시 호출 {shown or '-'}")
     plan = planned_calls(cases, names, runs)
     for name, p in plan.items():
-        seconds = p["typical"] * SECONDS_PER_CALL.get(name, 0) / max(1, concurrency)
+        seconds = p["typical"] * SECONDS_PER_CALL.get(name, 0) / max(1, by_system.get(name, 1))
         p["seconds"] = round(seconds)
         print(f"  {name:15s} 회차 {p['runs']}  예상 호출 {p['typical']:6d} (최대 {p['max']:6d}), 예상 {seconds / 60:5.0f}분")
     return plan
@@ -575,10 +595,12 @@ def run(args: argparse.Namespace):
     names = args.system_names
     try:
         runs = parse_system_runs(getattr(args, "system_runs", ""), names, args.runs)
+        concurrency = parse_system_concurrency(getattr(args, "system_concurrency", ""), names, args.concurrency)
     except JudgeUnavailable as error:
         raise SystemExit(str(error)) from None
+    args.concurrency_by_system = concurrency
     cases, sets, (path, sha) = build_cases(args)
-    plan = print_plan(cases, names, runs, args.concurrency)
+    plan = print_plan(cases, names, runs, concurrency)
     if args.dry_run:
         return plan
     restore_cache = report.disable_cache()  # 같은 답글을 3번 판정해도 매번 새로 부르게. 끝나면 되돌린다
@@ -603,12 +625,36 @@ def read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
+TRANSIENT_HTTP = ("HTTP 429", "HTTP 5")  # 다시 부르면 될 수 있는 응답 (한도 초과, 서버 오류)
+
+
+def _vote_errors(row: dict) -> list[str]:
+    return [str(e) for verdict in (row.get("verdicts") or {}).values() if isinstance(verdict, dict)
+            for e in verdict.get("errors") or []]
+
+
+def retryable(row: dict) -> bool:
+    """--resume 때 다시 판정할 줄: 연결 실패, 사례 제한 시간 초과, 그리고 표가 429·5xx·연결·시간 초과로 판단 불가가 된 줄.
+    예전 기록은 표 오류가 까닭 없이 '호출 실패' 뿐이다. 400·404 는 모델 오류로 멈추므로 남은 '호출 실패'는 거의 429 라 다시 판정한다."""
+    error = str(row.get("error") or "")
+    if error.startswith(CONNECTION_FAILED) or "제한 시간" in error:
+        return True
+    if row.get("outcome") != "unknown":
+        return False
+    for text in _vote_errors(row):
+        if not text.startswith(judge.CALL_FAILED):
+            continue
+        if text == judge.CALL_FAILED or "연결·시간 초과" in text or any(code in text for code in TRANSIENT_HTTP):
+            return True
+    return False
+
+
 def resumable(rows: list[dict]) -> list[dict]:
-    """다시 판정하지 않을 줄: 연결이 끊겨 판단 불가가 된 줄은 빼고, 같은 (판정기, 회차, 사례)는 마지막 줄만."""
+    """다시 판정하지 않을 줄: 다시 부르면 될 까닭(retryable)으로 판단 불가가 된 줄은 빼고, 같은 (판정기, 회차, 사례)는 마지막 줄만."""
     keep = {}
     for row in rows:
         key = (row["system"], row["run"], row["case_id"])
-        if str(row.get("error") or "").startswith(CONNECTION_FAILED):
+        if retryable(row):
             keep.pop(key, None)
         else:
             keep[key] = row
@@ -640,6 +686,7 @@ def _run(args, names, runs, cases, sets, path, sha, plan):
     prompts = sorted(CRITIC_PROMPTS.glob("*_judge.txt")) + sorted(judge.PROMPTS_DIR.glob("*.txt"))
     config = {"model": settings.clova_studio_model, "judge_model": settings.eval_judge_model, "judge_votes": judge.VOTES,
               "runs": runs, "concurrency": args.concurrency, "workers": args.workers,
+              "system_concurrency": getattr(args, "concurrency_by_system", {}), "rate_limit_retries": GUARDS_RATE_LIMIT_RETRIES,
               "judge_modes": [JUDGE_MODES[n] for n in names if n in JUDGE_MODES], "judge_gold_reply": False,
               "gold_verified": False, "normal_verified": False, "sets": dict(Counter(case["set"] for case in cases)),
               "planned_calls": plan, "prompts": report.prompt_hashes(prompts)}
@@ -668,8 +715,18 @@ def _run(args, names, runs, cases, sets, path, sha, plan):
 
     partial: dict = {"metrics": [], "cases": [], "by_kind": {}, "flaky": {}, "judge": {}}
 
+    waits_before = [limiter.rate_limit_snapshot()]
+
     def on_system(name: str, rows: list[dict]) -> None:
         # 판정기 하나가 끝날 때마다 result.json 을 쓴다 (긴 실행이 중간에 멈춰도 끝난 것은 남는다)
+        now = limiter.rate_limit_snapshot()  # 판정기는 차례로 돌아서 앞뒤 차이가 그 판정기의 429 기다림이다
+        waited = {"waits": now["waits"] - waits_before[0]["waits"], "seconds": round(now["seconds"] - waits_before[0]["seconds"], 1)}
+        waits_before[0] = now
+        eval_run.config.setdefault("rate_limit_waits", {})[name] = waited
+        if limiter.first_rate_limit_headers is not None:
+            eval_run.config["rate_limit_headers"] = limiter.first_rate_limit_headers
+        if waited["waits"]:
+            print(f"  {name}: 429 기다림 {waited['waits']}번, {waited['seconds']}초", flush=True)
         partial["metrics"].extend(score(name, rows))
         partial["cases"].extend(rows)
         partial["by_kind"][name] = by_kind(rows)
@@ -686,7 +743,13 @@ def _run(args, names, runs, cases, sets, path, sha, plan):
         eval_run.finish()
         print(f"  {name} 끝 ({sum(row['seconds'] for row in rows):.0f}초 합)", flush=True)
 
-    evaluate(cases, stores, names, runs=runs, workers=args.workers, on_case=on_case, on_system=on_system, done=done)
+    saved_retries = limiter.RATE_LIMIT_RETRIES
+    limiter.RATE_LIMIT_RETRIES = GUARDS_RATE_LIMIT_RETRIES
+    try:
+        evaluate(cases, stores, names, runs=runs, workers=args.workers, on_case=on_case, on_system=on_system, done=done,
+                 concurrency=getattr(args, "concurrency_by_system", None))
+    finally:
+        limiter.RATE_LIMIT_RETRIES = saved_retries
     out = eval_run.finish()
     print(f"result.json: {out}")
     return out

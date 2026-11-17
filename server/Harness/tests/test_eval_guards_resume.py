@@ -78,7 +78,7 @@ def test_resumable_drops_connection_failures_and_keeps_last_row():
         {"system": "critic", "run": 2, "case_id": "a", "error": None, "outcome": "pass"},
     ]
     kept = {(row["run"], row["case_id"]) for row in guards_eval.resumable(rows)}
-    assert kept == {(1, "a"), (1, "c"), (2, "a")}  # 연결 실패만 다시 판정한다
+    assert kept == {(1, "a"), (2, "a")}  # 연결 실패와 사례 제한 시간 초과는 다시 판정한다
 
 
 def test_evaluate_skips_done_rows():

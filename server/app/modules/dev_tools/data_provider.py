@@ -372,6 +372,7 @@ AGENT_NAMES = {
     "reply_agent": "리뷰 응대", "reply_agent_rewrite": "답글 다시 쓰기", "complaint_agent": "반복 불만 원인",
     "campaign_agent": "상황 마케팅", "supervisor": "알림 묶음 조율",
     "voice_reply": "음성 · 답글", "voice_improve_tip": "음성 · 고칠 점", "voice_intent": "음성 · 뜻 판정",
+    "single_agent": "단일 에이전트(비교용)", "voice_single_agent": "음성 · 단일 에이전트(비교용)",
 }
 
 

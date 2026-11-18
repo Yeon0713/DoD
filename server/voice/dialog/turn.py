@@ -212,6 +212,11 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if session.get("mode") == "ended":
             return _go(brief, session, None)
         return _go(brief, session, _after(brief, step) if step else _after(brief, None, inclusive=True))
+    if name == "detail.read" and intent.jump_to:  # "아쉬운 리뷰 읽어 줘": 그 단계로 옮겨 첫 리뷰를 읽는다
+        if brief["steps"].get(intent.jump_to) and brief["details"].get(intent.jump_to):
+            session.update(step=intent.jump_to, mode="detail")
+            return {**copy.deepcopy(brief["details"][intent.jump_to]["read"]), "briefing": _gauge(intent.jump_to)}
+        name = "briefing.jump"  # 읽을 리뷰가 없으면 그 단계로만 옮긴다 (허락 질문 등)
     if name == "briefing.jump":
         target = intent.jump_to if intent.jump_to in STEP_KEYS else "reviews"
         if not brief["steps"].get(target) and not (target == "reviews" and brief["steps"].get("negative")):

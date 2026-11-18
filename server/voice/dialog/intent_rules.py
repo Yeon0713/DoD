@@ -31,6 +31,8 @@ BACK_RE = re.compile(r"돌아가|뒤로|닫아|^됐어")
 READ_RE = re.compile(r"읽어")
 RESTART_RE = re.compile(r"처음부터")
 REPEAT_RE = re.compile(r"다시말해|뭐라고|못들었|다시한번|한번더|다시들려|다시얘기|잘못들었")
+# 아쉬운 리뷰의 내용을 묻는 말 ("아쉬운 리뷰 읽어 줘", "아쉬운 리뷰 뭐라고 썼어?"). 아쉬운 리뷰로 옮겨 첫 리뷰를 읽는다
+CONTENT_RE = re.compile(r"내용|읽어|뭐라고")
 SHOW_RE = re.compile(r"화면에?(보여|띄워|좀|봐)|화면에|자세히")  # "화면 보여 줘"처럼 조사가 빠져도
 NEXT_RE = re.compile(r"^(응|어|오케이|그래)?(다음|넘어가|계속|그다음|다음거|다음꺼|다음으로|넘겨)(줘|요|해|해줘|가자|하자)?$")
 START_RE = re.compile(r"브리핑|오늘뭐있|오늘뭐해|오늘일정")
@@ -214,6 +216,12 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
             return found("permission.no")
         if YES_RE.search(n) and "아니" not in n:
             return found("permission.yes")
+    target = jump_target(n)
+    if target == "negative" and CONTENT_RE.search(n):
+        return found("detail.read", "negative")
+    on_screen = last_type == "show_detail" and target == "reviews"  # 띄운 리뷰를 "손님 리뷰 읽어 줘"라고 부를 때
+    if target and not on_screen and (REPEAT_RE.search(n) or READ_RE.search(n)):
+        return None  # 대상(리뷰 등)을 말했으면 다시 말하기·지금 화면 읽기로 정하지 않는다 ("리뷰 뭐라고 했어?")
     if last_type == "show_detail":
         if READ_RE.search(n):
             return found("detail.read")
@@ -231,7 +239,6 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("detail.back")
     if NEXT_RE.search(n):
         return found("briefing.next")
-    target = jump_target(n)
     if target and (JUMP_TAIL_RE.search(n) or n in ("리뷰", "답글", "좋은리뷰", "아쉬운리뷰", "예약답글")):
         return found("briefing.jump", target)
     if START_RE.search(n):

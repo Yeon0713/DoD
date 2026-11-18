@@ -103,3 +103,21 @@ def test_ask_action(text, addressed, intent, edits):
 def test_called_question_and_unaddressed_guess(text, addressed, intent):
     found = match(text, None, addressed)
     assert (found.name if found else None) == intent
+
+
+# 대상(리뷰 등)을 같이 말하면 다시 말하기·지금 화면 읽기로 정하지 않는다. 아쉬운 리뷰 내용을 물으면 그리로 옮겨 첫 리뷰를 읽는다
+@pytest.mark.parametrize("text, last_type, intent, jump_to", [
+    ("아쉬운 리뷰 읽어줘", None, "detail.read", "negative"),
+    ("아쉬운 리뷰 읽어줘", "show_detail", "detail.read", "negative"),
+    ("아쉬운 리뷰 뭐라고 썼어?", "answer", "detail.read", "negative"),
+    ("아쉬운 리뷰 내용 좀 알려줘", None, "detail.read", "negative"),
+    ("리뷰 뭐라고 했어?", "answer", None, None),  # 판정 에이전트에 맡긴다
+    ("다시 말해 줘", "answer", "briefing.repeat", None),
+    ("읽어 줘", "show_detail", "detail.read", None),
+    ("손님 리뷰 읽어 줘", "show_detail", "detail.read", None),  # 띄운 리뷰를 읽는 말
+    ("리뷰 읽어 줘", "answer", None, None),
+])
+def test_target_with_repeat_or_read(text, last_type, intent, jump_to):
+    found = match(text, last_type, addressed=True)
+    assert (found.name if found else None) == intent
+    assert (found.jump_to if found else None) == jump_to

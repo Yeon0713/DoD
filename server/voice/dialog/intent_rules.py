@@ -9,6 +9,8 @@
    - 고치는 말("쿠폰 빼고", "사과만", "카드는 넣지 마")을 먼저 본다. 올리라는 말이 같이 있으면 고친 뒤 바로 올린다(action.approve).
    - 승인은 문장 전체가 승인 말일 때만 ("응, 진행해", "그렇게 해", "올려"). "응 그거 냉장고에 넣어"는 승인이 아니다.
    - "도나야" 없이 "네", "예", "어"만 들리면 손님에게 한 대답일 수 있어 다시 묻는다 (action.unclear).
+6. 알바생 일 (2026-11-18, voice/staff_orders.py): 시키기·다 했대?·취소·초대·내보내기·카톡 보내기·누구 있어?·매뉴얼.
+   도나가 "보낼까요?"처럼 물은 뒤(ask_staff)의 "응"/"아니"는 staff.yes / staff.no. 시키는 말("…라고 해")을 다른 말보다 먼저 본다.
 """
 
 import re
@@ -64,6 +66,26 @@ APPROVE_RE = re.compile(
 )
 BARE_YES = {"네", "예", "어", "네네", "예예", "네에"}
 
+# 알바생 (2026-11-18, voice/staff_orders.py). 띄어쓰기를 지운 말(normalize)에 맞춘다.
+#   staff.order   "하린이한테 감자전 반죽에 전분 한 숟갈 더 넣으라고 해" (D-17), "오늘은 장칼국수 주문 받지 말라고 해" (D-20)
+#   staff.remove  "정우 초대 끊어 줘", "정우 내보내 줘"        staff.invite  "하린이 초대해 줘" (D-04)
+#   staff.share   "카카오톡으로 보내 줘"                       staff.status  "시킨 거 다 했대?" (D-24)
+#   staff.cancel  "그거 취소해" (D-33)                         staff.list    "알바생 누구 있어?", "오늘 누구 나왔어?" (D-30)
+#   staff.manual  "알바생 매뉴얼 보여 줘" (D-06)
+#   staff.daily  "오늘만 할까요, 매일 할까요?"에 "매일" (매뉴얼에 넣는다)
+#   staff.yes / staff.no  도나가 "보낼까요?", "카카오톡으로 보낼까요?"처럼 물은 뒤(ask_staff)의 대답
+STAFF_ORDER_RE = re.compile(r"(으?라고|말라고)(좀)?(해|전해|말해|얘기해|알려|일러)|라고.*매뉴얼에(넣|추가)")
+STAFF_REMOVE_RE = re.compile(r"초대(를|는)?(끊|취소|없애|막아)|내보내|그만뒀|그만둔|잘라")
+STAFF_INVITE_RE = re.compile(r"초대(해|하자|할게|좀|코드|해줘|보내)|초대$")
+STAFF_SHARE_RE = re.compile(r"(카톡|카카오톡|카카오)(으로|로)?(보내|공유|전해)")
+STAFF_STATUS_RE = re.compile(r"(시킨|보낸)(거|것|일)(은|는)?(다)?(했|어떻게)|다했(대|어|나|냐|니|는지)|했대")
+STAFF_CANCEL_RE = re.compile(r"취소|없던걸로|지워줘|보내지마")
+STAFF_LIST_RE = re.compile(r"알바(생)?(들)?(은|는)?(누구|몇명|누가|명단)|누구(누구)?나왔|누가나왔|오늘나온(사람|알바)|출근한(사람|알바)")
+STAFF_MANUAL_RE = re.compile(r"매뉴얼")
+STAFF_TODAY_RE = re.compile(r"^(응|어|그래|네|예)?(오늘만|오늘하루만?|오늘)(해|해줘|보내|보내줘|요|이요)?$")  # 문장 전체가 대답일 때만
+STAFF_DAILY_RE = re.compile(r"^(응|어|그래|네|예)?(매일|앞으로|맨날|항상|계속|매뉴얼)")
+STAFF_SEND_RE = re.compile(r"^(응|어|그래|좋아|네|예)?(카톡|카카오톡)?(으로|로)?(보내|보내줘|보내요|공유해|공유해줘)")
+
 
 @dataclass
 class Intent:
@@ -72,6 +94,7 @@ class Intent:
     jump_to: str | None = None
     by: str = "rule"  # rule | llm | heuristic
     edits: dict | None = None  # action.*: {"drop_compensation": bool, "no_card": bool}
+    slots: dict | None = None  # staff.* 를 LLM 이 가른 때: {"staff_name", "task_title", "task_repeat", "task_kind"}
 
 
 def normalize(text: str) -> str:
@@ -125,6 +148,18 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
             return found("detail.read")
         if BACK_RE.search(n):
             return found("detail.back")
+    if last_type == "ask_staff":
+        if STAFF_DAILY_RE.search(n) and "아니" not in n:
+            return found("staff.daily")  # "오늘만 할까요, 매일 할까요?" 에 "매일"
+        if NO_RE.search(n):
+            return found("staff.no")
+        if STAFF_TODAY_RE.search(n):
+            return found("staff.yes")  # "오늘만 할까요, 매일 할까요?" 에 "오늘만"
+        if (YES_RE.search(n) or STAFF_SEND_RE.search(n) or STAFF_SHARE_RE.search(n)) and "아니" not in n and not STAFF_ORDER_RE.search(n):
+            return found("staff.yes")
+    staff = match_staff(n)
+    if staff:
+        return found(staff)
     if RESTART_RE.search(n):
         return found("briefing.restart")
     if REPEAT_RE.search(n):
@@ -147,6 +182,16 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
     for pattern, tab in NAVIGATE:
         if pattern.search(n):
             return found(f"navigate.{tab}")
+    return None
+
+
+def match_staff(n: str) -> str | None:
+    """알바생에 관한 말이면 그 뜻 이름. 시키는 말을 먼저 본다 ("예약 취소하라고 해"는 취소가 아니라 시키기)."""
+    for pattern, name in ((STAFF_ORDER_RE, "staff.order"), (STAFF_REMOVE_RE, "staff.remove"), (STAFF_INVITE_RE, "staff.invite"),
+                          (STAFF_SHARE_RE, "staff.share"), (STAFF_STATUS_RE, "staff.status"), (STAFF_CANCEL_RE, "staff.cancel"),
+                          (STAFF_LIST_RE, "staff.list"), (STAFF_MANUAL_RE, "staff.manual")):
+        if pattern.search(n):
+            return name
     return None
 
 

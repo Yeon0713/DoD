@@ -13,7 +13,8 @@ from fastapi.testclient import TestClient
 from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
-from voice import clock, config, context, tts
+from voice import clock, config, context, prepared_snapshot, stt, tts
+from voice.dialog import echo
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
 
@@ -34,13 +35,17 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "DB_PATH", tmp_path / "voice.db")
     monkeypatch.setattr(clova_usage_log, "LOG_PATH", tmp_path / "clova_usage.db")
     monkeypatch.setattr(trace, "TRACE_PATH", tmp_path / "harness_trace.db")
+    monkeypatch.setattr(cache, "CACHE_PATH", None)  # 에이전트 결과 캐시는 메모리만 (진짜 캐시 파일을 읽거나 쓰지 않는다)
     monkeypatch.setattr(settings, "clova_studio_api_key", "")
     monkeypatch.setattr(limiter, "sleep", lambda seconds: None)
     monkeypatch.setattr(runner, "clock", lambda: 0.0)
     monkeypatch.setattr(context, "post", NoClova())
     monkeypatch.setattr(config, "DEMO_FIXTURE", "")  # 켤 때 시연 가게를 넣지 않는다
     monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
+    monkeypatch.setattr(stt, "ENABLED", False)  # 받아 적기 모델도 (test_stt.py 는 가짜 모델로 켠다)
+    monkeypatch.setattr(prepared_snapshot, "ENABLED", False)  # 밤사이 준비 저장본(실제 CLOVA 답글)을 쓰지 않고 늘 새로 준비한다
     cache.clear()
+    echo.forget()  # 도나가 한 말 기억 (시험마다 새로)
     clock.set_now(None)
     yield
     clock.set_now(None)
@@ -130,6 +135,7 @@ class Choongjang(Donna):
     def __init__(self):
         super().__init__()
         self.session_id = "sess_20261117_s005"
+        self.tokens: dict[str, str] = {}
 
     def get(self, path: str, **params) -> dict:
         response = self.client.get(path, params={"store_id": "s005", **params})
@@ -159,13 +165,31 @@ class Choongjang(Donna):
         assert response.status_code == 200, response.text
         return response.json()["review_id"]
 
+    def staff_token(self, staff_id: str) -> str:
+        """가입한 알바생의 로그인 표시 (시험에서는 서버가 바로 준다)."""
+        from voice import staff
+
+        if staff_id not in self.tokens:
+            self.tokens[staff_id] = staff.issue_token(staff_id)
+        return self.tokens[staff_id]
+
+    def as_staff(self, staff_id: str) -> dict:
+        return {"X-Staff-Token": self.staff_token(staff_id)}
+
     def staff_today(self, staff_id: str = "st_harin") -> dict:
-        response = self.client.get("/v1/staff/today", params={"staff_id": staff_id})
+        response = self.client.get("/v1/staff/today", headers=self.as_staff(staff_id))
         assert response.status_code == 200, response.text
         return response.json()
 
-    def staff_post(self, path: str, **body):
-        return self.client.post(f"/v1/staff{path}", json=body)
+    def staff_post(self, path: str, staff_id: str | None = None, **body):
+        """staff_id 를 주면 그 알바생으로 로그인한 요청 (X-Staff-Token)."""
+        return self.client.post(f"/v1/staff{path}", json=body, headers=self.as_staff(staff_id) if staff_id else {})
+
+    def join(self, name: str = "하린") -> str:
+        """초대·가입을 건너뛰고 가입한 상태로 (개발자 모드 '하린 바로 가입'과 같다). 알바생 번호를 돌려준다."""
+        joined = self.client.post("/v1/dev/staff_join", json={"store_id": "s005", "name": name}).json()
+        self.tokens[joined["staff_id"]] = joined["token"]
+        return joined["staff_id"]
 
     def open_notice(self) -> dict:
         """앱처럼: 알림을 읽고, 묻는 알림이면 turn(event: notice)로 연다."""
@@ -175,13 +199,15 @@ class Choongjang(Donna):
 
 
 def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00") -> Choongjang:
-    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 할 일 화면을 연다 (출근)."""
+    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 가입한 뒤 할 일 화면을 연다 (출근).
+    at=None 이면 하린은 아직 안 들어온 상태 그대로다 (2026-11-18 픽스처: 시연에서 초대한다)."""
     donna = Choongjang()
     assert donna.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang"}).json()["store_id"] == "s005"
     if permission is not None:
         donna.settings(permission)
     if at:
         donna.clock(at)
+        donna.join("하린")
         donna.staff_today("st_harin")
         donna.notices()  # 그때까지 쌓인 알림은 비운다
     return donna

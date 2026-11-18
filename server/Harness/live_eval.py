@@ -115,6 +115,7 @@ def run(runs: int, only: list[str] | None, workers: int = 4) -> dict:
     results: dict[str, list[dict]] = {name: [] for name in cases}
     cache.clear()
     cache.get = lambda key: None  # 측정 중에는 캐시를 쓰지 않는다
+    cache.CACHE_PATH = None  # 파일 캐시도 (측정 결과가 실제 캐시 파일에 쌓이지 않게)
 
     def one(n: int, name: str) -> None:
         post = CountingPost()

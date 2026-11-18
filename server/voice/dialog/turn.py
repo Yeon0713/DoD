@@ -16,10 +16,10 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 import copy
 import datetime as dt
 
-from voice import activity, clock, repo, speech, width
+from voice import activity, clock, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
-from voice.dialog import intent_rules
+from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.jobs import briefing as briefing_job
 from voice.jobs import review_loop
@@ -33,6 +33,7 @@ SITUATIONS = {
     "answer": "도나가 브리핑 중이에요",
     "end": "브리핑이 끝났어요",
     "ask_action": "도나가 '아쉬운 리뷰에 사과 답글을 올리고, 알바생 할 일에 고칠 것을 넣을까요?' 하고 물었어요",
+    "ask_staff": "도나가 알바생 일로 '보낼까요?', '초대할까요?', '카카오톡으로 보낼까요?' 하고 물었어요",
 }
 
 
@@ -51,7 +52,9 @@ def understand(text: str, session: dict, view, addressed: bool = False) -> Inten
     judged = intent_judge.judge(view, text, SITUATIONS.get(session.get("last_type") or "", "도나는 듣고만 있어요"))
     if judged and not (addressed and judged["intent"] == "not_for_donna"):
         edits = intent_rules.edits_in(intent_rules.normalize(text)) if judged["intent"].startswith("action.") else None
-        return Intent(judged["intent"], judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm", edits=edits)
+        slots = {k: judged[k] for k in intent_judge.STAFF_SLOTS if judged.get(k)} if judged["intent"].startswith("staff.") else None
+        return Intent(judged["intent"], judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm",
+                      edits=edits, slots=slots or None)
     return intent_rules.heuristic(text, addressed)
 
 
@@ -103,7 +106,7 @@ def _prefixed(response: dict, text: str) -> dict:
 
 def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
     name = intent.name
-    if name == "not_for_donna":
+    if name in ("not_for_donna", "echo"):  # echo: 도나가 한 말이 마이크로 다시 들어온 것 (dialog/echo.py)
         return empty("ignore")
     if name == "unknown":
         return empty("not_understood")
@@ -118,6 +121,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if name == "action.repeat":
             name = "notice.open"
         return {**review_loop.decide(view, name, intent.edits, session.get("alert_id")), "keep_context": "ask_action"}
+    if name.startswith("staff."):  # 알바생 일 (voice/staff_orders.py). 브리핑과 상관없이
+        return staff_orders.handle(view, intent, session)
     if brief is None:
         return _not_ready()
 
@@ -218,7 +223,10 @@ def handle(request: dict) -> dict:
             session["last_type"] = "ask_action"
         if session.get("last_type") != "ask_action":
             session.pop("alert_id", None)
-        intent = understand(utterance["text"], session, view, addressed)
+        if echo.is_echo(store_id, utterance["text"]):
+            intent = Intent("echo", intent_rules.tidy(utterance["text"]))
+        else:
+            intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
     response = dispatch(intent, session, brief, view)
@@ -233,7 +241,9 @@ def handle(request: dict) -> dict:
         **({"permission": response["permission"]} if response.get("permission") else {}),
         **({"action": response["action"]} if response.get("action") else {}),
         **({"tab": response["tab"]} if response.get("tab") else {}),
+        **({"open": response["open"]} if response.get("open") else {}),
     }
+    echo.remember(store_id, [item["text"] for item in response["say"]])  # 이 말이 마이크로 다시 들어오면 흘려듣는다
     session["last_turn_id"] = response["turn_id"]
     repo.put("session", session_id, store_id, session)
     repo.put("turn", turn_key, store_id, {"request": request, "response": response})

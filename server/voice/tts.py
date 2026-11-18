@@ -1,10 +1,18 @@
-"""도나 목소리 (TTS). Qwen3-TTS CustomVoice 의 Sohee 에 '도나 목소리 설계'(INSTRUCT)를 얹어 이 컴퓨터에서 만든다 (MLX).
+"""도나 목소리 (TTS). 이 컴퓨터에서 만든다. 엔진은 VOICE_TTS_ENGINE 으로 고른다.
+
+  cosyvoice (기본, 2026-11-18)  CosyVoice 2 (0.5B). 서버 가상환경과 라이브러리가 부딪혀 따로 도는 서비스
+                                (server/cosyvoice_service, conda 환경 donna-cosyvoice, http://127.0.0.1:8110)에 글을 보내 wav 를 받는다.
+                                목소리는 본보기 녹음(prompt/donna_prompt.wav: 예전 Qwen3-TTS Sohee + 도나 목소리 설계)을 따라 한다.
+                                서비스가 꺼져 있으면 앱이 기기 목소리로 읽는다.
+  qwen3                         Qwen3-TTS CustomVoice 의 Sohee 에 '도나 목소리 설계'(INSTRUCT)를 얹어 MLX 로 바로 만든다 (예전 방식).
 
 - 무겁다: M1 에서 문장 길이의 약 3배 시간이 걸린다. 그래서 브리핑을 준비할 때 도나가 할 말을 미리 만들어
   디스크(db/app_data/voice_tts/)에 둔다 (prewarm). 한 번 만든 문장은 다시 만들지 않는다.
 - GET /v1/tts?text= : 만들어 둔 것이 있으면 wav 를 준다. 없으면 204 를 주고 맨 앞 차례로 만든다.
   앱은 204 면 그 문장만 기기 목소리로 읽는다.
-- mlx-audio 가 없거나 GPU(Metal)를 못 쓰면 꺼진다. VOICE_TTS=false 로도 끈다. 그때 앱은 기기 목소리로 읽는다.
+- qwen3: mlx-audio 가 없거나 GPU(Metal)를 못 쓰면 꺼진다. cosyvoice: 서비스가 안 켜져 있으면 쉰다.
+  VOICE_TTS=false 로도 끈다. 그때 앱은 기기 목소리로 읽는다.
+- 만든 소리는 (엔진, 모델, 목소리, 글)마다 따로 둔다. 엔진이나 본보기 목소리를 바꾸면 저절로 새로 만든다.
 - 모든 생성은 스레드 하나에서 차례로 한다 (모델은 한 번만 올린다).
 
 도나 목소리 설계 (docs/donna-voice-design.md)
@@ -26,7 +34,12 @@ from voice import config, speech
 
 logger = logging.getLogger(__name__)
 
-MODEL = os.environ.get("VOICE_TTS_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit")
+ENGINE = os.environ.get("VOICE_TTS_ENGINE", "cosyvoice").lower()
+COSYVOICE_URL = os.environ.get("VOICE_TTS_COSYVOICE_URL", "http://127.0.0.1:8110").rstrip("/")
+COSYVOICE_PROMPT = Path(__file__).resolve().parents[1] / "cosyvoice_service" / "prompt" / "donna_prompt.wav"
+COSYVOICE_TIMEOUT = 300  # CPU 로 돌아 긴 문장은 수십 초 걸린다 (만드는 스레드 안에서만 기다린다)
+MODEL = "FunAudioLLM/CosyVoice2-0.5B" if ENGINE == "cosyvoice" else os.environ.get(
+    "VOICE_TTS_MODEL", "mlx-community/Qwen3-TTS-12Hz-1.7B-CustomVoice-8bit")
 SPEAKER = os.environ.get("VOICE_TTS_SPEAKER", "sohee")
 INSTRUCT = os.environ.get(
     "VOICE_TTS_INSTRUCT",
@@ -78,8 +91,16 @@ def spoken(text: str) -> str:
     return text
 
 
+def _voice_id() -> str:
+    """엔진마다 목소리를 가르는 값. CosyVoice 는 본보기 녹음이 곧 목소리라 그 파일 내용으로 가른다."""
+    if ENGINE != "cosyvoice":
+        return f"{MODEL}|{SPEAKER}|{INSTRUCT}"
+    prompt = hashlib.sha1(COSYVOICE_PROMPT.read_bytes()).hexdigest()[:12] if COSYVOICE_PROMPT.exists() else "no-prompt"
+    return f"cosyvoice|{MODEL}|{prompt}"
+
+
 def key(text: str) -> str:
-    return hashlib.sha1(f"{MODEL}|{SPEAKER}|{INSTRUCT}|{spoken(text)}".encode()).hexdigest()
+    return hashlib.sha1(f"{_voice_id()}|{spoken(text)}".encode()).hexdigest()
 
 
 def cached(text: str) -> Path | None:
@@ -130,6 +151,8 @@ class _Worker:
                 self.make(text)
             except Exception as error:  # 모델을 못 올리면 끈다. 앱은 기기 목소리로 읽는다
                 logger.exception("도나 목소리를 만들지 못했어요")
+                if ENGINE == "cosyvoice":  # 따로 도는 서비스라 나중에 켜질 수 있다. 끄지 않고 이 문장만 넘긴다
+                    continue
                 if self.model is None:
                     self.error = str(error)
                     with self.cond:
@@ -137,6 +160,9 @@ class _Worker:
                         self.queued.clear()
 
     def make(self, text: str) -> None:
+        if ENGINE == "cosyvoice":
+            self.make_with_cosyvoice(text)
+            return
         import numpy as np
 
         if self.model is None:
@@ -158,12 +184,46 @@ class _Worker:
         self.made += 1
 
 
+    def make_with_cosyvoice(self, text: str) -> None:
+        """CosyVoice 2 서비스에 글을 보내 받은 wav 를 그대로 둔다."""
+        import httpx
+
+        response = httpx.post(f"{COSYVOICE_URL}/tts", json={"text": spoken(text)}, timeout=COSYVOICE_TIMEOUT)
+        if response.status_code != 200:
+            raise RuntimeError(f"CosyVoice 서비스 {response.status_code}: {response.text[:120]}")
+        folder = cache_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        part = folder / f"{key(text)}.part"
+        part.write_bytes(response.content)
+        part.rename(folder / f"{key(text)}.wav")
+        self.made += 1
+
+
 _worker = _Worker()
+_cosyvoice_seen: dict[str, float | bool] = {"at": 0.0, "ready": False}
+
+
+def cosyvoice_ready() -> bool:
+    """CosyVoice 2 서비스가 켜져 있고 모델을 다 올렸는지. 15초마다 한 번만 묻는다."""
+    import time
+
+    import httpx
+
+    now = time.monotonic()
+    if now - float(_cosyvoice_seen["at"]) > 15:
+        try:
+            ready = bool(httpx.get(f"{COSYVOICE_URL}/health", timeout=1.5).json().get("ready"))
+        except (httpx.HTTPError, ValueError):
+            ready = False
+        _cosyvoice_seen.update(at=now, ready=ready)
+    return bool(_cosyvoice_seen["ready"])
 
 
 def available() -> bool:
     if not ENABLED or _worker.error:
         return False
+    if ENGINE == "cosyvoice":
+        return cosyvoice_ready()
     try:
         import mlx_audio  # noqa: F401
     except ImportError:
@@ -186,6 +246,8 @@ def prewarm(texts: list[str]) -> None:
 
 def status() -> dict:
     folder = cache_dir()
-    return {"available": available(), "model": MODEL, "speaker": SPEAKER, "loaded": _worker.model is not None,
+    loaded = cosyvoice_ready() if ENGINE == "cosyvoice" else _worker.model is not None
+    return {"available": available(), "engine": ENGINE, "model": MODEL, "speaker": "donna" if ENGINE == "cosyvoice" else SPEAKER,
+            "loaded": loaded,
             "waiting": len(_worker.queued), "made": _worker.made, "cached": len(list(folder.glob("*.wav"))) if folder.exists() else 0,
             "error": _worker.error}

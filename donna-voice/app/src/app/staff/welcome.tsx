@@ -14,7 +14,7 @@ export default function StaffWelcome() {
   const store = useStoreHead();
   const me = staffSession.get();
   const start = async () => {
-    if (me.staffId) await api.staff.start(me.staffId).catch(() => {});
+    if (me.token) await api.staff.start().catch(() => {});
     router.replace('/staff/notify');
   };
   return (

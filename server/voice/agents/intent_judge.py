@@ -19,8 +19,12 @@ INTENTS = [
     "detail.show", "detail.read", "detail.back", "permission.yes", "permission.no", "stop", "question", "unknown", "not_for_donna",
     "navigate.sales", "navigate.week", "navigate.settings",
     "action.approve", "action.edit", "action.cancel",
+    # 알바생 (2026-11-18, voice/staff_orders.py)
+    "staff.order", "staff.status", "staff.cancel", "staff.invite", "staff.remove", "staff.share", "staff.list", "staff.manual",
+    "staff.yes", "staff.no", "staff.daily",
 ]
 JUMP_TARGETS = ["schedule", "reviews", "negative", "positive", "scheduling"]
+STAFF_SLOTS = ("staff_name", "task_title", "task_repeat", "task_kind")
 
 SUBMIT = Tool(
     "submit_intent",
@@ -30,6 +34,10 @@ SUBMIT = Tool(
             "intent": string("뜻", enum=INTENTS),
             "owner_said": string("받아쓰기 오타를 바로잡은 사장님 말"),
             "jump_to": string("briefing.jump 일 때 건너뛸 단계", enum=JUMP_TARGETS),
+            "staff_name": string("staff.order·staff.invite·staff.remove 일 때 알바생 이름. 모두에게면 '모두', 말하지 않았으면 빈 글자"),
+            "task_title": string("staff.order 일 때 알바생 화면에 보일 짧은 할 일"),
+            "task_repeat": string("staff.order 일 때 오늘만(today) 또는 매일(daily)", enum=["today", "daily"]),
+            "task_kind": string("staff.order 일 때 할 것(do) 또는 하지 말 것(dont)", enum=["do", "dont"]),
         },
         required=["intent", "owner_said"],
     ),
@@ -45,6 +53,8 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
         return f"intent 는 다음 중 하나여야 해요: {', '.join(INTENTS)}"
     if args["intent"] == "briefing.jump" and args.get("jump_to") not in JUMP_TARGETS:
         return f"briefing.jump 이면 jump_to 를 {', '.join(JUMP_TARGETS)} 중에서 골라 주세요"
+    if args["intent"] == "staff.order" and not (args.get("task_title") or "").strip():
+        return "staff.order 이면 task_title 에 알바생 화면에 보일 할 일을 적어 주세요"
     return None
 
 
@@ -62,7 +72,7 @@ SPEC = AgentSpec(
 
 
 def judge(view: VoiceStore, text: str, situation: str) -> dict | None:
-    """{intent, owner_said, jump_to} 또는 None (에이전트를 끔, 실패)."""
+    """{intent, owner_said, jump_to, staff_name, task_title, task_repeat, task_kind} 또는 None (에이전트를 끔, 실패)."""
     if not config.agent_on("intent"):
         return None
     proposal = runner.run(SPEC, {"text": text, "situation": situation}, run_context(view))

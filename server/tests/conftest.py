@@ -14,6 +14,14 @@ def separate_clova_usage_log(tmp_path, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_agent_cache_file(monkeypatch):
+    """에이전트 결과 캐시(Harness/cache.py)는 메모리만 쓴다. 실제 캐시 파일(db/app_data/harness_cache.db)을 읽거나 쓰지 않는다."""
+    from Harness import cache
+
+    monkeypatch.setattr(cache, "CACHE_PATH", None)
+
+
+@pytest.fixture(autouse=True)
 def separate_demo_scan_files(tmp_path, monkeypatch):
     """시연 훑기 결과 파일이 실제 폴더(db/app_data/demo_scans)에 쌓이지 않게 한다."""
     monkeypatch.setattr(demo_week_scan, "SAVE_DIR", tmp_path / "demo_scans")

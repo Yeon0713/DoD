@@ -1,4 +1,5 @@
 // 서버와 주고받는 곳은 이 파일 하나다. 모양은 docs/v0.2.0-voice-agent-handoff.md 4 ~ 5장, 17장(v0.2.1 화면 포맷).
+import { staffSession } from './staffSession';
 
 export const BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8100').replace(/\/$/, '');
 /** 지금 보고 있는 가게. 로그인한 계정의 가게로 바뀐다 (lib/session.tsx). 로그인 전에는 시연 가게(초옹장). */
@@ -209,6 +210,14 @@ export type StaffToday = {
   urgent?: StaffTask[];
 };
 export type StaffTaskDetail = StaffTask & { tag: string; owner_words: string | null; owner_words_label: string | null; until: string | null };
+/** 가입·로그인하면 받는 것. token 은 그 뒤 알바생 요청마다 X-Staff-Token 으로 보낸다 */
+export type StaffSignedIn = { token: string; staff_id: string; store: { name: string; logo_url: string | null }; name: string; call: string };
+
+/** 시연 화면의 알바생 휴대폰에 띄우는 '사장님이 보낸 글' (Figma F-01, 카카오톡 모양 예시. GET /v1/dev/messenger) */
+export type Messenger = {
+  from: string; to: string | null; store: { name: string; logo_url: string | null };
+  items: { id: string; text: string; url: string; code: string; link: string; time_label: string; date_label: string; usable: boolean }[];
+};
 
 /** 시연 화면 오른쪽 위 '리뷰 플랫폼' (GET /v1/dev/platform). 올라간 답글이 보인다. */
 export type Platform = {
@@ -246,6 +255,12 @@ export async function request<T>(path: string, init?: RequestInit, timeout = 500
   }
 }
 
+/** 알바생 요청에 붙이는 로그인 표시 */
+const staffAuth = (): Record<string, string> => {
+  const token = staffSession.get().token;
+  return token ? { 'X-Staff-Token': token } : {};
+};
+
 let seq = 0;
 const newId = (p: string) => `${p}_${Date.now().toString(36)}_${(seq++).toString(36)}`;
 const SESSION_ID = newId('sess');
@@ -264,18 +279,23 @@ export const api = {
     clock: (now: string | null) => request<{ now: string }>('/v1/dev/clock', { method: 'POST', body: JSON.stringify({ now }) }, 60000),
     demoReview: (name: string) => request<{ review_id: string; alert: boolean }>('/v1/dev/demo_review', { method: 'POST', body: JSON.stringify({ store_id: storeId(), name }) }, 60000),
     platform: () => request<Platform>(`/v1/dev/platform?store_id=${storeId()}`),
+    messenger: (to: string) => request<Messenger>(`/v1/dev/messenger?store_id=${storeId()}&to=${encodeURIComponent(to)}`),
+    /** 연습용: 초대·가입을 건너뛰고 가입한 상태로 (개발자 모드 '하린 바로 가입') */
+    staffJoin: (name: string) => request<{ token: string; staff_id: string; name: string }>('/v1/dev/staff_join', { method: 'POST', body: JSON.stringify({ store_id: storeId(), name }) }),
   },
   instagramConnect: () => request<{ connected: boolean; say: string }>('/v1/instagram/connect', { method: 'POST', body: '{}' }),
+  // 알바생: 가입·로그인 뒤의 요청은 로그인 표시(토큰)로 누구인지 알린다. 서버가 거절하면 ApiFailure('not_signed_in')
   staff: {
     checkCode: (code: string) => request<{ ok: boolean; message?: string; store?: { name: string; logo_url: string }; staff_id?: string; name?: string }>('/v1/staff/invite/check', { method: 'POST', body: JSON.stringify({ code }) }),
     signup: (body: { code: string; name: string; login_id: string; password: string }) =>
-      request<{ staff_id: string; store: { name: string; logo_url: string }; name: string; call: string }>('/v1/staff/signup', { method: 'POST', body: JSON.stringify(body) }),
-    start: (staff_id: string) => request<{ ok: boolean }>('/v1/staff/start', { method: 'POST', body: JSON.stringify({ staff_id }) }),
-    today: (staff_id: string) => request<StaffToday>(`/v1/staff/today?staff_id=${staff_id}`),
-    task: (id: string, staff_id: string) => request<StaffTaskDetail>(`/v1/staff/tasks/${id}?staff_id=${staff_id}`),
-    done: (id: string, staff_id: string, undo = false) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/done`, { method: 'POST', body: JSON.stringify({ staff_id, undo }) }),
-    confirm: (id: string, staff_id: string) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/confirm`, { method: 'POST', body: JSON.stringify({ staff_id }) }),
-    checkout: (staff_id: string) => request<{ ok: boolean }>('/v1/staff/checkout', { method: 'POST', body: JSON.stringify({ staff_id }) }),
+      request<StaffSignedIn>('/v1/staff/signup', { method: 'POST', body: JSON.stringify(body) }),
+    login: (login_id: string, password: string) => request<StaffSignedIn>('/v1/staff/login', { method: 'POST', body: JSON.stringify({ login_id, password }) }),
+    start: () => request<{ ok: boolean }>('/v1/staff/start', { method: 'POST', body: '{}', headers: staffAuth() }),
+    today: () => request<StaffToday>('/v1/staff/today', { headers: staffAuth() }),
+    task: (id: string) => request<StaffTaskDetail>(`/v1/staff/tasks/${id}`, { headers: staffAuth() }),
+    done: (id: string, undo = false) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/done`, { method: 'POST', body: JSON.stringify({ undo }), headers: staffAuth() }),
+    confirm: (id: string) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/confirm`, { method: 'POST', body: '{}', headers: staffAuth() }),
+    checkout: () => request<{ ok: boolean }>('/v1/staff/checkout', { method: 'POST', body: '{}', headers: staffAuth() }),
   },
   turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice'; noticeId?: string; lastTurnId?: string | null }) =>
     request<Turn>('/v1/turn', {

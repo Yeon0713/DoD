@@ -14,6 +14,9 @@
   briefing     미리 만든 브리핑 묶음 (id = 가게:날짜)
   session      브리핑 진행 상태 (id = session_id)
   turn         request_id → 응답 (같은 요청이 다시 오면 같은 응답)
+
+알바생은 사람마다 아이디·비밀번호·할 일·한 일을 꺼내 봐야 해서 JSON 서랍이 아니라 표를 따로 둔다 (STAFF_TABLES).
+읽고 쓰는 곳은 voice/staff_db.py 하나다. 가게를 지우거나(delete_store) 처음부터 할 때(reset) 같이 지운다.
 """
 
 import json
@@ -24,6 +27,37 @@ from pathlib import Path
 from voice import config
 
 _lock = threading.RLock()
+
+# 알바생 표 (voice/staff_db.py). 시각은 모두 ISO 글자(+09:00), 날짜는 "2026-11-17".
+STAFF_TABLES = {
+    # 알바생 한 명. status: listed(명단만) | invited(초대 코드를 받음) | joined(가입함) | removed(사장님이 내보냄)
+    "staff_members": """
+        staff_id TEXT PRIMARY KEY, store_id TEXT NOT NULL, name TEXT NOT NULL, call TEXT NOT NULL,
+        login_id TEXT UNIQUE, password_hash TEXT, status TEXT NOT NULL,
+        signed_up_at TEXT, started_at TEXT, removed_at TEXT, created_at TEXT NOT NULL""",
+    # 초대 코드 한 개 (한 사람용). shared_at: 사장님이 카카오톡으로 보냄, used_at: 그 코드로 가입함
+    "staff_invites": """
+        code TEXT PRIMARY KEY, store_id TEXT NOT NULL, staff_id TEXT NOT NULL,
+        created_at TEXT NOT NULL, shared_at TEXT, used_at TEXT, revoked_at TEXT""",
+    # 할 일 하나. repeat: daily(매뉴얼) | today(오늘만), kind: do(할 것) | dont(하지 말 것),
+    # to_staff: all(오늘 나온 사람 모두) | everyone(알바생 모두) | 알바생 번호, origin: manual | owner(사장님 말) | review(교정 카드)
+    "staff_tasks": """
+        task_id TEXT PRIMARY KEY, store_id TEXT NOT NULL, title TEXT NOT NULL, phase TEXT NOT NULL,
+        repeat TEXT NOT NULL, kind TEXT NOT NULL, must_confirm INTEGER NOT NULL, urgent INTEGER NOT NULL,
+        to_staff TEXT NOT NULL, origin TEXT NOT NULL, detail TEXT, owner_words TEXT, source TEXT,
+        start_date TEXT NOT NULL, end_date TEXT NOT NULL, sent_at TEXT, canceled_at TEXT, created_at TEXT NOT NULL""",
+    # 누가 어느 날 그 일을 했는지(done_at), 확인했는지(confirmed_at)
+    "staff_task_marks": """
+        task_id TEXT NOT NULL, staff_id TEXT NOT NULL, day TEXT NOT NULL, store_id TEXT NOT NULL,
+        done_at TEXT, confirmed_at TEXT, PRIMARY KEY (task_id, staff_id, day)""",
+    # 출퇴근: 그날 할 일 화면을 처음 연 시각이 출근, 퇴근하기를 누른 시각이 퇴근
+    "staff_attendance": """
+        staff_id TEXT NOT NULL, day TEXT NOT NULL, store_id TEXT NOT NULL, in_at TEXT NOT NULL, out_at TEXT,
+        PRIMARY KEY (staff_id, day)""",
+    # 로그인 표시(토큰). 알바생 화면이 요청마다 보내고, 서버는 이것으로 누구인지 안다
+    "staff_sessions": """
+        token TEXT PRIMARY KEY, staff_id TEXT NOT NULL, store_id TEXT NOT NULL, created_at TEXT NOT NULL""",
+}
 
 
 def _path() -> Path:
@@ -39,7 +73,20 @@ def _db() -> sqlite3.Connection:
         " PRIMARY KEY (kind, id))"
     )
     conn.execute("CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER NOT NULL)")
+    for table, columns in STAFF_TABLES.items():
+        conn.execute(f"CREATE TABLE IF NOT EXISTS {table} ({columns})")
     return conn
+
+
+def connect() -> sqlite3.Connection:
+    """알바생 표를 읽고 쓸 연결 (voice/staff_db.py). 줄을 이름으로 꺼낼 수 있게 한다. 쓸 때는 lock() 안에서."""
+    conn = _db()
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def lock() -> threading.RLock:
+    return _lock
 
 
 def put(kind: str, doc_id: str, store_id: str | None, data: dict) -> dict:
@@ -80,6 +127,33 @@ def kinds_of(store_id: str) -> dict[str, list[dict]]:
 def delete_store(store_id: str) -> None:
     with _lock, _db() as conn:
         conn.execute("DELETE FROM docs WHERE store_id = ?", (store_id,))
+        for table in STAFF_TABLES:
+            conn.execute(f"DELETE FROM {table} WHERE store_id = ?", (store_id,))
+
+
+def store_docs(store_id: str) -> list[dict]:
+    """한 가게의 모든 문서 {kind, id, data} (넣은 순서대로). 밤사이 준비 결과를 저장할 때 (voice/prepared_snapshot.py)."""
+    with _lock, _db() as conn:
+        rows = conn.execute("SELECT kind, id, data FROM docs WHERE store_id = ? ORDER BY rowid", (store_id,)).fetchall()
+    return [{"kind": kind, "id": doc_id, "data": json.loads(data)} for kind, doc_id, data in rows]
+
+
+def put_many(store_id: str, docs: list[dict]) -> None:
+    with _lock, _db() as conn:
+        conn.executemany("INSERT OR REPLACE INTO docs (kind, id, store_id, data) VALUES (?, ?, ?, ?)",
+                         [(d["kind"], d["id"], store_id, json.dumps(d["data"], ensure_ascii=False)) for d in docs])
+
+
+def counters_of(store_id: str) -> dict[str, int]:
+    """번호표 중 이 가게 것 (이름이 '...:가게' 로 끝난다. 예: review:s005)."""
+    with _lock, _db() as conn:
+        rows = conn.execute("SELECT name, value FROM counters WHERE name LIKE ?", (f"%:{store_id}",)).fetchall()
+    return dict(rows)
+
+
+def set_counters(values: dict[str, int]) -> None:
+    with _lock, _db() as conn:
+        conn.executemany("INSERT OR REPLACE INTO counters (name, value) VALUES (?, ?)", list(values.items()))
 
 
 def next_number(name: str) -> int:
@@ -95,6 +169,8 @@ def reset() -> None:
     with _lock, _db() as conn:
         conn.execute("DELETE FROM docs")
         conn.execute("DELETE FROM counters")
+        for table in STAFF_TABLES:
+            conn.execute(f"DELETE FROM {table}")
 
 
 # ── 자주 쓰는 모양 ──

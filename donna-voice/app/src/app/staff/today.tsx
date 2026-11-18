@@ -23,12 +23,21 @@ export default function StaffTodayScreen() {
 
   const load = useCallback(async () => {
     const s = await staffSession.load();
-    if (!s.staffId) {
+    if (!s.token || !s.staffId) {
       router.replace('/staff');
       return;
     }
     setStaffId(s.staffId);
-    api.staff.today(s.staffId).then(setData).catch(() => {});
+    api.staff
+      .today()
+      .then(setData)
+      .catch(async (e) => {
+        // 로그인 표시가 끊김 (처음부터 다시, 사장님이 내보냄): 이 기기 기록을 지우고 입장 화면으로
+        if (e instanceof ApiFailure && e.code === 'not_signed_in') {
+          await staffSession.clear();
+          router.replace('/staff');
+        }
+      });
   }, [router]);
 
   useFocusEffect(
@@ -41,11 +50,11 @@ export default function StaffTodayScreen() {
 
   if (!data || !staffId) return <StaffFrame>{null}</StaffFrame>;
   const store = { name: data.store.name, logo_url: data.store.logo_url, date_label: data.date_label };
-  const toggle = (t: StaffTask) => api.staff.done(t.id, staffId, t.done).then(load);
-  const confirm = (t: StaffTask) => api.staff.confirm(t.id, staffId).then(() => setBlocked(null)).then(load);
+  const toggle = (t: StaffTask) => api.staff.done(t.id, t.done).then(load);
+  const confirm = (t: StaffTask) => api.staff.confirm(t.id).then(() => setBlocked(null)).then(load);
   const checkout = () =>
     api.staff
-      .checkout(staffId)
+      .checkout()
       .then(() => setBlocked(null))
       .then(load)
       .catch((e) => setBlocked(e instanceof ApiFailure ? e.message : '지금은 퇴근을 적지 못했어요.'));

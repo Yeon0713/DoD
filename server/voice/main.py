@@ -16,8 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from voice import config, tts
+from voice import config, stt, tts
 from voice.api import account, dev, home, staff, tabs, turn
+from voice.api import stt as stt_api
 from voice.api import tts as tts_api
 from voice.jobs import queue
 
@@ -39,6 +40,9 @@ def seed_demo() -> None:
     try:
         dev.seed(config.DEMO_FIXTURE, fresh=False)
         tts.prewarm(tts.FIXED)
+        from voice import staff_orders
+
+        tts.prewarm(staff_orders.FIXED_LINES)  # 알바생 일에서 늘 같은 문장
     except Exception:
         logger.exception("시연 가게를 준비하지 못했어요")
 
@@ -47,6 +51,7 @@ def seed_demo() -> None:
 async def lifespan(app: FastAPI):
     stop = threading.Event()
     threading.Thread(target=seed_demo, daemon=True, name="voice-seed").start()
+    stt.warm_up()  # 받아 적기 모델을 뒤에서 올려 둔다 (첫 말이 늦지 않게)
     threading.Thread(target=_tick, args=(stop,), daemon=True, name="voice-queue").start()
     yield
     stop.set()
@@ -65,7 +70,7 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    for module in (home, turn, tabs, tts_api, dev, account, staff):
+    for module in (home, turn, tabs, tts_api, stt_api, dev, account, staff):
         app.include_router(module.router, prefix="/v1")
     account.mount(app)  # 가입·로그인: 메인 서버의 /api/auth, /api/naver, /api/stores, /api/owner_check
     app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")

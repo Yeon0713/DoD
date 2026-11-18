@@ -1,0 +1,6 @@
+# 받아 온 공식 코드와 모델 (수 GB). setup_cosyvoice.sh 가 받는다
+vendor/
+pretrained_models/
+prompt/
+setup.log
+service.log

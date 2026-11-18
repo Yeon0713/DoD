@@ -12,6 +12,7 @@
     "location": {"lat": 37.2098, "lng": 126.8226},
     "timezone": "Asia/Seoul",
     "logo_url": "/static/logos/s005.png",
+    "slug": "choongjang",
     "menus": [
       {"id": "m_1", "name": "들깨옹심이메밀칼국수", "price": 11000, "photo_url": "/static/menus/deulkkae-ongsimi-memil-kalguksu.png"},
       {"id": "m_2", "name": "멸치옹심이메밀칼국수", "price": 10000, "photo_url": "/static/menus/myeolchi-ongsimi-memil-kalguksu.png"},
@@ -36,16 +37,15 @@
       "hall_service": null
     }
   },
-  "_staff_comment": "알바생 이름은 s005 데이터, 초대 코드·매뉴얼·정우는 가정. 정우는 초대만 받고 아직 안 들어왔다 (D-31).",
+  "_staff_comment": "알바생 이름은 s005 데이터, 매뉴얼·정우는 가정. 하린과 정우는 아직 안 들어왔다 (2026-11-18: 시연에서 사장님이 \"하린이 초대해 줘\"로 랜덤 6자리 코드를 만들어 보낸다). 들어온 사람은 비밀번호가 없어 이 기기에서 로그인하지 않는다.",
   "staff": [
     {"id": "st_namgung", "name": "남궁현", "call": "현", "joined": true},
     {"id": "st_yang", "name": "양지성", "call": "지성", "joined": true},
-    {"id": "st_harin", "name": "문하린", "call": "하린", "joined": true},
+    {"id": "st_harin", "name": "문하린", "call": "하린", "joined": false},
     {"id": "st_bae", "name": "배수아", "call": "수아", "joined": true},
     {"id": "st_baek", "name": "백서윤", "call": "서윤", "joined": true},
     {"id": "st_jungwoo", "name": "정우", "call": "정우", "joined": false}
   ],
-  "invites": {"482017": "st_harin", "315904": "st_jungwoo"},
   "manual": [
     {"phase": "before_open", "title": "바닥과 테이블 청소"},
     {"phase": "before_open", "title": "수저·냅킨 채우기"},

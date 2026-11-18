@@ -29,6 +29,7 @@ OUT_ROOT = Path(__file__).resolve().parents[1] / "db" / "app_data" / "voice_chec
 
 
 def one_run(number: int) -> dict:
+    cache.CACHE_PATH = None  # 매번 실제로 불러 재므로 파일 캐시를 쓰지 않는다
     cache.clear()
     clock.set_now(None)
     donna = Donna()

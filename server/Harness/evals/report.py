@@ -89,13 +89,16 @@ def git_info(cwd: Path = SERVER_DIR) -> dict:
 
 
 def disable_cache() -> Callable[[], None]:
-    """하네스 결과 캐시를 끈다. 되돌리는 함수를 돌려준다 (측정 스크립트는 되돌리지 않아도 된다)."""
-    original = cache.get
+    """하네스 결과 캐시를 끈다. 되돌리는 함수를 돌려준다 (측정 스크립트는 되돌리지 않아도 된다).
+    파일 층도 끈다: 측정용 가짜 가게의 결과가 실제 캐시 파일(db/app_data/harness_cache.db)에 쌓이지 않게."""
+    original, original_path = cache.get, cache.CACHE_PATH
     cache.clear()
     cache.get = lambda key: None
+    cache.CACHE_PATH = None
 
     def restore() -> None:
         cache.get = original
+        cache.CACHE_PATH = original_path
 
     return restore
 

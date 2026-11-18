@@ -31,6 +31,7 @@ from Harness.tools import to_content
 logger = logging.getLogger(__name__)
 
 clock = time.monotonic  # 테스트에서 바꾼다
+MIN_CALL_SECONDS = 0.5  # 엄격한 예산(Budget.strict)에서 남은 시간이 거의 없어도 호출 하나에 주는 최소 시간
 
 
 def cache_key(spec: AgentSpec, task: dict, ctx: RunContext, system: str, user: str) -> tuple[str, str, str, str]:
@@ -65,9 +66,12 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
             break
         # 글로만 답했거나, 조회만 되풀이했거나, 마지막 단계면 제출 도구를 강제한다
         forced = force_submit or step == spec.budget.max_steps
+        strict = spec.budget.strict
         reply = clova_tools.chat_with_tools(
             messages, spec.tool_schemas(), feature=spec.name, store_id=ctx.store_id,
             tool_choice=submit_only if forced else "auto", temperature=spec.temperature, post=ctx.post,
+            **({"timeout": max(MIN_CALL_SECONDS, spec.budget.max_seconds - (clock() - started)), "retry": False}
+               if strict else {}),
         )
         call_id = clova_tools.last_call_id()
         if reply is None:

@@ -90,6 +90,9 @@ class Budget:
     max_steps: int = 6  # CLOVA 를 부르는 최대 횟수
     max_rejections: int = 2  # 제출이 거절되어도 되는 횟수. 넘으면 물러난다
     max_seconds: float = 40.0
+    # 말로 하는 대화용: max_seconds 를 넘기지 않는다. 호출 하나의 제한 시간을 남은 예산으로 두고,
+    # 429 를 기다렸다 다시 부르거나 강제 제출 400 에 조건을 바꿔 다시 묻지 않는다 (같은 입력은 거의 다시 실패하고 시간만 두 배가 된다)
+    strict: bool = False
 
 
 @dataclass

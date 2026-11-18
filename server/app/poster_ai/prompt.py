@@ -34,6 +34,7 @@ def build(s: Situation, c: PosterChoice) -> str:
         "EVENT": f"Nearby local event on that day: \"{s.title}\" (Korean festival/event).",
         "GAME": f"Sports game on that day: \"{s.title}\". Fans watch and cheer.",
         "WEEKEND": "Ordinary weekend promotion.",
+        "RAIN": "Rainy day: a same-day in-store event inviting customers to come in despite the rain (voice/instagram/story_event.py).",
     }[s.kind]
     weather = ", ".join(WEATHER_EN[t] for t in s.weather_tags) or ("winter-like cold weather" if s.season == "WINTER" else "summer heat" if s.season == "SUMMER" else "")
     images = []

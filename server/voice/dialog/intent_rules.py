@@ -9,6 +9,7 @@
    - 고치는 말("쿠폰 빼고", "사과만", "카드는 넣지 마")을 먼저 본다. 올리라는 말이 같이 있으면 고친 뒤 바로 올린다(action.approve).
    - 승인은 문장 전체가 승인 말일 때만 ("응, 진행해", "그렇게 해", "올려"). "응 그거 냉장고에 넣어"는 승인이 아니다.
    - "도나야" 없이 "네", "예", "어"만 들리면 손님에게 한 대답일 수 있어 다시 묻는다 (action.unclear).
+   - 스토리 이벤트 포스터를 물은 뒤에도 같은 규칙을 쓴다. "다시 그려 줘"는 action.redo, "스토리만"은 할 일을 빼라는 말.
 """
 
 import re
@@ -54,15 +55,19 @@ NOT_FOR_DONNA_RE = re.compile(
 )
 # 인스타 (D-14, D-15). INSTA_* 는 "인스타에 올릴까요?"를 물은 뒤에만 본다
 INSTA_NEXT_RE = re.compile(r"다음사진|다음장|다른사진|옆사진|사진넘겨|넘겨")
-INSTA_LATER_RE = re.compile(r"^(나중|아니|됐어|다음에|내일|싫어|하지마|안올려|올리지마|놔둬)")
+INSTA_LATER_RE = re.compile(r"^(나중|아니|됐어|다음에|내일|싫어|놔둬)|하지마|안올려|올리지마|올리지말|말아")
 INSTA_POST_RE = re.compile(r"올려|올리자|^(응|어(?=$|그래|해|좋아)|네|예|그래|좋아|오케이|그렇게해|해줘|부탁해|ㅇㅇ|그러자)")
-STORY_POST_RE = re.compile(r"스토리.*(올려|올리|올릴)")
-FEED_POST_RE = re.compile(r"인스타.*(올려|올리|올릴)")
+# 브리핑 밖에서 바로 올리는 말. 다시 묻지 않고 올리므로 문장 끝이 올리라는 말일 때만 본다
+# ("인스타에 올리지 마", "인스타 올릴 수 있어?", "올려도 돼?"는 아니다)
+POST_ORDER = r"(?<!안)(올려|올리자)(줘|줘요|주세요|줄래|봐|요)?$"
+STORY_POST_RE = re.compile(r"스토리.*" + POST_ORDER)
+FEED_POST_RE = re.compile(r"인스타.*" + POST_ORDER)
 DONNA_CUE_RE = re.compile(r"그거|뭐|저기|도나|알려|말해|어떻게|왜|무슨|언제")
 
 # ask_action (아쉬운 리뷰 → 사과 답글 + 알바생 교정 카드)
 DROP_COMP_RE = re.compile(r"(쿠폰|서비스|보상|감자전|사이드|안내)(은|는|도|이|가)?(빼|없이|말고|넣지마|안넣|하지마|됐어)|사과만")
-NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만")
+NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만|스토리만")
+REDO_RE = re.compile(r"다시(그려|그리|만들어|만들)")  # 스토리 이벤트 포스터 다시 그리기 (instagram/story_event.py)
 POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해")
 ACTION_CANCEL_RE = re.compile(r"^(아니|안해|안할래|하지마|됐어|취소|올리지마|놔둬|그냥둬|나중에|내가(할|쓸|볼|올릴|답할)게)")
 APPROVE_RE = re.compile(
@@ -174,6 +179,8 @@ def edits_in(n: str) -> dict:
 
 def match_action(n: str, said: str, addressed: bool) -> Intent | None:
     """ask_action 뒤의 대답. 못 가르면 None (다른 규칙으로 넘긴다)."""
+    if REDO_RE.search(n):
+        return Intent("action.redo", said)
     edits = edits_in(n)
     if edits["drop_compensation"] or edits["no_card"]:
         return Intent("action.approve" if POST_VERB_RE.search(n) else "action.edit", said, edits=edits)

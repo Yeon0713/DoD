@@ -21,12 +21,12 @@ from voice import activity, clock, config, repo, speech, width
 from voice.agents import voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
-from voice.instagram import posts
+from voice.instagram import posts, story_event
 from voice.jobs import queue, schedule, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram"]
-GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "end": 5}
+STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram", "story_event"]
+GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4, "end": 5}
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
 RAIN_CHANCE = 0.6
@@ -403,12 +403,14 @@ def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
 
 
 def refresh_instagram(store_id: str) -> dict | None:
-    """오늘 브리핑의 인스타 단계만 다시 만든다 (연결했을 때, 올렸을 때). 답글을 다시 쓰지 않아서 바로 끝난다."""
+    """오늘 브리핑의 인스타 단계(인기 메뉴, 스토리 이벤트)만 다시 만든다 (연결했을 때, 올렸을 때, 이벤트에 대답했을 때). 답글을 다시 쓰지 않아서 바로 끝난다."""
     brief = current(store_id)
     if brief is None:
         return None
-    step, detail = step_instagram(load(store_id))
+    view = load(store_id)
+    step, detail = step_instagram(view)
     brief["steps"]["instagram"] = step
+    brief["steps"]["story_event"] = story_event.step(view)
     brief["details"].pop("instagram", None)
     if detail:
         brief["details"]["instagram"] = detail
@@ -439,6 +441,9 @@ def end_response(store_id: str) -> dict:
         done.append(("인스타에 인기 메뉴 올림", "인스타에 인기 메뉴를 올렸"))
     elif feed:
         done.append(("인스타에 올리는 중", "인스타에 올리고 있"))
+    event = story_event.get(story_event.event_id(store_id, now.date()))
+    if event and event["state"] == "generating":
+        done.append(("이벤트 포스터 그리는 중", "이벤트 포스터를 그리고 있"))
     says = [say("오늘 브리핑은 여기까지예요.")]
     if done:
         stems = [stem for _, stem in done]
@@ -502,6 +507,7 @@ def prepare(store_id: str) -> dict | None:
     steps["positive"] = step_positive(view, now)
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
     steps["instagram"], instagram_detail = step_instagram(view)
+    steps["story_event"] = story_event.step(view)  # 비 오는 날 스토리 이벤트 (instagram/story_event.py)
     details = {key: plain_detail(step) for key, step in steps.items() if step and step["type"] == "answer"}
     if negative_detail:
         details["negative"] = negative_detail

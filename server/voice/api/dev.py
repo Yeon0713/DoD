@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from voice import clock, config, repo, speech, staff
 from voice.api.errors import store_not_found
-from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn
+from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn, StoryEventIn
 from voice.jobs import auto_reply, briefing, label, queue, review_loop
 
 router = APIRouter(prefix="/dev")
@@ -177,6 +177,19 @@ def post_run(body: RunIn):
         return {"job": body.job, "ran": [job for job in queue.run_due() if ":instagram_publish:" in job]}
     prepared = briefing.prepare(store_id)
     return {"job": body.job, "prepared_at": prepared["prepared_at"], "sources": prepared["sources"]}
+
+
+@router.post("/story_event")
+def post_story_event(body: StoryEventIn):
+    """비 오는 날 스토리 이벤트 포스터를 브리핑 없이 바로 그리기 시작한다 (/dev 시연용). 다 그리면 알림(story_event)이 간다."""
+    from voice.instagram import story_event
+
+    if repo.store(body.store_id) is None:
+        return store_not_found()
+    record = story_event.start(body.store_id)
+    if record is None:
+        return JSONResponse(status_code=409, content={"error": {"code": "no_story_event", "message": "설정에 스토리 이벤트(혜택, 알바생 할 일)가 없어요"}})
+    return story_event.get(record["id"])
 
 
 @router.post("/reset")

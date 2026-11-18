@@ -89,9 +89,12 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert [s["slide"] for s in slides] == [2, 3, 4]
     assert slides[-1]["photo_url"] is None and slides[-1]["title"] == "초옹장"  # 가게 소개 장
 
-    done = chj.turn("올려")
-    assert done["intent"] == "instagram.post" and done["type"] == "end"
-    assert [s["text"] for s in done["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
+    event = chj.turn("올려")
+    assert event["intent"] == "instagram.post" and event["type"] == "ask"
+    assert event["briefing"]["step_key"] == "story_event"  # 11/17 은 비 오는 날이라 스토리 이벤트를 이어서 묻는다 (test_story_event.py)
+    assert [s["text"] for s in event["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
+    done = chj.turn("아니, 오늘은 안 해")
+    assert done["type"] == "end"
     assert "인스타에 올리는 중" in [r["value"] for r in done["cards"][0]["rows"]]
     post = chj.get("/v1/instagram")["posts"][0]
     assert post["status"] == "queued" and post["kind"] == "feed" and fake.paths("POST") == []  # 올리는 건 게시 작업에서
@@ -129,7 +132,7 @@ def test_later_does_not_post(chj: Choongjang, ig_on):
     connect(chj)
     to_instagram_step(chj)
     later = chj.turn("나중에")
-    assert later["intent"] == "instagram.later" and later["type"] == "end"
+    assert later["intent"] == "instagram.later" and later["briefing"]["step_key"] == "story_event"  # 비 오는 날 (test_story_event.py)
     assert later["say"][0]["text"] == "네, 내일 브리핑에서 다시 여쭤볼게요."
     assert chj.get("/v1/instagram")["posts"] == []
 
@@ -273,3 +276,60 @@ def test_graph_error_message(ig_on):
         graph.account()
     assert raised.value.code == 100 and not raised.value.token_invalid
     assert posts.connection("s005")["connected"] is False
+
+
+@pytest.mark.parametrize("text, instagram, expected", [
+    ("인스타 스토리 올려 줘", False, "instagram.story"),
+    ("인스타에 올려 줘", False, "instagram.feed"),
+    ("인스타에 인기 메뉴 올려", False, "instagram.feed"),
+    ("인스타에 올리지 마", False, None),
+    ("인스타에 안 올려", False, None),
+    ("인스타 올릴 수 있어?", False, None),
+    ("인스타에 언제 올릴까", False, None),
+    ("인스타에 올려도 돼?", False, None),
+    ("스토리 올리지 마", False, None),
+    ("인스타에 올리지 마", True, "instagram.later"),
+    ("오늘은 올리지 말자", True, "instagram.later"),
+    ("인스타에 올려", True, "instagram.post"),
+])
+def test_post_order_must_be_an_order(text, instagram, expected):
+    """다시 묻지 않고 올리는 말이라, 하지 말라는 말이나 묻는 말은 게시로 가르지 않는다."""
+    from voice.dialog import intent_rules
+
+    found = intent_rules.match(text, None, addressed=True, instagram=instagram)
+    assert (found.name if found else None) == expected
+
+
+def test_do_not_post_in_briefing(chj: Choongjang, ig_on):
+    ig_on(FakeGraph())
+    connect(chj)
+    to_instagram_step(chj)
+    said = chj.turn("인스타에 올리지 마")
+    assert said["intent"] == "instagram.later"
+    assert chj.get("/v1/instagram")["posts"] == []
+
+
+def test_unexpected_error_fails_instead_of_stuck(chj: Choongjang, ig_on, monkeypatch):
+    """InstagramError 가 아닌 오류(사진 파일, boto3 업로드 등)도 failed 로 남기고 알린다. publishing 에 멈추지 않는다."""
+    ig_on(FakeGraph())
+    connect(chj)
+
+    def broken(*args, **kwargs):
+        raise OSError("cannot identify image file")
+
+    monkeypatch.setattr(media, "prepare", broken)
+    post = chj.client.post("/v1/instagram/posts", json={"store_id": "s005", "kind": "story"}).json()
+    run_publish(chj)
+    post = chj.client.get(f"/v1/instagram/posts/{post['id']}").json()
+    assert post["status"] == "failed" and post["error"] == "OSError: cannot identify image file"
+    assert chj.get("/v1/instagram")["connection"]["connected"] is True
+    assert [n["text"] for n in chj.get("/v1/notices")["notices"]] == ["인스타에 스토리를 올리지 못했어요"]
+
+
+def test_post_ids_differ_across_stores(chj: Choongjang):
+    """번호는 가게마다 1 부터지만 repo 키와 사진 폴더는 가게를 가리지 않으므로, 가게가 달라도 id 가 겹치지 않아야 한다."""
+    built = {"kind": "story", "slides": [{"src": "/static/x.png", "top_label": "1등", "title": "국수"}], "caption": None}
+    first = posts.create("s005", built)
+    other = posts.create("s999", built)
+    assert first["id"] != other["id"]
+    assert posts.get(first["id"])["store_id"] == "s005" and posts.get(other["id"])["store_id"] == "s999"

@@ -10,6 +10,7 @@
 """
 
 import datetime as dt
+import logging
 import re
 import threading
 
@@ -20,7 +21,9 @@ from voice.instagram import graph, media
 from voice.instagram.graph import InstagramError
 from voice.jobs import queue
 
-FEED_SLIDES = 3  # 많이 나간 메뉴 몇 개를 올리나 (그 뒤에 가게 소개 한 장)
+logger = logging.getLogger(__name__)
+
+FEED_SLIDES = 3 # 많이 나간 메뉴 몇 개를 올리나 (그 뒤에 가게 소개 한 장)
 LIVE = ("queued", "publishing", "published")
 
 
@@ -134,7 +137,7 @@ def preview_card(built: dict, slide: int, store: dict, handle: str | None) -> di
 
 
 def create(store_id: str, built: dict) -> dict:
-    post_id = f"ig_{repo.next_number(f'instagram_post:{store_id}'):04d}"
+    post_id = f"ig_{store_id}_{repo.next_number(f'instagram_post:{store_id}'):04d}"  # repo 키와 사진 폴더는 가게를 가리지 않으므로 가게 id 를 넣는다
     data = {"id": post_id, "store_id": store_id, "kind": built["kind"], "slides": built["slides"], "caption": built["caption"],
             "quote": built.get("quote"), "status": "draft", "post_at": None, "created_at": iso(clock.now()),
             "published_at": None, "media_id": None, "permalink": None, "error": None}
@@ -170,8 +173,14 @@ def queue_publish(store_id: str, post: dict, at: dt.datetime | None = None) -> d
 
 
 def _upload(post: dict) -> str:
-    """사진을 공개 주소에 두고 컨테이너를 만든다. 게시할 컨테이너 id."""
-    urls = [media.public_url(path) for path in media.prepare(post["id"], [s["src"] for s in post["slides"]], post["kind"])]
+    """사진을 공개 주소에 두고 컨테이너를 만든다. 게시할 컨테이너 id.
+    이미 만든 그림(/media/..., 이벤트 포스터)은 그대로 올린다."""
+    sources = [s["src"] for s in post["slides"]]
+    if all(src.startswith("/media/") for src in sources):
+        paths = [media.made_path(src) for src in sources]
+    else:
+        paths = media.prepare(post["id"], sources, post["kind"])
+    urls = [media.public_url(path) for path in paths]
     if post["kind"] == "story":
         return graph.story_container(urls[0])
     if len(urls) == 1:
@@ -195,16 +204,30 @@ def publish(store_id: str, post_id: str) -> dict | None:
         container = _upload(post)
         graph.wait_ready(container)
         media_id = graph.publish(container)
-    except InstagramError as error:
-        if error.token_invalid:
+    except Exception as error:  # 사진 파일·업로드(boto3) 오류도 failed 로 남긴다. 아니면 publishing 에 멈춘다
+        if isinstance(error, InstagramError) and error.token_invalid:
             disconnect(store_id, str(error))
-        notices.push(store_id, "instagram", f"인스타에 {what} 올리지 못했어요")
-        return save({**post, "status": "failed", "error": str(error)})
+        if not isinstance(error, InstagramError):
+            logger.exception("인스타 게시 실패 %s", post_id)
+        reason = str(error) if isinstance(error, InstagramError) else f"{type(error).__name__}: {error}"
+        post = save({**post, "status": "failed", "error": reason})
+        if post.get("event_id"):  # 이벤트 스토리는 story_event 가 알린다
+            from voice.instagram import story_event
+
+            story_event.on_post_done(store_id, post)
+        else:
+            notices.push(store_id, "instagram", f"인스타에 {what} 올리지 못했어요")
+        return post
     try:
         link = graph.permalink(media_id)
     except InstagramError:  # 올라갔다. 주소만 못 받았다
         link = None
     post = save({**post, "status": "published", "media_id": media_id, "permalink": link, "published_at": iso(clock.now()), "error": None})
+    if post.get("event_id"):  # 이벤트 스토리: 알바생 할 일을 넣고 story_event 가 알린다
+        from voice.instagram import story_event
+
+        story_event.on_post_done(store_id, post)
+        return post
     text = f"인스타에 {what} 올렸어요"
     activity.log(store_id, "donna", text, f"instagram_{post['kind']}")
     notices.push(store_id, "instagram", text)

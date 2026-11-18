@@ -92,6 +92,52 @@ def test_to_story_makes_instagram_story_size():
         assert out.size == (1080, 1920)
 
 
+def test_openai_engine_sends_photos_and_counts_cost(tmp_path, monkeypatch):
+    """openai: 첨부가 있으면 /v1/images/edits 에 image[] 로 보내고, b64 그림을 받고, usage 로 값을 센다. 실제 API 는 부르지 않는다."""
+    import base64
+
+    import httpx
+
+    monkeypatch.setattr(settings, "poster_image_engine", "openai")
+    monkeypatch.setattr(settings, "openai_api_key", "sk-test")
+    monkeypatch.setattr(settings, "poster_openai_model", "gpt-image-2")
+    monkeypatch.setattr(settings, "poster_openai_quality", "medium")
+    monkeypatch.setattr(settings, "poster_openai_size", "1024x1536")
+    logo, food = tmp_path / "logo.png", tmp_path / "food.jpg"
+    logo.write_bytes(b"logo")
+    food.write_bytes(b"food")
+    seen = {}
+
+    def fake_post(url, headers=None, data=None, files=None, json=None, timeout=None):
+        seen.update(url=url, headers=headers, data=data, files=files)
+        usage = {"input_tokens": 3600, "input_tokens_details": {"text_tokens": 600, "image_tokens": 3000}, "output_tokens": 1372}
+        return httpx.Response(200, json={"data": [{"b64_json": base64.b64encode(b"PNGDATA").decode()}], "usage": usage})
+
+    monkeypatch.setattr(image_engine, "post", fake_post)
+    assert image_engine.engine_status()["ready"] is True
+    text = prompt.build(situation.Situation("s005", "초옹장", "칼국수", "경기 화성시 남양읍", dt.date(2026, 11, 17), "RAIN", "비 오는 날"),
+                        prompt.PosterChoice(headline="비 오는 날 이벤트", line="음료 1캔을 드려요", has_logo=True, photo_labels=("들깨옹심이",)))
+    assert image_engine.generate(text, [logo, food]) == b"PNGDATA"
+    assert seen["url"] == "https://api.openai.com/v1/images/edits" and seen["headers"]["Authorization"] == "Bearer sk-test"
+    assert {k: seen["data"][k] for k in ("model", "size", "quality", "n")} == {"model": "gpt-image-2", "size": "1024x1536", "quality": "medium", "n": "1"}
+    assert [(name, part[0], part[2]) for name, part in seen["files"]] == [("image[]", "logo.png", "image/png"), ("image[]", "food.jpg", "image/jpeg")]
+    assert "Rainy day" in seen["data"]["prompt"] and image_engine.CODEX_ONLY not in seen["data"]["prompt"]  # Codex 에게만 하는 말은 뺀다
+    # 600 × $5 + 3000 × $8 + 1372 × $30 (1백만 토큰당)
+    assert image_engine.last_cost["usd"] == pytest.approx((600 * 5 + 3000 * 8 + 1372 * 30) / 1_000_000)
+
+    for status, body, message in [(401, {"error": {"message": "bad key"}}, "키가 맞지 않아요"),
+                                  (429, {"error": {"message": "rate"}}, "한도"),
+                                  (400, {"error": {"code": "moderation_blocked", "message": "no"}}, "문구를 바꿔")]:
+        monkeypatch.setattr(image_engine, "post", lambda *a, _s=status, _b=body, **k: httpx.Response(_s, json=_b))
+        with pytest.raises(image_engine.PosterEngineError, match=message):
+            image_engine.generate("그려 주세요", [logo])
+
+    monkeypatch.setattr(settings, "openai_api_key", "")
+    assert image_engine.engine_status() == {"engine": "openai", "ready": False, "note": "OPENAI_API_KEY 가 비어 있어요"}
+    with pytest.raises(image_engine.PosterEngineError, match="OPENAI_API_KEY"):
+        image_engine.generate("그려 주세요", [])
+
+
 def test_codex_output_is_read_from_its_thread_folder(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path))
     monkeypatch.setattr(image_engine, "engine_status", lambda: {"engine": "codex", "ready": True, "note": ""})

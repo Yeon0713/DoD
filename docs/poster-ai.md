@@ -48,17 +48,23 @@
   - 그림 1은 로고: 그대로 쓰고 다시 그리지 말 것
   - 그다음은 메뉴 사진: 같은 음식으로 그릴 것
   - 큰 글자·작은 글자·더 넣을 말·가게 이름·주소·날짜는 **적은 그대로**. 인스타 화면이 덮는 위·아래는 비울 것.
-- **그림 모델 (지금은 데모용)**: 이 컴퓨터에서 ChatGPT 계정으로 로그인한 **Codex CLI** 의 그림 만들기(gpt-image-2)를 씁니다.
-  - 구독제 사용량으로 그려서 **API 키가 필요 없습니다**.
-  - 서버가 `codex exec --json -i 로고 -i 사진 -` 을 실행하고(프롬프트는 표준 입력), Codex 가 `~/.codex/generated_images/<대화 id>/` 에 둔 그림을 읽습니다.
-  - 그림 하나에 50초 안팎 걸립니다.
+- **그림 모델 (기본 `openai`, 2026-11-18 바꿈)**: **OpenAI 이미지 API**(`gpt-image-2`)를 `OPENAI_API_KEY`로 부릅니다.
+  - 첨부 그림(로고, 메뉴 사진)이 있으면 `/v1/images/edits`에 `image[]`로 보내 참고하게 하고, 없으면 `/v1/images/generations`.
+  - 품질·크기: `POSTER_OPENAI_QUALITY`(기본 `medium`), `POSTER_OPENAI_SIZE`(기본 `1024x1536`). 모델은 `POSTER_OPENAI_MODEL`.
+  - **그림 한 장마다 요금**이 듭니다. 응답의 `usage`로 값을 셈해 서버 로그에 남깁니다 ("OpenAI 그림 … 약 $0.0xx").
+  - 예전 방식 `codex`(ChatGPT 계정으로 로그인한 Codex CLI, 구독제)도 그대로 쓸 수 있습니다: `POSTER_IMAGE_ENGINE=codex`.
 - 받은 그림은 **1080 × 1920** 으로 맞춥니다. 비율이 조금 다르면 같은 그림을 흐리게 깔고 가운데에 놓습니다.
 - 한 번에 하나씩 그립니다. 결과는 `server/db/app_data/posters/<일감 id>.png` (git 에 올라가지 않음).
 
+### 값 (gpt-image-2, 2026-11-18 OpenAI 문서 기준)
+- 그림(출력): 1024×1536 한 장 low 약 $0.005, **medium 약 $0.041**, high 약 $0.165 (출력 토큰 1백만당 $30)
+- 넣는 것(입력): 글 1백만 토큰당 $5, 그림 1백만 토큰당 $8. 참고 그림은 늘 고해상도로 읽어 그림 값의 대부분이 될 수 있습니다
+- 실제 값은 로그의 usage 로 확인합니다
+
 ### 준비
-1. Codex CLI 설치 후 터미널에서 `codex login` → **Sign in with ChatGPT** (사장님 데모 계정이 아니라 개발자 본인의 ChatGPT 구독 계정)
-2. `server/.env`: `POSTER_IMAGE_ENGINE=codex` (기본값). Codex 가 PATH 에 없으면 `CODEX_BIN=/전체/경로/codex`
-3. 확인: `GET /api/poster_ai/engine` → `{"ready": true, "note": "ChatGPT 계정(구독제)으로 그려요"}`
+1. `server/.env`: `OPENAI_API_KEY=sk-...` (`POSTER_IMAGE_ENGINE=openai` 가 기본값)
+2. 확인: `GET /api/poster_ai/engine` → `{"engine": "openai", "ready": true, "note": "OpenAI gpt-image-2 (medium, 1024x1536)로 그려요"}`
+- Codex 로 그릴 때: Codex CLI 설치 후 `codex login` → **Sign in with ChatGPT**, `POSTER_IMAGE_ENGINE=codex`. PATH 에 없으면 `CODEX_BIN=/전체/경로/codex`
 - 시험할 때나 그림 없이 흐름만 볼 때: `POSTER_IMAGE_ENGINE=mock` (사진만 합친 그림, 글자 없음)
 
 ### 나중에 OpenAI API 로 옮길 때
@@ -73,4 +79,4 @@
 | `GET /api/poster_ai/jobs/{id}` | `RUNNING` / `DONE` / `FAILED`(이유) |
 | `GET /api/poster_ai/jobs/{id}/image` | 다 그린 PNG |
 
-시험: `server/tests/modules/test_poster_ai.py` (Codex 는 가짜로 바꿔 실제로 부르지 않음)
+시험: `server/tests/modules/test_poster_ai.py` (OpenAI·Codex 는 가짜로 바꿔 실제로 부르지 않음)

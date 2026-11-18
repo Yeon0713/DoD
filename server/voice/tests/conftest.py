@@ -15,7 +15,7 @@ from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
 from voice import clock, config, context, tts
-from voice.instagram import graph, media, posts
+from voice.instagram import graph, media, posts, story_event
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
 
@@ -102,6 +102,8 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(graph, "sleep", lambda seconds: None)
     monkeypatch.setattr(media, "MEDIA_DIR", tmp_path / "voice_media")
     monkeypatch.setattr(posts, "kick", lambda: None)  # 게시 작업은 시험에서 /v1/dev/run 으로 돌린다
+    monkeypatch.setattr(settings, "poster_image_engine", "mock")  # Codex 로 그리지 않는다
+    monkeypatch.setattr(story_event, "spawn", lambda target, *args: target(*args))  # 이벤트 포스터를 뒤에서 그리지 않고 바로
     cache.clear()
     clock.set_now(None)
     yield

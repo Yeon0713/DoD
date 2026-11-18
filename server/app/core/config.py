@@ -53,9 +53,13 @@ class Settings(BaseSettings):
     # 에이전트 평가(server/Harness/evals)의 CLOVA X 심판 모델. 답글 검토기(CLOVA_STUDIO_MODEL)와 다른 모델을 쓴다. 서버 기능은 쓰지 않는다
     eval_judge_model: str = "HCX-007"
 
-    # AI 포스터 그림 (app/poster_ai). codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(gpt-image-2)를 쓴다
-    # (구독제, API 키 없음. 데모용. 나중에 OpenAI API 로 옮긴다). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)
-    poster_image_engine: str = "codex"
+    # AI 포스터 그림 (app/poster_ai). openai: OpenAI 이미지 API(OPENAI_API_KEY, 그림 한 장마다 요금).
+    # codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(구독제, API 키 없음). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)
+    poster_image_engine: str = "openai"
+    openai_api_key: str = ""
+    poster_openai_model: str = "gpt-image-2"
+    poster_openai_quality: str = "medium"  # low | medium | high (높을수록 비싸고 글자가 또렷하다)
+    poster_openai_size: str = "1024x1536"  # 세로 2:3. 스토리(9:16)로는 to_story 가 맞춘다
     codex_bin: str = "codex"  # Codex CLI 실행 파일 (PATH 에 없으면 전체 경로)
     poster_image_timeout: float = 300  # 그림 하나에 기다리는 초
 

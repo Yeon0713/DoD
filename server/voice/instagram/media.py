@@ -34,6 +34,16 @@ def source_path(url: str) -> Path:
     return path
 
 
+def made_path(url: str) -> Path:
+    """'/media/se_x/poster_1.jpg' → MEDIA_DIR/se_x/poster_1.jpg (이미 만든 그림, story_event). MEDIA_DIR 밖은 받지 않는다."""
+    if not url.startswith("/media/"):
+        raise InstagramError(f"올릴 수 없는 사진 주소예요: {url}")
+    path = (MEDIA_DIR / url.removeprefix("/media/")).resolve()
+    if MEDIA_DIR.resolve() not in path.parents or not path.exists():
+        raise InstagramError(f"사진 파일이 없어요: {url}")
+    return path
+
+
 def prepare(post_id: str, sources: list[str], kind: str) -> list[Path]:
     """원본 사진들 → MEDIA_DIR/<post_id>/<n>.jpg (kind: feed | story)."""
     size = SIZES[kind]

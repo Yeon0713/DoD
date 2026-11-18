@@ -38,6 +38,9 @@ def run(runs: int, ids: list[str] | None = None, workers: int = 6) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     clova_usage_log.LOG_PATH = out / "clova_usage.db"
     trace.TRACE_PATH = out / "harness_trace.db"
+    from Harness.evals.report import disable_cache
+
+    disable_cache()  # 같은 답글을 여러 번 판정해 흔들림을 보므로 판정 캐시(파일 포함)를 쓰지 않는다
 
     cases = json.loads(CASES.read_text(encoding="utf-8"))["cases"]
     if ids:

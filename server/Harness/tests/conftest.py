@@ -16,6 +16,7 @@ from Harness.tests.fakes import NOW, make_snapshot
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(clova_usage_log, "LOG_PATH", tmp_path / "clova_usage.db")
     monkeypatch.setattr(trace, "TRACE_PATH", tmp_path / "harness_trace.db")
+    monkeypatch.setattr(cache, "CACHE_PATH", None)  # 에이전트 결과 캐시는 메모리만 (진짜 캐시 파일을 읽거나 쓰지 않는다)
     monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
     monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
     monkeypatch.setattr(limiter, "sleep", lambda seconds: None)

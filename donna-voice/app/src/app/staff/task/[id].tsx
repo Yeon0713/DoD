@@ -14,15 +14,15 @@ export default function StaffTaskScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [task, setTask] = useState<StaffTaskDetail | null>(null);
-  const staffId = staffSession.get().staffId;
+  const signedIn = !!staffSession.get().token;
   const load = useCallback(() => {
-    if (staffId && id) api.staff.task(id, staffId).then(setTask).catch(() => {});
-  }, [id, staffId]);
+    if (signedIn && id) api.staff.task(id).then(setTask).catch(() => {});
+  }, [id, signedIn]);
   useEffect(load, [load]);
-  if (!task || !staffId) return <StaffFrame>{null}</StaffFrame>;
+  if (!task || !signedIn) return <StaffFrame>{null}</StaffFrame>;
   const finish = async () => {
-    if (task.must_confirm) await api.staff.confirm(task.id, staffId);
-    else if (!task.done) await api.staff.done(task.id, staffId);
+    if (task.must_confirm) await api.staff.confirm(task.id);
+    else if (!task.done) await api.staff.done(task.id);
     router.back();
   };
   return (

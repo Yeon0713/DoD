@@ -19,7 +19,7 @@
 import re
 from dataclasses import dataclass
 
-from Harness import clova_tools, trace
+from Harness import cache, clova_tools, trace
 from Harness.spec import RunContext, Tool
 from Harness.tools import array, load_prompt, obj, string
 
@@ -126,6 +126,11 @@ def ask(kind: str, reply: str, ctx: RunContext, review_text: str | None = None) 
         {"role": "user", "content": user_message(question, reply, review_text)},
     ]
     force = {"type": "function", "function": {"name": submit.name}}
+    # 같은 질문·같은 답글이면 앞서 받은 판정을 쓴다 (Harness/cache.py: 서버를 다시 켜도 파일에 남는다)
+    key = (question.name, ctx.store_id, cache.digest([messages[1]["content"]]), cache.digest(messages[0]["content"]))
+    remembered = cache.get(key)
+    if isinstance(remembered, list):
+        return list(remembered)
     for attempt in range(1, MAX_ATTEMPTS + 1):
         if ctx.call_budget is not None and not ctx.call_budget.take():
             return None
@@ -144,6 +149,7 @@ def ask(kind: str, reply: str, ctx: RunContext, review_text: str | None = None) 
         trace.record(run_id=ctx.run_id, parent_run_id=ctx.parent_run_id, agent=question.name, store_id=ctx.store_id, step=attempt,
                      kind="submit", name=submit.name, detail=quotes if quotes is not None else (call.arguments if call else None))
         if quotes is not None:
+            cache.put(key, list(quotes))
             return quotes
         if call is not None:  # 있다면서 답글에 없는 말을 옮겼다. 알려 주고 다시 받는다
             messages = [*messages, answer.as_assistant_message(), {"role": "tool", "toolCallId": call.id, "content": (

@@ -20,6 +20,7 @@ export type DevMessage =
   | { type: 'say'; text: string }
   | { type: 'view'; view: DemoView }
   | { type: 'reload' }
+  | { type: 'staff_session'; token: string; staffId: string; name: string }
   | { type: 'heard'; text: string; result: 'sent' | 'uncalled' | 'too_short' }
   | { type: 'turn'; said: string | null; headline: string | null; kind: string; intent: string; say: string[] };
 

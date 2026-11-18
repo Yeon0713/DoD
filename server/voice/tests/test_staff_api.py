@@ -14,21 +14,32 @@ def approved(donna):
     assert donna.turn("응, 진행해")["intent"] == "action.approve"
 
 
+def invite_code(donna, name: str = "하린") -> str:
+    """사장님이 말로 초대해 코드를 받는다 (D-04). 랜덤 6자리."""
+    turn = donna.turn(f"{name}이 초대해 줘" if name == "하린" else f"{name} 초대해 줘", addressed=True)
+    [card] = [c for c in turn["cards"] if c["type"] == "invite"]
+    return card["code"].replace(" ", "")
+
+
 def test_s1_invite_code():
     donna = choongjang(at=None)
-    ok = donna.staff_post("/invite/check", code="482017").json()
+    code = invite_code(donna)
+    ok = donna.staff_post("/invite/check", code=code).json()
     assert ok["ok"] is True and ok["staff_id"] == "st_harin" and ok["name"] == "하린" and ok["store"]["name"] == "초옹장"
     bad = donna.staff_post("/invite/check", code="000000").json()
     assert bad == {"ok": False, "message": "코드가 맞지 않아요. 사장님에게 받은 코드를 확인해 주세요."}
+    assert donna.staff_post("/invite/check", code="482017").json()["ok"] is False  # 예전 고정 코드는 이제 없다
 
 
 def test_s2_join_notice():
     donna = choongjang(at=None)
-    signed = donna.staff_post("/signup", code="315904", name="정우", login_id="jungwoo", password="x").json()
-    assert signed["staff_id"] == "st_jungwoo"
-    assert donna.staff_post("/start", staff_id="st_jungwoo").json() == {"ok": True}
+    code = invite_code(donna, "정우")
+    signed = donna.staff_post("/signup", code=code, name="정우", login_id="jungwoo", password="donna1234").json()
+    assert signed["staff_id"] == "st_jungwoo" and signed["token"]
+    headers = {"X-Staff-Token": signed["token"]}
+    assert donna.client.post("/v1/staff/start", headers=headers).json() == {"ok": True}
     assert [(n["kind"], n["text"]) for n in donna.notices()] == [("staff_joined", "정우 씨가 알바생 화면에 들어왔어요")]
-    donna.staff_post("/start", staff_id="st_jungwoo")
+    donna.client.post("/v1/staff/start", headers=headers)
     assert donna.notices() == []  # 두 번 눌러도 한 번만
 
 
@@ -56,7 +67,7 @@ def test_s5_detail():
     donna = choongjang()
     approved(donna)
     card = donna.staff_today()["urgent"][0]
-    detail = donna.client.get(f"/v1/staff/tasks/{card['id']}", params={"staff_id": "st_harin"}).json()
+    detail = donna.client.get(f"/v1/staff/tasks/{card['id']}", headers=donna.as_staff("st_harin")).json()
     assert detail["owner_words"] == "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여 주세요"
     assert detail["owner_words_label"] == "도나가 리뷰를 보고 넣은 일" and detail["tag"] == "긴급"
 
@@ -94,11 +105,11 @@ def test_s8_done_persists():
     donna.staff_post(f"/tasks/{task['id']}/done", staff_id="st_harin")
     from voice.main import create_app
 
-    again = TestClient(create_app())  # 앱을 새로 만들어도 저장소에 남아 있다
-    today = again.get("/v1/staff/today", params={"staff_id": "st_harin"}).json()
+    again = TestClient(create_app())  # 앱을 새로 만들어도 저장소에 남아 있다 (로그인 표시도)
+    today = again.get("/v1/staff/today", headers=donna.as_staff("st_harin")).json()
     marked = next(t for t in today["groups"][2]["tasks"] if t["id"] == task["id"])
     assert marked["done"] is True and marked["sub"] == "오후 3시 35분에 함"
-    again.post(f"/v1/staff/tasks/{task['id']}/done", json={"staff_id": "st_harin", "undo": True})
+    again.post(f"/v1/staff/tasks/{task['id']}/done", json={"undo": True}, headers=donna.as_staff("st_harin"))
     assert next(t for t in donna.staff_today()["groups"][2]["tasks"] if t["id"] == task["id"])["done"] is False
     # 매뉴얼은 날마다 새로: 다음 날에는 안 한 것으로 보인다
     donna.staff_post(f"/tasks/{task['id']}/done", staff_id="st_harin")
@@ -108,4 +119,49 @@ def test_s8_done_persists():
 
 def test_s9_staff_count():
     donna = choongjang(at=None)
-    assert donna.get("/v1/settings")["staff_count"] == 5  # 들어온 사람 다섯 (정우는 아직)
+    assert donna.get("/v1/settings")["staff_count"] == 4  # 들어온 사람 넷 (하린과 정우는 아직)
+    donna.join("하린")
+    assert donna.get("/v1/settings")["staff_count"] == 5
+
+
+# ── 로그인 (2026-11-18) ──
+
+
+def test_s10_signup_rules_and_login():
+    donna = choongjang(at=None)
+    code = invite_code(donna)
+    short = donna.staff_post("/signup", code=code, name="하린", login_id="harin01", password="1234")
+    assert short.status_code == 400 and short.json()["error"]["code"] == "password_short"
+    signed = donna.staff_post("/signup", code=code, name="하린", login_id="harin01", password="donna1234").json()
+    assert signed["call"] == "하린" and signed["token"]
+    again = donna.staff_post("/signup", code=code, name="하린", login_id="harin02", password="donna1234")
+    assert again.json()["error"]["code"] == "code_used"  # 코드는 한 번만
+    # 다른 기기: 아이디와 비밀번호로 다시 들어온다
+    bad = donna.staff_post("/login", login_id="harin01", password="wrong-pass")
+    assert bad.status_code == 401 and bad.json()["error"]["message"] == "아이디나 비밀번호가 맞지 않아요."
+    logged = donna.staff_post("/login", login_id="HARIN01", password="donna1234").json()
+    assert logged["staff_id"] == "st_harin" and logged["token"] != signed["token"]
+    assert donna.client.get("/v1/staff/today", headers={"X-Staff-Token": logged["token"]}).json()["staff"]["call"] == "하린"
+
+
+def test_s11_login_id_must_be_unique():
+    donna = choongjang(at=None)
+    donna.staff_post("/signup", code=invite_code(donna), name="하린", login_id="sameid", password="donna1234")
+    taken = donna.staff_post("/signup", code=invite_code(donna, "정우"), name="정우", login_id="SameId", password="donna1234")
+    assert taken.status_code == 409 and taken.json()["error"]["message"] == "이미 쓰는 아이디예요. 다른 아이디를 정해 주세요."
+
+
+def test_s12_token_is_required():
+    donna = choongjang()
+    assert donna.client.get("/v1/staff/today").status_code == 401
+    assert donna.client.get("/v1/staff/today", params={"staff_id": "st_harin"}).status_code == 401  # 번호만으로는 못 연다
+    assert donna.client.get("/v1/staff/today", headers={"X-Staff-Token": "made-up"}).json()["error"]["code"] == "not_signed_in"
+
+
+def test_s13_password_is_not_stored_as_is():
+    from voice import staff_db
+
+    donna = choongjang(at=None)
+    donna.staff_post("/signup", code=invite_code(donna), name="하린", login_id="harin01", password="donna1234")
+    stored = staff_db.member("st_harin")["password_hash"]
+    assert "donna1234" not in stored and stored.startswith("pbkdf2$")

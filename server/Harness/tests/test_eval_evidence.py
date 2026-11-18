@@ -1,6 +1,7 @@
 """평가 근거 맞춤·실패 원인·기준선: fail_cause 판정, 최초 유효율·재시도 회복, 기준선 S(reply)·R(batch),
 정상 답글 근거 표시(needs_order_info, needs_store_fact). 가짜 CLOVA 로만 본다."""
 
+import copy
 import json
 
 import httpx
@@ -178,15 +179,46 @@ def test_context_flags_mark_order_info_and_store_fact():
     assert not in_review["needs_order_info"]  # 리뷰에 나온 메뉴
 
 
+def explained_and_order_cases(template: dict) -> list[dict]:
+    """정상 후보 6건: 3건은 리뷰에 없는 메뉴(감자전)를 말해 주문 정보가 있어야 설명되고, 3건은 리뷰만으로 설명된다."""
+    rows = []
+    for i in range(6):
+        case = copy.deepcopy(template)
+        case.update(case_id=f"c9{i:03d}", split="tune", eval_set="balanced", flags=[], text="국수 맛있어요")
+        menu = "감자전도" if i % 2 else "국수도"
+        case["gold"] = {**case["gold"], "reply": f"{menu} 맛있게 드셨다니 기뻐요. 또 오세요.", "sentiment": "POSITIVE",
+                        "complaint_types": []}
+        rows.append(case)
+    return rows
+
+
 def test_normal_set_split_only_when_facts_exist(gold_rows):
     plain = guards_eval.gold_cases(gold_rows)
     assert guards_eval.CONTEXT_SET not in plain  # 사실 확정 전: 세트 그대로 (표시만)
-    split = guards_eval.gold_cases(gold_rows, facts=["셀프바 순두부는 무료"], menus=["국수"])
-    moved = split.get(guards_eval.CONTEXT_SET, [])
-    assert len(split["normal"]) + len(moved) == len(plain["normal"])
+    cases = explained_and_order_cases(gold_rows[0])
+    facts, menus = ["셀프바 순두부는 무료"], ["국수", "감자전"]
+    v1 = guards_eval.gold_cases(cases)
+    v2 = guards_eval.gold_cases(cases, facts=facts, menus=menus)
+    order = {"c9001-ok", "c9003-ok", "c9005-ok"}
+    assert {row["case_id"] for row in v1["normal"]} == {f"c9{i:03d}-ok" for i in range(6)}
+    assert {row["case_id"] for row in v2["normal"]} == {"c9000-ok", "c9002-ok", "c9004-ok"}  # 근거로 설명되는 풀에서만 뽑는다
+    assert {row["source_case_id"] for row in v2["violation"]} == {"c9000", "c9002", "c9004"}  # 위반도 새 정상 세트 바탕
+    moved = v2[guards_eval.CONTEXT_SET]
+    assert {row["case_id"] for row in moved} == order  # v1 정상 세트에서 표시된 것은 따로 그대로
     assert all(row["set"] == guards_eval.CONTEXT_SET for row in moved)
     row = {"set": guards_eval.CONTEXT_SET}
     assert not guards_eval._in_set(row, "all") and not guards_eval._in_set(row, "gold")  # 주 지표에서 뺀다
+
+
+def test_normal_v2_keeps_seed_and_fills_count_from_explained_pool(gold_rows):
+    from Harness.evals import derive
+
+    cases = explained_and_order_cases(gold_rows[0])
+    keep = lambda case: "감자전" not in case["gold"]["reply"]  # noqa: E731
+    first = derive.normal_set(cases, count=2, keep=keep)
+    assert first == derive.normal_set(cases, count=2, keep=keep)  # 같은 seed 면 같은 세트
+    assert len(first) == 2 and all(keep(c) for c in cases if f"{c['case_id']}-ok" in {r["case_id"] for r in first})
+    assert len(derive.normal_set(cases, count=40, keep=keep)) == 3  # 풀이 작으면 있는 만큼
 
 
 def test_case_row_keeps_context_without_changing_set_hash(gold_rows):

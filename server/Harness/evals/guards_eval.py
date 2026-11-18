@@ -11,7 +11,9 @@
 세트 (실행 폴더 sets/ 에 얼리고 sha256 을 config.gold.sets 에 적는다)
   critic_cases  Harness/critic_cases.json 41건 (정상 19, 위반 22). 가게는 가상 가게 t001, 사례별 사장님 지시·가게 사실을 그대로 쓴다
   normal        정답지의 정책에 맞는 사장님 답변 40건 (derive.normal_set). 사람 확인 전에는 verified=False (정상이라고 가정한 것)
+                가게 사실이 있으면 v2: 주문 정보·가게 사실 필요 표시가 없는 답변만 모은 풀에서 같은 seed 로 뽑는다
   violation     normal 의 답변마다 위반 하나 (derive.violation_set, 종류마다 8건: 보상·지어낸 사정·남 탓·아는 척·다른 리뷰 답변)
+  normal_needs_context  v1 정상 세트(근거를 따지지 않고 뽑은 40건) 중 표시된 답변 (가게 사실이 있을 때만, 주 지표 밖)
   normal·violation 의 가게는 초옹장 s005 (voice/fixtures 의 이름·업종·메뉴). 가게 사실은 data/store_facts_choongjang.json.
   심판에게 정답 답변(참고 답변)을 주지 않는다. normal 은 참고 답변이 곧 판정할 답글이라 core 조건이 저절로 통과하기 때문이다.
 
@@ -225,18 +227,26 @@ def gold_cases(cases: list[dict], *, seed: int = derive.SEED, facts: list[str] |
     """정답지 사례 → normal, violation 판정 세트 (+ 가게 사실이 있으면 normal_needs_context).
 
     가게 사실(facts)이 비어 있으면 세트는 예전 그대로다 (정상 답글마다 표시만 case_row 의 context 에 남는다).
-    사실이 있으면 정상 세트 v2: 주문 정보·사실로만 설명되는 답글을 normal_needs_context 로 옮긴다 (버리지 않는다).
+    사실이 있으면 정상 세트 v2: 근거로 설명되는(주문 정보·가게 사실 필요 표시가 없는) 답글만 모은 풀에서 같은 seed 로
+    NORMAL_COUNT 건을 뽑는다(풀이 작으면 있는 만큼). violation 도 이 normal 을 바탕으로 만든다.
+    normal_needs_context 는 v1 정상 세트(근거를 따지지 않고 뽑은 것)에서 표시된 답글이다 (버리지 않고 따로 보고).
     같은 사실을 사례의 store_facts 로 넣어 critic(ctx.store_facts)·심판(store_facts 입력)이 같은 근거를 본다."""
     templates = derive.load_templates()
-    normal = [_gold_row(row, "normal", facts) for row in derive.normal_set(cases, seed=seed)]
-    out = {"normal": normal,
-           "violation": [_gold_row(row, "violation", facts) for row in derive.violation_set(cases, templates, seed=seed)]}
+    keep = None
     if facts:
         menus = eval_menu_names() if menus is None else menus
-        flagged = [row for row in normal if needs_context(context_flags(row["reply"], row["text"], menus, facts))]
-        out["normal"] = [row for row in normal if row not in flagged]
-        out[CONTEXT_SET] = [{**row, "set": CONTEXT_SET} for row in flagged]
+
+        def keep(case: dict) -> bool:
+            return not needs_context(context_flags(case["gold"]["reply"], case["text"], menus, facts))
+
+    out = {"normal": [_gold_row(row, "normal", facts) for row in derive.normal_set(cases, seed=seed, keep=keep)],
+           "violation": [_gold_row(row, "violation", facts)
+                         for row in derive.violation_set(cases, templates, seed=seed, keep=keep)]}
+    if facts:
+        v1 = [_gold_row(row, CONTEXT_SET, facts) for row in derive.normal_set(cases, seed=seed)]
+        out[CONTEXT_SET] = [row for row in v1 if needs_context(context_flags(row["reply"], row["text"], menus, facts))]
     return out
+
 
 # ── 정상 답글이 무엇을 근거로 썼나 (주문 정보, 가게 사실) ──
 

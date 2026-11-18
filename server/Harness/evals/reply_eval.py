@@ -59,7 +59,8 @@
 기록
   사례마다 cases.jsonl 에 바로 덧붙인다. --resume <결과 폴더> 면 끝난 (시스템, 회차, 사례)는 건너뛴다 (세트 해시가 같아야 한다).
   run_id 는 그 사례에서 시작한 에이전트 실행(부모 없는 실행)의 id (harness_trace.db 의 단계와 잇는다).
-  http_errors.jsonl: 에이전트 쪽 4xx(429 제외) 응답마다 요청 모양(키, 도구 이름, toolChoice, 메시지 역할 순서)과 응답 본문.
+  http_errors.jsonl: 에이전트 쪽 실패 응답(4xx·5xx, 429 제외)마다 요청 모양(키, 도구 이름·모양, toolChoice, 메시지 역할 순서)과
+                     응답 본문 (report.http_error_row. intent·noise·voice 도 같은 모양으로 남긴다).
   리뷰 글이 든 메시지 본문은 남기지 않는다.
 """
 
@@ -196,18 +197,13 @@ class ThreadPost:
         status = getattr(response, "status_code", 200)
         if events is not None and status != 200:
             events.append(status)
-        if self.error_log is not None and 400 <= status < 500 and status != 429:
+        if self.error_log is not None and report.should_log_http_error(status):
             self._record(url, kwargs.get("json") or {}, response)
         return response
 
     def _record(self, url, body: dict, response) -> None:
-        """요청 본문 전체는 리뷰 글이 들어 있어 남기지 않는다. 키, 도구 이름, toolChoice, 메시지 역할 순서, 응답 본문만."""
-        row = {"case_id": getattr(self.local, "case_id", None), "model": str(url).rsplit("/", 1)[-1],
-               "status": response.status_code, "body_keys": sorted(body), "tool_choice": body.get("toolChoice"),
-               "tools": [tool.get("function", {}).get("name") for tool in body.get("tools") or []],
-               "roles": [message.get("role") + ("+toolCalls" if message.get("toolCalls") else "") for message in body.get("messages", [])],
-               "other": {key: body[key] for key in body if key not in ("messages", "tools", "toolChoice")},
-               "response": response.text[:500]}
+        """요청 본문 전체는 리뷰 글이 들어 있어 남기지 않는다 (모양은 report.http_error_row, 다른 스위트와 같다)."""
+        row = report.http_error_row(url, body, response, case_id=getattr(self.local, "case_id", None))
         with self._lock, self.error_log.open("a", encoding="utf-8") as file:
             file.write(json.dumps(row, ensure_ascii=False) + "\n")
 

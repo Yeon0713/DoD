@@ -24,6 +24,7 @@ import hashlib
 import json
 import subprocess
 import threading
+import time
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -47,8 +48,8 @@ def real_now() -> dt.datetime:
     return dt.datetime.now(SEOUL)
 
 
-__all__ = ["CountingPost", "EvalRun", "OUT_ROOT", "SCHEMA", "disable_cache", "file_sha256", "git_info", "prompt_hashes",
-           "real_now", "rejection_reason", "rejections", "sha256_of", "start"]
+__all__ = ["CountingPost", "ErrorLogPost", "EvalRun", "OUT_ROOT", "SCHEMA", "disable_cache", "file_sha256", "git_info", "prompt_hashes",
+           "http_error_row", "real_now", "rejection_reason", "rejections", "sha256_of", "should_log_http_error", "start"]
 
 
 def sha256_of(value: object) -> str:
@@ -123,6 +124,83 @@ class CountingPost:
         with self._lock:
             self.tokens[0] += usage.get("promptTokens") or 0
             self.tokens[1] += usage.get("completionTokens") or 0
+        return response
+
+
+def http_error_row(url, body: dict, response, seconds: float | None = None, **context) -> dict:
+    """http_errors.jsonl 한 줄. 요청 본문 전체는 리뷰 글·사장님 말이 들어 있어 남기지 않는다.
+    남기는 것: 모델, 상태, 본문 키, toolChoice, 도구 이름과 모양(인자 이름·필수·enum 수), 메시지 역할 순서, 그 밖 설정 값
+    (maxTokens·temperature 등), 응답 본문 앞 500자, 걸린 초. context(case_id·system·run 등)를 앞에 붙인다."""
+    tools = body.get("tools") or []
+    return {
+        **context, "model": str(url).rsplit("/", 1)[-1], "status": response.status_code, "seconds": seconds,
+        "body_keys": sorted(body), "tool_choice": body.get("toolChoice"),
+        "tools": [tool.get("function", {}).get("name") for tool in tools],
+        "tool_shapes": {tool.get("function", {}).get("name"): _tool_shape(tool.get("function", {}).get("parameters") or {})
+                        for tool in tools},
+        "roles": [message.get("role", "?") + ("+toolCalls" if message.get("toolCalls") else "")
+                  for message in body.get("messages", [])],
+        "other": {key: body[key] for key in body if key not in ("messages", "tools", "toolChoice")},
+        "response": response.text[:500],
+    }
+
+
+def _tool_shape(parameters: dict) -> dict:
+    properties = parameters.get("properties") or {}
+    return {"params": {name: {"type": prop.get("type"), **({"enum": len(prop["enum"])} if prop.get("enum") else {})}
+                       for name, prop in properties.items()},
+            "required": list(parameters.get("required") or [])}
+
+
+def should_log_http_error(status: int) -> bool:
+    """4xx·5xx 중 429 를 뺀 것 (429 는 limiter 가 기다렸다 다시 부르고 rate_limit_waits 로 센다)."""
+    return status >= 400 and status != 429
+
+
+class _NoResponse:
+    """시간 초과처럼 응답이 없을 때 http_error_row 에 넘기는 빈 응답."""
+
+    def __init__(self, status: str, text: str):
+        self.status_code = status
+        self.text = text
+
+
+class ErrorLogPost:
+    """post 를 감싸 실패 응답(should_log_http_error)마다 http_errors.jsonl 에 한 줄을 남긴다. 성공 응답은 건드리지 않는다.
+    시간 초과(httpx.TimeoutException)도 status "timeout" 한 줄로 남기고 timeouts 로 센 뒤 그대로 다시 던진다
+    (엄격한 예산의 호출 제한 시간에 걸려 어림짐작으로 넘어간 것을 세려고).
+    context 에 지금 사례(case_id, system, run …)를 넣어 두면 그 줄에 붙는다. 파일은 첫 실패 때 생긴다."""
+
+    def __init__(self, post: Post, path: Path | None):
+        self._post = post
+        self.path = path
+        self.context: dict = {}
+        self.count = 0
+        self.timeouts = 0
+        self._lock = threading.Lock()
+
+    def _write(self, row: dict) -> None:
+        if self.path is None:
+            return
+        with self._lock, Path(self.path).open("a", encoding="utf-8") as file:
+            file.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
+            self.count += 1
+
+    def __call__(self, url, **kwargs):
+        started = time.perf_counter()
+        try:
+            response = self._post(url, **kwargs)
+        except httpx.TimeoutException as error:
+            with self._lock:
+                self.timeouts += 1
+            self._write({**http_error_row(url, kwargs.get("json") or {}, _NoResponse("timeout", type(error).__name__),
+                                          round(time.perf_counter() - started, 3), **self.context),
+                         "timeout_limit": kwargs.get("timeout")})
+            raise
+        status = getattr(response, "status_code", 200)
+        if should_log_http_error(status):
+            self._write(http_error_row(url, kwargs.get("json") or {}, response, round(time.perf_counter() - started, 3),
+                                       **self.context))
         return response
 
 

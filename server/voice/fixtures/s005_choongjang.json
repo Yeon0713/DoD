@@ -8,7 +8,7 @@
     "open_time": "10:30",
     "close_time": "20:30",
     "closed_weekdays": [],
-    "address": "경기 화성시 남양읍",
+    "address": "경기 화성시 만세구 남양읍 역골중앙로41번길 39 1층 101호",
     "location": {"lat": 37.2098, "lng": 126.8226},
     "timezone": "Asia/Seoul",
     "logo_url": "/static/logos/s005.png",

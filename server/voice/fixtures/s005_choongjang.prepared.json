@@ -1,7 +1,7 @@
 {
  "version": 1,
  "fixture": "s005_choongjang",
- "fixture_sha": "285aca799478acee",
+ "fixture_sha": "5a6d1fc6f211711d",
  "store_id": "s005",
  "demo_now": "2026-11-17T09:02:00+09:00",
  "counters": {
@@ -18,7 +18,7 @@
     "open_time": "10:30",
     "close_time": "20:30",
     "closed_weekdays": [],
-    "address": "경기 화성시 남양읍",
+    "address": "경기 화성시 만세구 남양읍 역골중앙로41번길 39 1층 101호",
     "location": {
      "lat": 37.2098,
      "lng": 126.8226
@@ -464,6 +464,11 @@
      "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
      "taste_temp": null,
      "hall_service": null
+    },
+    "story_event": {
+     "headline": "비 오는 날 이벤트",
+     "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
+     "staff_task": "스토리 태그 손님 음료 1캔 드리기"
     }
    }
   },

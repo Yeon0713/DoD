@@ -123,6 +123,68 @@ class Intent:
 # 자모 9개 이상인 낱말은 거리 2까지, 나머지는 1까지. 흔한 말이 명령으로 바뀌지 않게 NEAR_PROTECT 는 바꾸지 않는다.
 NEAR_WORDS = ("처음부터", "브리핑", "넘어가", "자세히", "뭐라고", "돌아가", "다음", "넘겨", "계속", "다시", "리뷰", "읽어", "뒤로",
               "그만", "멈춰", "매출", "설정", "얘기", "들었")
+NEAR_PROTECT = {"하면", "위로", "다리", "그냥", "계산", "이번", "다른", "다섯", "그럼", "그래", "매일", "예약"}
+_CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+_JUNG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅗㅏ", "ㅗㅐ", "ㅗㅣ", "ㅛ", "ㅜ", "ㅜㅓ", "ㅜㅔ", "ㅜㅣ", "ㅠ", "ㅡ",
+         "ㅡㅣ", "ㅣ"]
+_JONG = ["", "ㄱ", "ㄲ", "ㄱㅅ", "ㄴ", "ㄴㅈ", "ㄴㅎ", "ㄷ", "ㄹ", "ㄹㄱ", "ㄹㅁ", "ㄹㅂ", "ㄹㅅ", "ㄹㅌ", "ㄹㅍ", "ㄹㅎ", "ㅁ", "ㅂ",
+         "ㅂㅅ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+
+
+def jamo(text: str) -> str:
+    """한글을 자모로 푼다. 겹받침·겹모음도 낱자로 ("읽" → ㅇㅣㄹㄱ). 한글이 아닌 글자는 그대로."""
+    out = []
+    for ch in text:
+        code = ord(ch) - 0xAC00
+        if 0 <= code < 11172:
+            out.append(_CHO[code // 588] + _JUNG[(code % 588) // 28] + _JONG[code % 28])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """편집 거리. limit 를 넘으면 limit + 1."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        best = row[0]
+        for j, y in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
+            best = min(best, row[j])
+        if best > limit:
+            return limit + 1
+    return row[-1]
+
+
+def near_words(squashed: str) -> str:
+    for word in NEAR_WORDS:
+        if word in squashed:
+            continue
+        target = jamo(word)
+        limit = 2 if len(target) >= 9 else 1
+        best = None
+        for size in (len(word) - 1, len(word), len(word) + 1):
+            for start in range(0, len(squashed) - size + 1):
+                piece = squashed[start:start + size]
+                if size < 2 or piece in NEAR_PROTECT or not all("가" <= ch <= "힣" for ch in piece):
+                    continue
+                gap = _distance(jamo(piece), target, limit)
+                if gap <= limit and (best is None or gap < best[0]):
+                    best = (gap, start, size)
+        if best:
+            _, start, size = best
+            squashed = squashed[:start] + word + squashed[start + size:]
+    return squashed
+
+
+# 받아쓰기에서 자모 한두 개가 바뀐 명령 낱말을 되돌린다 ("따음" → "다음", "릐뷰" → "리뷰", "첨부터" → "처음부터").
+# 낱말과 길이가 같거나 한 글자 다른 구간 중 자모 거리가 가장 가까운 곳 하나만 바꾼다 (낱말이 이미 있으면 그대로).
+# 자모 9개 이상인 낱말은 거리 2까지, 나머지는 1까지. 흔한 말이 명령으로 바뀌지 않게 NEAR_PROTECT 는 바꾸지 않는다.
+NEAR_WORDS = ("처음부터", "브리핑", "넘어가", "자세히", "뭐라고", "돌아가", "다음", "넘겨", "계속", "다시", "리뷰", "읽어", "뒤로",
+              "그만", "멈춰", "매출", "설정", "얘기", "들었")
 NEAR_PROTECT = {"하면", "위로", "다리", "그냥", "계산", "이번", "다른", "다섯", "그럼", "그래", "매일", "예약", "하시"}
 _CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
 _JUNG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅗㅏ", "ㅗㅐ", "ㅗㅣ", "ㅛ", "ㅜ", "ㅜㅓ", "ㅜㅔ", "ㅜㅣ", "ㅠ", "ㅡ",

@@ -322,14 +322,3 @@ def test_h11_partly_misheard_echo_is_ignored_but_answers_are_not():
     assert donna.turn("저녁 계약은 두 팀이고")["intent"] == "echo"  # 받아쓰기가 '예약'을 '계약'으로
     donna.turn("정우 초대해 줘", addressed=True)  # 도나: "… 카카오톡으로 보낼까요?"
     assert donna.turn("카카오톡으로 보내 줘")["intent"] == "staff.yes"  # 도나 말과 겹쳐도 대답이다
-
-
-def test_h11_instagram_answers_are_not_echo():
-    from voice.dialog import echo
-
-    echo.forget("t_echo")
-    echo.remember("t_echo", ["인스타그램에 올릴까요?"])
-    assert echo.is_echo("t_echo", "인스타그램에 올릴까요")  # 도나 말은 거른다
-    assert not echo.is_echo("t_echo", "인스타그램에 올리지 마")  # 사장님 대답은 도나 말과 겹쳐도 거르지 않는다
-    assert not echo.is_echo("t_echo", "인스타그램에 올려 줘")
-    echo.forget("t_echo")

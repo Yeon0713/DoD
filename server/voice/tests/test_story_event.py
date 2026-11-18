@@ -32,8 +32,7 @@ def record() -> dict:
 
 
 def ready(chj: Choongjang, ig_on, fake: FakeGraph | None = None) -> FakeGraph:
-    """하린 가입 → 연결 → 브리핑에서 "응" → 포스터 다 그림 (알림이 쌓여 있다)."""
-    chj.join("하린")  # s005 의 하린은 아직 안 들어온 상태다 (fixture). 알바생 할 일을 보려면 가입해 있어야 한다
+    """연결 → 브리핑에서 "응" → 포스터 다 그림 (알림이 쌓여 있다)."""
     fake = ig_on(fake or FakeGraph())
     connect(chj)
     to_story_step(chj)

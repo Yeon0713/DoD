@@ -3,10 +3,8 @@
 메인 데이터(server/db/data, server/db/app_data/registry.db)는 읽기만 한다. 쓰는 것은 이 테스트의 임시 voice.db 뿐이다.
 """
 
-import pytest
 from fastapi.testclient import TestClient
 
-from app.data_pipeline import registered_stores
 from voice import repo
 from voice.main import create_app
 
@@ -15,14 +13,7 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def needs_registered(store_id: str) -> None:
-    """메인 데이터는 git 에 없다 (사장님 앱에서 네이버 지도로 가게를 등록해야 생긴다). 이 PC 에 그 가게가 없으면 건너뛴다."""
-    if registered_stores.place_info(store_id) is None:
-        pytest.skip(f"이 PC 의 메인 데이터에 등록한 가게 {store_id} 가 없어요 (db/app_data/registry.db, db/data/{store_id}.db)")
-
-
 def test_config_and_mounted_modules():
-    needs_registered("s005")
     c = client()
     assert c.get("/v1/account/config").json()["demo_store_id"] == "s005"
     assert c.get("/api/owner_check/sample", params={"store_id": "s005"}).json()["owner_name"] == "김도나"
@@ -38,7 +29,6 @@ def test_naver_login_returns_only_to_known_apps():
 
 
 def test_enter_builds_a_registered_store_from_main_data():
-    needs_registered("s101")
     c = client()
     assert repo.store("s101") is None
     entered = c.post("/v1/account/enter", json={"store_id": "s101"}).json()

@@ -23,7 +23,7 @@ class Situation:
     category: str
     address: str
     date: dt.date
-    kind: str  # EVENT, GAME, WEEKEND (행사·경기가 없는 주말)
+    kind: str  # EVENT, GAME, WEEKEND (행사·경기가 없는 주말), RAIN (음성 앱 비 오는 날 스토리 이벤트)
     title: str  # 행사·경기 이름. 주말이면 "이번 주말"
     start_at: dt.datetime | None = None
     distance_km: float | None = None

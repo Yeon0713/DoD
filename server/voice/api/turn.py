@@ -11,6 +11,7 @@ from voice.api.home import store_clock
 from voice.api.schemas import SettingsPatch, TurnRequest
 from voice.dialog import turn as dialog
 from app.review_reply_writer.write_reply_with_clova import PLACEHOLDER_RE
+from voice.instagram import posts
 from voice.jobs import cause, queue
 
 router = APIRouter()
@@ -44,10 +45,11 @@ def settings_view(store_id: str) -> dict:
         "account": {"store_name": store["name"], "address": store.get("address")},
         "staff_count": staff.joined_count(store_id) or None,
         "compensation": compensation_view(saved),
+        "story_event": story_event_view(saved),
         "platforms": [
             {"key": "naver", "name": "네이버 플레이스", "connected": True},
             {"key": "baemin", "name": "배달의민족", "connected": True},
-            {"key": "instagram", "name": "인스타그램", "connected": bool(repo.get("instagram", store_id))},
+            {"key": "instagram", "name": "인스타그램", "connected": posts.connection(store_id)["connected"]},
         ],
     }
 
@@ -56,6 +58,15 @@ def compensation_view(saved: dict) -> dict:
     """아쉬운 리뷰 답글에 붙일 사장님이 정한 보상 한 문장 (불만 종류마다, 없으면 null)."""
     presets = saved.get("compensation") or {}
     return {key: presets.get(key) for key in cause.COMPENSATION_KEYS}
+
+
+STORY_EVENT_KEYS = ("headline", "offer", "staff_task")
+
+
+def story_event_view(saved: dict) -> dict:
+    """비 오는 날 스토리 이벤트에 쓸 사장님이 정한 문장 (없으면 null). offer 와 staff_task 가 있어야 도나가 제안한다."""
+    found = saved.get("story_event") or {}
+    return {key: found.get(key) for key in STORY_EVENT_KEYS}
 
 
 def check_compensation(text: str | None) -> str | None:
@@ -105,6 +116,16 @@ def patch_settings(body: SettingsPatch):
                 return JSONResponse(status_code=400, content={"error": {"code": "bad_compensation", "message": problem}})
             presets[key] = text.strip() if text else None
         saved["compensation"] = presets
+    if body.story_event is not None:
+        event = dict(saved.get("story_event") or {})
+        for key, text in body.story_event.items():
+            if key not in STORY_EVENT_KEYS:
+                return JSONResponse(status_code=400, content={"error": {"code": "bad_story_event", "message": f"모르는 칸이에요: {key}"}})
+            body_text = (text or "").strip()
+            if body_text and (len(body_text) > 60 or PLACEHOLDER_RE.search(body_text)):
+                return JSONResponse(status_code=400, content={"error": {"code": "bad_story_event", "message": "60자 안에서 빈칸 없이 적어 주세요."}})
+            event[key] = body_text or None
+        saved["story_event"] = event
     if body.hours is not None:
         days = [None if d.closed else {"open": d.open, "close": d.close} for d in body.hours.days]
         try:

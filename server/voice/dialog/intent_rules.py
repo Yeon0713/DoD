@@ -2,7 +2,7 @@
 
 1. 띄어쓰기·문장 부호를 지우고 받아쓰기 오타를 고친다 ("부리핑 해조" → "브리핑해줘").
 2. 직전 응답 종류(ask_permission, show_detail)에 따라 같은 말이 다른 뜻이 된다. "됐어"는 허락 질문 뒤에는 permission.no,
-   자세히 보기에서는 detail.back.
+   자세히 보기에서는 detail.back. "인스타에 올릴까요?"를 물은 뒤(instagram)에는 "응"이 instagram.post, "다음 사진"이 instagram.next_photo.
 3. 가게 손님·직원에게 하는 말로 보이면 not_for_donna.
 4. 못 가르면 None. 부르는 쪽이 LLM(intent_judge)에 묻고, 그것도 안 되면 heuristic 으로 정한다.
 5. 도나가 아쉬운 리뷰 처리를 물은 뒤(ask_action, 2026-11-18): 화면을 안 보고 말로만 맡기므로 잘못 실행하지 않는 쪽으로 가른다.
@@ -11,6 +11,7 @@
    - "도나야" 없이 "네", "예", "어"만 들리면 손님에게 한 대답일 수 있어 다시 묻는다 (action.unclear).
 6. 알바생 일 (2026-11-18, voice/staff_orders.py): 시키기·다 했대?·취소·초대·내보내기·카톡 보내기·누구 있어?·매뉴얼.
    도나가 "보낼까요?"처럼 물은 뒤(ask_staff)의 "응"/"아니"는 staff.yes / staff.no. 시키는 말("…라고 해")을 다른 말보다 먼저 본다.
+   - 스토리 이벤트 포스터를 물은 뒤에도 같은 규칙을 쓴다. "다시 그려 줘"는 action.redo, "스토리만"은 할 일을 빼라는 말.
 """
 
 import re
@@ -54,11 +55,21 @@ QUESTION_TAIL_RE = re.compile(r"(있어|있나|있니|와|오나|와요|어때|�
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
 )
+# 인스타 (D-14, D-15). INSTA_* 는 "인스타에 올릴까요?"를 물은 뒤에만 본다
+INSTA_NEXT_RE = re.compile(r"다음사진|다음장|다른사진|옆사진|사진넘겨|넘겨")
+INSTA_LATER_RE = re.compile(r"^(나중|아니|됐어|다음에|내일|싫어|놔둬)|하지마|안올려|올리지마|올리지말|말아")
+INSTA_POST_RE = re.compile(r"올려|올리자|^(응|어(?=$|그래|해|좋아)|네|예|그래|좋아|오케이|그렇게해|해줘|부탁해|ㅇㅇ|그러자)")
+# 브리핑 밖에서 바로 올리는 말. 다시 묻지 않고 올리므로 문장 끝이 올리라는 말일 때만 본다
+# ("인스타에 올리지 마", "인스타 올릴 수 있어?", "올려도 돼?"는 아니다)
+POST_ORDER = r"(?<!안)(올려|올리자)(줘|줘요|주세요|줄래|봐|요)?$"
+STORY_POST_RE = re.compile(r"스토리.*" + POST_ORDER)
+FEED_POST_RE = re.compile(r"인스타.*" + POST_ORDER)
 DONNA_CUE_RE = re.compile(r"그거|뭐|저기|도나|알려|말해|어떻게|왜|무슨|언제")
 
 # ask_action (아쉬운 리뷰 → 사과 답글 + 알바생 교정 카드)
 DROP_COMP_RE = re.compile(r"(쿠폰|서비스|보상|감자전|사이드|안내)(은|는|도|이|가)?(빼|없이|말고|넣지마|안넣|하지마|됐어)|사과만")
-NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만")
+NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만|스토리만")
+REDO_RE = re.compile(r"다시(그려|그리|만들어|만들)")  # 스토리 이벤트 포스터 다시 그리기 (instagram/story_event.py)
 POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해")
 ACTION_CANCEL_RE = re.compile(r"^(아니|안해|안할래|하지마|됐어|취소|올리지마|놔둬|그냥둬|나중에|내가(할|쓸|볼|올릴|답할)게)")
 APPROVE_RE = re.compile(
@@ -120,8 +131,9 @@ def jump_target(squashed: str) -> str | None:
     return next((target for pattern, target in JUMPS if pattern.search(squashed)), None)
 
 
-def match(text: str, last_type: str | None, addressed: bool = False) -> Intent | None:
-    """addressed: "도나야"로 불러서 한 말. 가게 손님·직원에게 한 말(not_for_donna)로 넘기지 않는다."""
+def match(text: str, last_type: str | None, addressed: bool = False, instagram: bool = False) -> Intent | None:
+    """addressed: "도나야"로 불러서 한 말. 가게 손님·직원에게 한 말(not_for_donna)로 넘기지 않는다.
+    instagram: 브리핑에서 "인스타에 올릴까요?"를 묻고 대답을 기다리는 중 (미리보기를 넘기는 중 포함)."""
     n = normalize(text)
     said = tidy(text)
     if not n:
@@ -138,6 +150,17 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
         action = match_action(n, said, addressed)
         if action is not None:
             return action
+    if instagram:
+        if INSTA_NEXT_RE.search(n):
+            return found("instagram.next_photo")
+        if INSTA_LATER_RE.search(n):
+            return found("instagram.later")
+        if INSTA_POST_RE.search(n):
+            return found("instagram.post")
+    if STORY_POST_RE.search(n):
+        return found("instagram.story")
+    if FEED_POST_RE.search(n):
+        return found("instagram.feed")
     if last_type == "ask_permission":
         if NO_RE.search(n):
             return found("permission.no")
@@ -201,6 +224,8 @@ def edits_in(n: str) -> dict:
 
 def match_action(n: str, said: str, addressed: bool) -> Intent | None:
     """ask_action 뒤의 대답. 못 가르면 None (다른 규칙으로 넘긴다)."""
+    if REDO_RE.search(n):
+        return Intent("action.redo", said)
     edits = edits_in(n)
     if edits["drop_compensation"] or edits["no_card"]:
         return Intent("action.approve" if POST_VERB_RE.search(n) else "action.edit", said, edits=edits)

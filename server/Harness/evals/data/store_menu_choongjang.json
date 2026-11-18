@@ -1,9 +1,9 @@
 {
- "_comment": "평가용 초옹장 메뉴 목록. 정답지(review_gold_v1) 리뷰와 사장님 답변에 나온 메뉴 이름을 모은 후보다. 가격·실제 판매 여부는 모른다(price null). 사장님·팀 확인 전이라 verified 가 false 다. 확인하면 verified_by 에 이름과 날짜를 적는다. aliases 는 같은 메뉴의 다른 표기로, 평가 가게 보기에서는 따로 한 줄씩 넣어 메뉴 검사에서 같은 메뉴로 통과하게 한다.",
+ "_comment": "평가용 초옹장 메뉴 목록. 정답지(review_gold_v1) 리뷰와 사장님 답변에 나온 메뉴 이름을 모은 후보다. 가격·실제 판매 여부는 모른다(price null). 2026-11-18 태성이 확인했다. aliases 는 같은 메뉴의 다른 표기로, 평가 가게 보기에서는 따로 한 줄씩 넣어 메뉴 검사에서 같은 메뉴로 통과하게 한다.",
  "store": "s005",
- "status": "확인 전",
- "verified": false,
- "verified_by": null,
+ "status": "확인 완료",
+ "verified": true,
+ "verified_by": "태성",
  "source": "review_gold_v1.xlsx (리뷰 글, 사장님 답변)",
  "menus": [
   {
@@ -42,7 +42,9 @@
    "name": "장칼국수",
    "category": "MAIN",
    "price": null,
-   "aliases": [],
+   "aliases": [
+    "새뱅이 장칼국수"
+   ],
    "seen_in_reviews": 97,
    "seen_in_replies": 155
   },
@@ -186,5 +188,6 @@
    "seen_in_reviews": 8,
    "seen_in_replies": 6
   }
- ]
+ ],
+ "verified_at": "2026-11-18"
 }

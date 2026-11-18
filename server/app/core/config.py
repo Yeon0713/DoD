@@ -53,9 +53,13 @@ class Settings(BaseSettings):
     # 에이전트 평가(server/Harness/evals)의 CLOVA X 심판 모델. 답글 검토기(CLOVA_STUDIO_MODEL)와 다른 모델을 쓴다. 서버 기능은 쓰지 않는다
     eval_judge_model: str = "HCX-007"
 
-    # AI 포스터 그림 (app/poster_ai). codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(gpt-image-2)를 쓴다
-    # (구독제, API 키 없음. 데모용. 나중에 OpenAI API 로 옮긴다). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)
-    poster_image_engine: str = "codex"
+    # AI 포스터 그림 (app/poster_ai). openai: OpenAI 이미지 API(OPENAI_API_KEY, 그림 한 장마다 요금).
+    # codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(구독제, API 키 없음). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)
+    poster_image_engine: str = "openai"
+    openai_api_key: str = ""
+    poster_openai_model: str = "gpt-image-2"
+    poster_openai_quality: str = "medium"  # low | medium | high (높을수록 비싸고 글자가 또렷하다)
+    poster_openai_size: str = "1024x1536"  # 세로 2:3. 스토리(9:16)로는 to_story 가 맞춘다
     codex_bin: str = "codex"  # Codex CLI 실행 파일 (PATH 에 없으면 전체 경로)
     poster_image_timeout: float = 300  # 그림 하나에 기다리는 초
 
@@ -75,6 +79,20 @@ class Settings(BaseSettings):
 
     # 기상청 API허브 인증키 (apihub.kma.go.kr > 마이페이지). 비어 있으면 등록한 가게도 공통 목업 날씨를 쓴다 (app/weather)
     kma_api_key: str = ""
+
+    # 인스타그램 (Instagram API with Unified Login, graph.facebook.com. 음성 백엔드 server/voice/instagram). 실제 OAuth 전이라 시연 가게 하나만 잇는다.
+    # 토큰은 앱 대시보드 'API setup with Unified login' 의 Generate access tokens 에서 받는다 (instagram_basic, instagram_content_publish)
+    instagram_access_token: str = ""
+    instagram_user_id: str = ""  # IG 프로페셔널 계정 id (GET /me/assigned_instagram_accounts?fields=id,username)
+    instagram_graph_version: str = "v23.0"
+    # 인스타가 사진을 가져갈 공개 주소. base_url: PUBLIC_MEDIA_BASE_URL(ngrok 등) 아래 /media 로 내보낸다.
+    # object_storage: NCP Object Storage 버킷에 올린다 (키는 NCLOUD_ACCESS_KEY / NCLOUD_SECRET_KEY)
+    # litterbox: 테스트용. litterbox.catbox.moe 에 1시간짜리 공개 주소로 올린다
+    media_host: str = "base_url"
+    public_media_base_url: str = ""
+    ncp_object_storage_bucket: str = ""
+    ncp_object_storage_endpoint: str = "https://kr.object.ncloudstorage.com"
+    ncp_object_storage_region: str = "kr-standard"
 
     def allows_origin(self, origin: str) -> bool:
         """이 서버를 불러도 되는 앱 주소인지 (CORS 와 네이버 로그인 뒤 돌려보낼 주소가 같은 기준을 쓴다)."""

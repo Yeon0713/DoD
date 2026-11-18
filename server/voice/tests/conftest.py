@@ -2,6 +2,7 @@
 
 기본은 CLOVA 키가 없는 상태라 에이전트가 꺼지고 템플릿·규칙으로만 돈다 (시나리오 테스트).
 에이전트를 시험할 때는 clova_on 으로 키를 넣고 가짜 CLOVA(Harness.tests.fakes.FakeClova)를 context.post 에 넣는다.
+인스타도 기본은 꺼져 있다 (토큰 없음, Graph API 를 부르면 실패). ig_on 으로 켜고 가짜 Graph(FakeGraph)를 넣는다.
 """
 
 import json
@@ -15,8 +16,60 @@ from app.core.config import settings
 from Harness import cache, limiter, runner, trace
 from voice import clock, config, context, prepared_snapshot, stt, tts
 from voice.dialog import echo
+from voice import clock, config, context, tts
+from voice.instagram import graph, media, posts, story_event
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
+
+
+class NoGraph:
+    def __call__(self, *args, **kwargs):
+        raise AssertionError("인스타 Graph API 를 부르면 안 되는 곳에서 불렀어요")
+
+
+class FakeGraph:
+    """graph.post / graph.get 자리에 넣는 가짜 Instagram Graph API. 부른 것을 calls 에 (method, path, params) 로 남긴다.
+    fail: {"media_publish": (190, "토큰 만료")} 처럼 주면 그 경로에서 오류를 돌려준다. status: 컨테이너 상태 차례."""
+
+    def __init__(self, fail: dict | None = None, status: list[str] | None = None):
+        self.calls: list[tuple[str, str, dict]] = []
+        self.fail = fail or {}
+        self.status = list(status or [])
+        self.children = 0
+
+    def _reply(self, method: str, url: str, params: dict):
+        import httpx
+
+        path = url.split("/v23.0/", 1)[1] if "/v23.0/" in url else url
+        params = {k: v for k, v in params.items() if k != "access_token"}
+        self.calls.append((method, path, params))
+        for key, (code, message) in self.fail.items():
+            if path.endswith(key):
+                return httpx.Response(400, json={"error": {"message": message, "code": code}})
+        if method == "POST" and path.endswith("/media"):
+            if params.get("is_carousel_item"):
+                self.children += 1
+                return httpx.Response(200, json={"id": f"child_{self.children}"})
+            return httpx.Response(200, json={"id": {"CAROUSEL": "carousel_1", "STORIES": "story_1"}.get(params.get("media_type"), "single_1")})
+        if method == "POST" and path.endswith("/media_publish"):
+            return httpx.Response(200, json={"id": "media_1"})
+        if path.endswith("content_publishing_limit"):
+            return httpx.Response(200, json={"data": [{"quota_usage": 1, "config": {"quota_total": 100, "quota_duration": 86400}}]})
+        fields = params.get("fields", "")
+        if fields == "status_code":
+            return httpx.Response(200, json={"status_code": self.status.pop(0) if self.status else "FINISHED", "id": path})
+        if fields == "permalink":
+            return httpx.Response(200, json={"permalink": "https://www.instagram.com/p/TEST/", "id": path})
+        return httpx.Response(200, json={"id": "17841400000000000", "username": "choongjang_namyang", "profile_picture_url": None})
+
+    def post(self, url, data=None, timeout=None):
+        return self._reply("POST", url, data or {})
+
+    def get(self, url, params=None, timeout=None):
+        return self._reply("GET", url, params or {})
+
+    def paths(self, method: str | None = None) -> list[str]:
+        return [path for m, path, _ in self.calls if method in (None, m)]
 
 
 class NoClova:
@@ -44,6 +97,18 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
     monkeypatch.setattr(stt, "ENABLED", False)  # 받아 적기 모델도 (test_stt.py 는 가짜 모델로 켠다)
     monkeypatch.setattr(prepared_snapshot, "ENABLED", False)  # 밤사이 준비 저장본(실제 CLOVA 답글)을 쓰지 않고 늘 새로 준비한다
+    monkeypatch.setattr(settings, "instagram_access_token", "")
+    monkeypatch.setattr(settings, "instagram_user_id", "")
+    monkeypatch.setattr(settings, "instagram_graph_version", "v23.0")
+    monkeypatch.setattr(settings, "media_host", "base_url")
+    monkeypatch.setattr(settings, "public_media_base_url", "https://media.example.test")
+    monkeypatch.setattr(graph, "post", NoGraph())
+    monkeypatch.setattr(graph, "get", NoGraph())
+    monkeypatch.setattr(graph, "sleep", lambda seconds: None)
+    monkeypatch.setattr(media, "MEDIA_DIR", tmp_path / "voice_media")
+    monkeypatch.setattr(posts, "kick", lambda: None)  # 게시 작업은 시험에서 /v1/dev/run 으로 돌린다
+    monkeypatch.setattr(settings, "poster_image_engine", "mock")  # Codex 로 그리지 않는다
+    monkeypatch.setattr(story_event, "spawn", lambda target, *args: target(*args))  # 이벤트 포스터를 뒤에서 그리지 않고 바로
     cache.clear()
     echo.forget()  # 도나가 한 말 기억 (시험마다 새로)
     clock.set_now(None)
@@ -59,6 +124,20 @@ def clova_on(monkeypatch):
 
     def use(fake):
         monkeypatch.setattr(context, "post", fake)
+        return fake
+
+    return use
+
+
+@pytest.fixture
+def ig_on(monkeypatch):
+    """인스타를 켠다 (토큰과 IG 사용자 id). 돌려준 함수에 FakeGraph 를 넣으면 graph.post / graph.get 으로 쓴다."""
+    monkeypatch.setattr(settings, "instagram_access_token", "test-token")
+    monkeypatch.setattr(settings, "instagram_user_id", "17841400000000000")
+
+    def use(fake: FakeGraph) -> FakeGraph:
+        monkeypatch.setattr(graph, "post", fake.post)
+        monkeypatch.setattr(graph, "get", fake.get)
         return fake
 
     return use

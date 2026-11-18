@@ -60,6 +60,8 @@ class SettingsPatch(BaseModel):
     hours: HoursPatch | None = None
     # 아쉬운 리뷰 답글에 붙일 사장님이 정한 보상 한 문장 (불만 종류 packaging, missing, taste_temp, hall_service). null 은 지움
     compensation: dict[str, str | None] | None = None
+    # 비 오는 날 스토리 이벤트 (instagram/story_event.py): headline, offer(손님 혜택 한 문장), staff_task(알바생 할 일). null 은 지움
+    story_event: dict[str, str | None] | None = None
 
 
 class ReviewIn(BaseModel):
@@ -84,4 +86,18 @@ class ClockIn(BaseModel):
 
 class RunIn(BaseModel):
     store_id: str
-    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled"]
+    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled", "instagram_publish"]
+
+
+class StoryEventIn(BaseModel):
+    store_id: str
+
+
+class InstagramConnectIn(BaseModel):
+    store_id: str | None = None  # 앱은 {} 로 부른다. 비우면 시연 가게
+
+
+class InstagramPostIn(BaseModel):
+    store_id: str
+    kind: Literal["feed", "story"]
+    post_at: str | None = None  # 비우면 지금 올린다

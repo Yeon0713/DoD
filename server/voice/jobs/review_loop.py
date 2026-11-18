@@ -342,7 +342,8 @@ def on_staff_confirm(task: dict, person: dict) -> None:
     source = task.get("source") or {}
     record = repo.get("alert", source.get("alert_id")) if source.get("alert_id") else None
     line = f"{person['call']} 씨가 {_obj(task['title'])} 확인했어요"
-    activity.log(task["store_id"], "donna", line, f"fix:{source.get('review_id')}:checked")
+    key = f"fix:{source.get('review_id')}:checked" if source.get("type", "review") == "review" else f"{source['type']}:{source.get('id')}:checked"
+    activity.log(task["store_id"], "donna", line, key)
     if record and record["state"] == "card_pinned":
         repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "checked_by": person["id"], "checked_at": iso(clock.now())})
     notices.push(task["store_id"], "staff_checked", line, say=[f"{line}."])

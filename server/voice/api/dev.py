@@ -173,6 +173,8 @@ def post_run(body: RunIn):
         return {"job": body.job, "replied": auto_reply.reply_pending(store_id)}
     if body.job == "post_scheduled":
         return {"job": body.job, "posted": auto_reply.post_scheduled(store_id)}
+    if body.job == "instagram_publish":  # 걸어 둔 인스타 게시 작업 중 시각이 된 것을 돌린다
+        return {"job": body.job, "ran": [job for job in queue.run_due() if ":instagram_publish:" in job]}
     prepared = briefing.prepare(store_id)
     return {"job": body.job, "prepared_at": prepared["prepared_at"], "sources": prepared["sources"]}
 

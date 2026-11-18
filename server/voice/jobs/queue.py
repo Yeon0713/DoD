@@ -4,6 +4,7 @@
   auto_reply        아쉬운 리뷰가 들어오고 10분 뒤 (허락은 돌 때 다시 본다)
   post_scheduled    예약한 답글을 올릴 시각
   review_alert      영업 중 아쉬운 리뷰: 바로 알림 / review_remind 15분 뒤 다시 알림 / review_fallback 25분 대답 없음 처리
+  instagram_publish 인스타 게시물을 올릴 시각 (지금 올릴 것은 instagram/posts.kick 이 바로 돌린다)
 
 run_due(지금까지) 는 예정 시각이 지난 작업을 시각 순서로 돌린다. 작업은 clock.at(예정 시각) 안에서 돌아서,
 dev/clock 으로 시계를 한꺼번에 옮겨도 그 작업이 원래 돌았어야 할 시각에 돈 것으로 적힌다.
@@ -23,7 +24,8 @@ _running = threading.Lock()
 
 
 def add(store_id: str, kind: str, due_at: dt.datetime, payload: dict | None = None) -> dict:
-    job_id = f"{store_id}:{kind}:{iso(due_at)}:{(payload or {}).get('review_id', '')}"
+    payload = payload or {}
+    job_id = f"{store_id}:{kind}:{iso(due_at)}:{payload.get('review_id') or payload.get('post_id') or ''}"
     existing = repo.get("job", job_id)
     if existing:
         return existing
@@ -91,6 +93,11 @@ def run_job(job: dict) -> object:
 
         step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback}[job["kind"]]
         return step(store_id, job["payload"]["review_id"]) is not None
+    if job["kind"] == "instagram_publish":
+        from voice.instagram import posts
+
+        published = posts.publish(store_id, job["payload"]["post_id"])
+        return bool(published and published["status"] == "published")
     raise ValueError(f"모르는 작업: {job['kind']}")
 
 

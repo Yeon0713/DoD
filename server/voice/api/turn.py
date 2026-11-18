@@ -11,6 +11,7 @@ from voice.api.home import store_clock
 from voice.api.schemas import SettingsPatch, TurnRequest
 from voice.dialog import turn as dialog
 from app.review_reply_writer.write_reply_with_clova import PLACEHOLDER_RE
+from voice.instagram import posts
 from voice.jobs import cause, queue
 
 router = APIRouter()
@@ -47,7 +48,7 @@ def settings_view(store_id: str) -> dict:
         "platforms": [
             {"key": "naver", "name": "네이버 플레이스", "connected": True},
             {"key": "baemin", "name": "배달의민족", "connected": True},
-            {"key": "instagram", "name": "인스타그램", "connected": bool(repo.get("instagram", store_id))},
+            {"key": "instagram", "name": "인스타그램", "connected": posts.connection(store_id)["connected"]},
         ],
     }
 

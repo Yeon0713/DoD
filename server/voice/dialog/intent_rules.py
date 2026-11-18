@@ -2,7 +2,7 @@
 
 1. 띄어쓰기·문장 부호를 지우고 받아쓰기 오타를 고친다 ("부리핑 해조" → "브리핑해줘").
 2. 직전 응답 종류(ask_permission, show_detail)에 따라 같은 말이 다른 뜻이 된다. "됐어"는 허락 질문 뒤에는 permission.no,
-   자세히 보기에서는 detail.back.
+   자세히 보기에서는 detail.back. "인스타에 올릴까요?"를 물은 뒤(instagram)에는 "응"이 instagram.post, "다음 사진"이 instagram.next_photo.
 3. 가게 손님·직원에게 하는 말로 보이면 not_for_donna.
 4. 못 가르면 None. 부르는 쪽이 LLM(intent_judge)에 묻고, 그것도 안 되면 heuristic 으로 정한다.
 5. 도나가 아쉬운 리뷰 처리를 물은 뒤(ask_action, 2026-11-18): 화면을 안 보고 말로만 맡기므로 잘못 실행하지 않는 쪽으로 가른다.
@@ -52,6 +52,12 @@ QUESTION_TAIL_RE = re.compile(r"(있어|있나|있니|와|오나|와요|어때|�
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
 )
+# 인스타 (D-14, D-15). INSTA_* 는 "인스타에 올릴까요?"를 물은 뒤에만 본다
+INSTA_NEXT_RE = re.compile(r"다음사진|다음장|다른사진|옆사진|사진넘겨|넘겨")
+INSTA_LATER_RE = re.compile(r"^(나중|아니|됐어|다음에|내일|싫어|하지마|안올려|올리지마|놔둬)")
+INSTA_POST_RE = re.compile(r"올려|올리자|^(응|어(?=$|그래|해|좋아)|네|예|그래|좋아|오케이|그렇게해|해줘|부탁해|ㅇㅇ|그러자)")
+STORY_POST_RE = re.compile(r"스토리.*(올려|올리|올릴)")
+FEED_POST_RE = re.compile(r"인스타.*(올려|올리|올릴)")
 DONNA_CUE_RE = re.compile(r"그거|뭐|저기|도나|알려|말해|어떻게|왜|무슨|언제")
 
 # ask_action (아쉬운 리뷰 → 사과 답글 + 알바생 교정 카드)
@@ -97,8 +103,9 @@ def jump_target(squashed: str) -> str | None:
     return next((target for pattern, target in JUMPS if pattern.search(squashed)), None)
 
 
-def match(text: str, last_type: str | None, addressed: bool = False) -> Intent | None:
-    """addressed: "도나야"로 불러서 한 말. 가게 손님·직원에게 한 말(not_for_donna)로 넘기지 않는다."""
+def match(text: str, last_type: str | None, addressed: bool = False, instagram: bool = False) -> Intent | None:
+    """addressed: "도나야"로 불러서 한 말. 가게 손님·직원에게 한 말(not_for_donna)로 넘기지 않는다.
+    instagram: 브리핑에서 "인스타에 올릴까요?"를 묻고 대답을 기다리는 중 (미리보기를 넘기는 중 포함)."""
     n = normalize(text)
     said = tidy(text)
     if not n:
@@ -115,6 +122,17 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
         action = match_action(n, said, addressed)
         if action is not None:
             return action
+    if instagram:
+        if INSTA_NEXT_RE.search(n):
+            return found("instagram.next_photo")
+        if INSTA_LATER_RE.search(n):
+            return found("instagram.later")
+        if INSTA_POST_RE.search(n):
+            return found("instagram.post")
+    if STORY_POST_RE.search(n):
+        return found("instagram.story")
+    if FEED_POST_RE.search(n):
+        return found("instagram.feed")
     if last_type == "ask_permission":
         if NO_RE.search(n):
             return found("permission.no")

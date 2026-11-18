@@ -2,7 +2,7 @@
 
 켜져 있는 동안 스레드 하나가 30초마다 작업 큐(jobs/queue.py)를 본다.
 켤 때 시연 가게(config.DEMO_FIXTURE, 기본 초옹장)가 없으면 넣고, 시계를 그 데이터의 demo.now 로 맞추고, 브리핑을 준비한다.
-가게 로고와 메뉴 사진은 /static 에서 준다 (voice/static).
+가게 로고와 메뉴 사진은 /static 에서 준다 (voice/static). 인스타에 올릴 사진은 /media 에서 준다 (instagram/media.py).
 """
 
 import logging
@@ -17,8 +17,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from voice import config, tts
-from voice.api import account, dev, home, staff, tabs, turn
+from voice.api import account, dev, home, instagram, staff, tabs, turn
 from voice.api import tts as tts_api
+from voice.instagram import media
 from voice.jobs import queue
 
 logger = logging.getLogger(__name__)
@@ -65,10 +66,13 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    for module in (home, turn, tabs, tts_api, dev, account, staff):
+    for module in (home, turn, tabs, tts_api, instagram, dev, account, staff):
         app.include_router(module.router, prefix="/v1")
     account.mount(app)  # 가입·로그인: 메인 서버의 /api/auth, /api/naver, /api/stores, /api/owner_check
     app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
+    # 인스타에 올릴 사진 (MEDIA_HOST=base_url 일 때 인스타 서버가 PUBLIC_MEDIA_BASE_URL/media/... 로 가져간다)
+    media.MEDIA_DIR.mkdir(parents=True, exist_ok=True)
+    app.mount("/media", StaticFiles(directory=media.MEDIA_DIR), name="media")
     return app
 
 

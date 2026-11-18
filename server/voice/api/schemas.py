@@ -84,4 +84,14 @@ class ClockIn(BaseModel):
 
 class RunIn(BaseModel):
     store_id: str
-    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled"]
+    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled", "instagram_publish"]
+
+
+class InstagramConnectIn(BaseModel):
+    store_id: str | None = None  # 앱은 {} 로 부른다. 비우면 시연 가게
+
+
+class InstagramPostIn(BaseModel):
+    store_id: str
+    kind: Literal["feed", "story"]
+    post_at: str | None = None  # 비우면 지금 올린다

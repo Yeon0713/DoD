@@ -2,6 +2,7 @@
 
 v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가게 말로 넘기지 않는다.
 다른 탭을 여는 말은 navigate(tab) 로 답한다 (문서 16-1). 허락하면 그 자리에서 미리 써 둔 답글을 올린다 (D-10 → D-11).
+인스타 단계(D-14, D-15)에서 "올려"는 게시 작업을 걸고 바로 답한다 (실제로 올리는 건 뒤에서, 끝나면 알림).
 
 - 같은 request_id 가 다시 오면 저장해 둔 응답을 그대로 돌려준다 (단계가 두 번 넘어가지 않게).
 - 뜻: 규칙(intent_rules) → 못 가르면 LLM(intent_judge, 3초) → 그것도 안 되면 heuristic.
@@ -21,14 +22,17 @@ from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import intent_rules
 from voice.dialog.intent_rules import Intent
+from voice.instagram import posts
 from voice.jobs import briefing as briefing_job
 from voice.jobs import review_loop
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
-                    "detail.show", "detail.read", "detail.back", "permission.yes", "permission.no"}
+                    "detail.show", "detail.read", "detail.back", "permission.yes", "permission.no",
+                    "instagram.post", "instagram.later", "instagram.next_photo"}
 SITUATIONS = {
     "ask_permission": "도나가 '아쉬운 리뷰에 제가 바로 답할까요?' 하고 허락을 물었어요",
+    "ask": "도나가 '많이 나간 메뉴를 인스타에 올릴까요?' 하고 물었어요",
     "show_detail": "도나가 리뷰와 답글을 화면에 띄웠어요",
     "answer": "도나가 브리핑 중이에요",
     "end": "브리핑이 끝났어요",
@@ -44,8 +48,12 @@ def empty(kind: str) -> dict:
     return {"type": kind, "headline": None, "say": [], "cards": [], "expects_reply": False}
 
 
+def asking_instagram(session: dict) -> bool:
+    return session.get("step") == "instagram" and session.get("last_type") in ("ask", "show_detail")
+
+
 def understand(text: str, session: dict, view, addressed: bool = False) -> Intent:
-    found = intent_rules.match(text, session.get("last_type"), addressed)
+    found = intent_rules.match(text, session.get("last_type"), addressed, instagram=asking_instagram(session))
     if found is not None:
         return found
     judged = intent_judge.judge(view, text, SITUATIONS.get(session.get("last_type") or "", "도나는 듣고만 있어요"))
@@ -97,8 +105,39 @@ def _navigate(view, tab: str) -> dict:
     return {**empty("navigate"), "tab": tab, "say": [say(line if line.endswith(".") else line + ".") for line in text.split(". ") if line]}
 
 
-def _prefixed(response: dict, text: str) -> dict:
-    return {**response, "say": [say(text), *response["say"]]}
+def _prefixed(response: dict, *texts: str) -> dict:
+    return {**response, "say": [*(say(text) for text in texts), *response["say"]]}
+
+
+def post_now(view, kind: str) -> dict:
+    """브리핑 밖에서 "인스타에 올려 줘", "스토리 올려 줘". 사장님이 직접 시킨 것이라 다시 묻지 않는다."""
+    if not posts.connection(view.store_id)["connected"]:
+        return answer("인스타가 연결되지 않았어요", [say("인스타가 아직 연결되지 않았어요.")], [])
+    built = posts.build_feed(view) if kind == "feed" else posts.build_story(view)
+    if built is None:
+        return answer("올릴 메뉴 사진이 없어요", [say("올릴 메뉴 사진이 모자라요.")], [])
+    posts.queue_publish(view.store_id, posts.create(view.store_id, built))
+    what = "인기 메뉴를" if kind == "feed" else "스토리를"
+    return answer(f"인스타에 {what} 올릴게요", [say(f"인스타에 {what} 올릴게요."), say("다 올라가면 알려 드릴게요.")], [])
+
+
+def instagram_reply(name: str, session: dict, brief: dict, view) -> dict:
+    """인스타에 올릴까요(D-14) 뒤의 대답: 미리보기 넘기기, 올리기, 나중에."""
+    if name == "instagram.next_photo":
+        slides = brief["details"]["instagram"]["slides"]
+        slide = session.get("insta_slide", 0) % len(slides) + 1
+        session.update(insta_slide=slide, mode="detail")
+        return {**copy.deepcopy(slides[slide - 1]), "briefing": _gauge("instagram")}
+    if name == "instagram.later":
+        activity.log(view.store_id, "owner", "인스타는 다음에 올리기로 했어요", "instagram_later")
+        return _prefixed(_go(brief, session, _after(brief, "instagram")), "네, 내일 브리핑에서 다시 여쭤볼게요.")
+    built = posts.build_feed(view)
+    if built is None:
+        return _prefixed(_go(brief, session, _after(brief, "instagram")), "올릴 메뉴 사진이 모자라요.")
+    posts.queue_publish(view.store_id, posts.create(view.store_id, built))
+    activity.log(view.store_id, "owner", "인스타에 인기 메뉴를 올리라고 했어요", "instagram_ok")
+    brief = briefing_job.refresh_instagram(view.store_id) or brief  # 오늘은 다시 묻지 않는다
+    return _prefixed(_go(brief, session, _after(brief, "instagram")), "네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요.")
 
 
 def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
@@ -118,10 +157,18 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if name == "action.repeat":
             name = "notice.open"
         return {**review_loop.decide(view, name, intent.edits, session.get("alert_id")), "keep_context": "ask_action"}
+    if name in ("instagram.feed", "instagram.story"):
+        return post_now(view, name.split(".", 1)[1])
     if brief is None:
         return _not_ready()
 
     step = session.get("step")
+    if asking_instagram(session) and name in ("permission.yes", "permission.no"):  # LLM 이 허락 대답으로 가른 경우
+        name = "instagram.post" if name == "permission.yes" else "instagram.later"
+    if name.startswith("instagram."):
+        if not asking_instagram(session) or not brief["details"].get("instagram"):
+            return empty("not_understood")
+        return instagram_reply(name, session, brief, view)
     if name in ("briefing.start", "briefing.restart"):
         return _go(brief, session, _after(brief, None, inclusive=True))
     if name == "briefing.next":
@@ -159,7 +206,7 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return empty("not_understood")
     detail = brief["details"].get(step)
     if name == "detail.show" and detail:
-        session["mode"] = "detail"
+        session.update(mode="detail", insta_slide=1)
         return {**copy.deepcopy(detail["show"]), "briefing": _gauge(step)}
     if name == "detail.read" and detail:
         session["mode"] = "detail"
@@ -232,6 +279,7 @@ def handle(request: dict) -> dict:
         "expects_reply": response["expects_reply"],
         **({"permission": response["permission"]} if response.get("permission") else {}),
         **({"action": response["action"]} if response.get("action") else {}),
+        **({"ask": response["ask"]} if response.get("ask") else {}),
         **({"tab": response["tab"]} if response.get("tab") else {}),
     }
     session["last_turn_id"] = response["turn_id"]

@@ -76,6 +76,20 @@ class Settings(BaseSettings):
     # 기상청 API허브 인증키 (apihub.kma.go.kr > 마이페이지). 비어 있으면 등록한 가게도 공통 목업 날씨를 쓴다 (app/weather)
     kma_api_key: str = ""
 
+    # 인스타그램 (Instagram API with Unified Login, graph.facebook.com. 음성 백엔드 server/voice/instagram). 실제 OAuth 전이라 시연 가게 하나만 잇는다.
+    # 토큰은 앱 대시보드 'API setup with Unified login' 의 Generate access tokens 에서 받는다 (instagram_basic, instagram_content_publish)
+    instagram_access_token: str = ""
+    instagram_user_id: str = ""  # IG 프로페셔널 계정 id (GET /me/assigned_instagram_accounts?fields=id,username)
+    instagram_graph_version: str = "v23.0"
+    # 인스타가 사진을 가져갈 공개 주소. base_url: PUBLIC_MEDIA_BASE_URL(ngrok 등) 아래 /media 로 내보낸다.
+    # object_storage: NCP Object Storage 버킷에 올린다 (키는 NCLOUD_ACCESS_KEY / NCLOUD_SECRET_KEY)
+    # litterbox: 테스트용. litterbox.catbox.moe 에 1시간짜리 공개 주소로 올린다
+    media_host: str = "base_url"
+    public_media_base_url: str = ""
+    ncp_object_storage_bucket: str = ""
+    ncp_object_storage_endpoint: str = "https://kr.object.ncloudstorage.com"
+    ncp_object_storage_region: str = "kr-standard"
+
     def allows_origin(self, origin: str) -> bool:
         """이 서버를 불러도 되는 앱 주소인지 (CORS 와 네이버 로그인 뒤 돌려보낼 주소가 같은 기준을 쓴다)."""
         if origin in self.cors_origins:

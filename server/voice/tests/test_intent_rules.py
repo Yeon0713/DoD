@@ -62,3 +62,29 @@ def test_owner_said_is_tidied():
     assert match("오늘 일정 부리핑 해조", None).owner_said == "오늘 일정 브리핑해 줘"
     assert match("응 그렇게 해", "ask_permission").owner_said == "응, 그렇게 해"
     assert match("다음", "answer").owner_said == "다음"
+
+
+# G3·G4 (donna-voice/docs/test-scenarios-closed-loop.md): 아쉬운 리뷰 처리를 물은 뒤(ask_action). 잘못 실행하지 않는 쪽으로 가른다.
+@pytest.mark.parametrize("text, addressed, intent, edits", [
+    ("응, 진행해", False, "action.approve", (False, False)),
+    ("그렇게 해", False, "action.approve", (False, False)),
+    ("올려", False, "action.approve", (False, False)),
+    ("네 진행해 주세요", False, "action.approve", (False, False)),
+    ("응 그거 냉장고에 넣어", False, None, None),  # G3: 문장 전체가 승인 말이 아니면 승인이 아니다
+    ("네", False, "action.unclear", None),  # G4: 부르지 않은 "네"는 손님 대답일 수 있다
+    ("어", False, "action.unclear", None),
+    ("네", True, "action.approve", (False, False)),
+    ("쿠폰 빼고 사과만 올려", False, "action.approve", (True, False)),
+    ("카드는 넣지 마", False, "action.edit", (False, True)),
+    ("아니, 서비스는 빼", False, "action.edit", (True, False)),  # "아니"로 시작해도 고치는 말이면 취소가 아니다
+    ("사과만 올리고 카드도 빼", False, "action.approve", (True, True)),
+    ("안 해", False, "action.cancel", None),
+    ("내가 쓸게", False, "action.cancel", None),
+    ("3번 테이블 치워 줘", False, "not_for_donna", None),
+    ("네 손님 포장이세요?", False, "not_for_donna", None),
+])
+def test_ask_action(text, addressed, intent, edits):
+    found = match(text, "ask_action", addressed)
+    assert (found.name if found else None) == intent
+    if edits is not None:
+        assert (found.edits["drop_compensation"], found.edits["no_card"]) == edits

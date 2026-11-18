@@ -5,6 +5,10 @@
    자세히 보기에서는 detail.back.
 3. 가게 손님·직원에게 하는 말로 보이면 not_for_donna.
 4. 못 가르면 None. 부르는 쪽이 LLM(intent_judge)에 묻고, 그것도 안 되면 heuristic 으로 정한다.
+5. 도나가 아쉬운 리뷰 처리를 물은 뒤(ask_action, 2026-11-18): 화면을 안 보고 말로만 맡기므로 잘못 실행하지 않는 쪽으로 가른다.
+   - 고치는 말("쿠폰 빼고", "사과만", "카드는 넣지 마")을 먼저 본다. 올리라는 말이 같이 있으면 고친 뒤 바로 올린다(action.approve).
+   - 승인은 문장 전체가 승인 말일 때만 ("응, 진행해", "그렇게 해", "올려"). "응 그거 냉장고에 넣어"는 승인이 아니다.
+   - "도나야" 없이 "네", "예", "어"만 들리면 손님에게 한 대답일 수 있어 다시 묻는다 (action.unclear).
 """
 
 import re
@@ -50,6 +54,16 @@ NOT_FOR_DONNA_RE = re.compile(
 )
 DONNA_CUE_RE = re.compile(r"그거|뭐|저기|도나|알려|말해|어떻게|왜|무슨|언제")
 
+# ask_action (아쉬운 리뷰 → 사과 답글 + 알바생 교정 카드)
+DROP_COMP_RE = re.compile(r"(쿠폰|서비스|보상|감자전|사이드|안내)(은|는|도|이|가)?(빼|없이|말고|넣지마|안넣|하지마|됐어)|사과만")
+NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만")
+POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해")
+ACTION_CANCEL_RE = re.compile(r"^(아니|안해|안할래|하지마|됐어|취소|올리지마|놔둬|그냥둬|나중에|내가(할|쓸|볼|올릴|답할)게)")
+APPROVE_RE = re.compile(
+    r"^(응|웅|그래|좋아|오케이|ㅇㅇ|네|예)?(그렇게|그대로|바로|빨리)?(진행|올려|올리|넣어|처리|등록)?(해|해줘|줘|요|하자|해요|해주세요|주세요|해라|할게)?$"
+)
+BARE_YES = {"네", "예", "어", "네네", "예예", "네에"}
+
 
 @dataclass
 class Intent:
@@ -57,6 +71,7 @@ class Intent:
     owner_said: str
     jump_to: str | None = None
     by: str = "rule"  # rule | llm | heuristic
+    edits: dict | None = None  # action.*: {"drop_compensation": bool, "no_card": bool}
 
 
 def normalize(text: str) -> str:
@@ -96,6 +111,10 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
         return found("stop")
     if not addressed and NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
         return found("not_for_donna")
+    if last_type == "ask_action":
+        action = match_action(n, said, addressed)
+        if action is not None:
+            return action
     if last_type == "ask_permission":
         if NO_RE.search(n):
             return found("permission.no")
@@ -128,6 +147,26 @@ def match(text: str, last_type: str | None, addressed: bool = False) -> Intent |
     for pattern, tab in NAVIGATE:
         if pattern.search(n):
             return found(f"navigate.{tab}")
+    return None
+
+
+def edits_in(n: str) -> dict:
+    return {"drop_compensation": bool(DROP_COMP_RE.search(n)), "no_card": bool(NO_CARD_RE.search(n))}
+
+
+def match_action(n: str, said: str, addressed: bool) -> Intent | None:
+    """ask_action 뒤의 대답. 못 가르면 None (다른 규칙으로 넘긴다)."""
+    edits = edits_in(n)
+    if edits["drop_compensation"] or edits["no_card"]:
+        return Intent("action.approve" if POST_VERB_RE.search(n) else "action.edit", said, edits=edits)
+    if ACTION_CANCEL_RE.search(n):
+        return Intent("action.cancel", said)
+    if n in BARE_YES and not addressed:
+        return Intent("action.unclear", said)
+    if APPROVE_RE.fullmatch(n) and n:
+        return Intent("action.approve", said, edits={"drop_compensation": False, "no_card": False})
+    if REPEAT_RE.search(n):
+        return Intent("action.repeat", said)
     return None
 
 

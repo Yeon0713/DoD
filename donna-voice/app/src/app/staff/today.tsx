@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Icon } from '@/components/Icon';
 import { AttendanceStrip, BigButton, StaffFrame, StaffHeader } from '@/components/staff';
 import { Txt } from '@/components/Txt';
-import { api, StaffTask, StaffToday } from '@/lib/api';
+import { api, ApiFailure, StaffTask, StaffToday } from '@/lib/api';
 import { useLayout } from '@/lib/layout';
 import { staffSession } from '@/lib/staffSession';
 import { colors, radius, space } from '@/theme/tokens';
@@ -14,10 +14,12 @@ import { colors, radius, space } from '@/theme/tokens';
 //   머리: 가게 로고, 이름, 날짜, 내 이름 꼬리표 / 출퇴근 줄
 //   몸통: 오픈 전, 영업 중, 마감 순서. 왼쪽은 때, 오른쪽은 일 (삼성 캘린더 목록 보기). "지금" 선 위는 지난 때.
 //   "확인 필요"는 그 때 묶음 맨 위에 따로 있고 저마다 눌러야 사라진다.
+//   아쉬운 리뷰에서 나온 교정 카드(긴급, 2026-11-18)는 화면 맨 위에 붉게 뜨고, 확인해야 퇴근할 수 있다.
 export default function StaffTodayScreen() {
   const router = useRouter();
   const [data, setData] = useState<StaffToday | null>(null);
   const [staffId, setStaffId] = useState<string | null>(null);
+  const [blocked, setBlocked] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const s = await staffSession.load();
@@ -40,14 +42,27 @@ export default function StaffTodayScreen() {
   if (!data || !staffId) return <StaffFrame>{null}</StaffFrame>;
   const store = { name: data.store.name, logo_url: data.store.logo_url, date_label: data.date_label };
   const toggle = (t: StaffTask) => api.staff.done(t.id, staffId, t.done).then(load);
-  const confirm = (t: StaffTask) => api.staff.confirm(t.id, staffId).then(load);
-  const checkout = () => api.staff.checkout(staffId).then(load);
+  const confirm = (t: StaffTask) => api.staff.confirm(t.id, staffId).then(() => setBlocked(null)).then(load);
+  const checkout = () =>
+    api.staff
+      .checkout(staffId)
+      .then(() => setBlocked(null))
+      .then(load)
+      .catch((e) => setBlocked(e instanceof ApiFailure ? e.message : '지금은 퇴근을 적지 못했어요.'));
   const nowLine = <NowLine key="now" />;
 
   return (
     <StaffFrame>
       <StaffHeader store={store} me={data.staff.call} />
       <AttendanceStrip state={data.attendance.state} label={data.attendance.label} detail={data.attendance.detail} onCheckout={checkout} />
+      {blocked ? (
+        <Txt variant="label" color="urgent" accessibilityRole="alert">
+          {blocked}
+        </Txt>
+      ) : null}
+      {(data.urgent ?? []).map((t) => (
+        <UrgentCard key={t.id} task={t} onConfirm={() => confirm(t)} onOpen={() => router.push(`/staff/task/${t.id}`)} />
+      ))}
       <View style={{ gap: space.s16 }}>
         {data.now_after === null ? nowLine : null}
         {data.groups.map((g) => (
@@ -117,6 +132,33 @@ function TaskRow({ task, onToggle, onOpen }: { task: StaffTask; onToggle: () => 
   );
 }
 
+/** 긴급 교정 카드: 아쉬운 리뷰에서 나온 일. 붉은 표시, 무엇을 어떻게, 확인. */
+function UrgentCard({ task, onConfirm, onOpen }: { task: StaffTask; onConfirm: () => void; onOpen: () => void }) {
+  const { scale } = useLayout();
+  return (
+    <View style={styles.urgent} accessibilityRole="alert">
+      <Pressable onPress={onOpen} accessibilityRole="button" accessibilityLabel={`${task.title} 자세히`} style={{ gap: space.s8 }}>
+        <View style={styles.badge}>
+          <Icon name="alert" size={Math.round(16 * scale)} color="urgent" />
+          <Txt variant="label" color="urgent" style={{ fontFamily: 'NotoSansKR_700Bold' }}>
+            긴급
+          </Txt>
+          <Txt variant="label" color="ink2">
+            {task.fresh ? `방금, ${task.sub}` : task.sub}
+          </Txt>
+        </View>
+        <Txt variant="title">{task.title}</Txt>
+        {task.detail ? (
+          <Txt variant="body" color="ink2">
+            {task.detail}
+          </Txt>
+        ) : null}
+      </Pressable>
+      <BigButton label="확인" onPress={onConfirm} />
+    </View>
+  );
+}
+
 /** 지금 시각 선 (삼성 캘린더). 선 위는 지난 때, 아래는 앞으로 할 때. */
 function NowLine() {
   return (
@@ -136,6 +178,8 @@ const styles = StyleSheet.create({
   group: { flexDirection: 'row', gap: space.s8 },
   when: { width: 56, paddingTop: space.s16 },
   must: { gap: space.s12, padding: space.s16, borderRadius: radius.card, backgroundColor: colors.brandSoft },
+  urgent: { gap: space.s12, padding: space.s16, borderRadius: radius.card, backgroundColor: colors.urgentSoft, borderWidth: 2, borderColor: colors.urgent },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: space.s4 },
   list: { paddingVertical: space.s4, paddingHorizontal: space.s16, borderRadius: radius.card, backgroundColor: colors.surface },
   line: { height: 1, backgroundColor: colors.line },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.s12, paddingVertical: space.s12 },

@@ -122,3 +122,66 @@ def prepared(payload: dict | None = None, *, permission=None) -> Donna:
 @pytest.fixture
 def donna() -> Donna:
     return prepared()
+
+
+class Choongjang(Donna):
+    """초옹장(s005) 시연 데이터로 /v1 을 부르는 도우미. 알바생 화면·알림·시연 리뷰도 부른다."""
+
+    def __init__(self):
+        super().__init__()
+        self.session_id = "sess_20261117_s005"
+
+    def get(self, path: str, **params) -> dict:
+        response = self.client.get(path, params={"store_id": "s005", **params})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def turn(self, text: str | None = None, **kw) -> dict:
+        self.number += 1
+        body = {"request_id": kw.get("request_id") or f"req_{self.number:04d}", "store_id": "s005", "session_id": self.session_id,
+                "utterance": None if text is None else {"text": text, "source": "voice", "addressed": kw.get("addressed", False)},
+                "event": kw.get("event"), "notice_id": kw.get("notice_id")}
+        response = self.client.post("/v1/turn", json=body)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def settings(self, value) -> dict:
+        return self.client.patch("/v1/settings", json={"store_id": "s005", "negative_review_auto_reply": value}).json()
+
+    def state(self) -> dict:
+        return self.get("/v1/dev/state")
+
+    def notices(self) -> list[dict]:
+        return self.get("/v1/notices")["notices"]
+
+    def demo_review(self, name: str) -> str:
+        response = self.client.post("/v1/dev/demo_review", json={"store_id": "s005", "name": name})
+        assert response.status_code == 200, response.text
+        return response.json()["review_id"]
+
+    def staff_today(self, staff_id: str = "st_harin") -> dict:
+        response = self.client.get("/v1/staff/today", params={"staff_id": staff_id})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def staff_post(self, path: str, **body):
+        return self.client.post(f"/v1/staff{path}", json=body)
+
+    def open_notice(self) -> dict:
+        """앱처럼: 알림을 읽고, 묻는 알림이면 turn(event: notice)로 연다."""
+        found = [n for n in self.notices() if n["opens_turn"]]
+        assert found, "열 알림이 없어요"
+        return self.turn(event="notice", notice_id=found[-1]["id"])
+
+
+def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00") -> Choongjang:
+    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 할 일 화면을 연다 (출근)."""
+    donna = Choongjang()
+    assert donna.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang"}).json()["store_id"] == "s005"
+    if permission is not None:
+        donna.settings(permission)
+    if at:
+        donna.clock(at)
+        donna.staff_today("st_harin")
+        donna.notices()  # 그때까지 쌓인 알림은 비운다
+    return donna

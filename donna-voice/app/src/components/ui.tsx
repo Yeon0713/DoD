@@ -6,25 +6,37 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLayout } from '@/lib/layout';
 import { colors, radius, space } from '@/theme/tokens';
 
+import { Icon } from './Icon';
+import { NaverLogo } from './startArt';
 import { Txt } from './Txt';
 
-export function Button({ label, onPress, kind = 'primary', left }: { label: string; onPress: () => void; kind?: 'primary' | 'outline' | 'naver'; left?: ReactNode }) {
+/** 화면의 주 버튼. 높이 56, 둥글기 14 (Figma 버튼). naver: 네이버 로그인 가이드대로 초록 바탕에 흰 공식 로고와 흰 글자.
+ *  chevron: 다음 화면으로 넘어가는 버튼은 글 뒤에 > (Figma 10-s1b). disabled: 흐리게 두고 누르지 않는다 */
+export function Button({
+  label, onPress, kind = 'primary', left, chevron, disabled,
+}: { label: string; onPress: () => void; kind?: 'primary' | 'outline' | 'naver'; left?: ReactNode; chevron?: boolean; disabled?: boolean }) {
   const { scale } = useLayout();
   const bg = kind === 'primary' ? colors.brand : kind === 'naver' ? colors.naver : colors.surface;
+  const ink = kind === 'outline' ? colors.brand : kind === 'naver' ? '#FFFFFF' : colors.brandInk;
   return (
     <Pressable
       onPress={onPress}
+      disabled={disabled}
       accessibilityRole="button"
+      accessibilityState={{ disabled: !!disabled }}
       style={({ pressed }) => [
         styles.button,
-        { height: Math.round(56 * scale), backgroundColor: bg, opacity: pressed ? 0.85 : 1 },
+        { height: Math.round(56 * scale), backgroundColor: bg, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
         kind === 'outline' && { borderWidth: 1.5, borderColor: colors.brand },
+        kind === 'naver' && { gap: 10 },
+        chevron && { gap: 6 },
       ]}
     >
-      {left}
-      <Txt variant="button" color={kind === 'outline' ? 'brand' : 'brandInk'}>
+      {kind === 'naver' && !left ? <NaverLogo size={16} /> : left}
+      <Txt variant="button" style={{ color: ink }}>
         {label}
       </Txt>
+      {chevron ? <Icon name="chevronRight" size={20} color={kind === 'outline' ? 'brand' : 'brandInk'} /> : null}
     </Pressable>
   );
 }

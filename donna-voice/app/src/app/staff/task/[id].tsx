@@ -34,7 +34,7 @@ export default function StaffTaskScreen() {
         </Txt>
       </Pressable>
       <View style={{ gap: space.s4 }}>
-        <Txt variant="label" color="brand">
+        <Txt variant="label" color={task.urgent ? 'urgent' : 'brand'}>
           {task.tag}
         </Txt>
         <Txt variant="display">{task.title}</Txt>
@@ -42,7 +42,7 @@ export default function StaffTaskScreen() {
       {task.owner_words ? (
         <View style={styles.card}>
           <View style={styles.inline}>
-            <Icon name="mic" size={16} color="brand" />
+            <Icon name={task.urgent ? 'alert' : 'mic'} size={16} color={task.urgent ? 'urgent' : 'brand'} />
             <Txt variant="label" color="ink2">
               {task.owner_words_label}
             </Txt>

@@ -3,6 +3,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { Platform } from 'react-native';
 
 import { api, Home, Notice, Turn } from './api';
+import { onDev, sendDev } from './devChannel';
 import { useSession } from './session';
 import { voice } from './voice';
 
@@ -25,7 +26,7 @@ type Convo = {
   voiceState: VoiceState;
   /** 받아쓴 말 (듣기 알약에 보인다) */
   heard: string;
-  /** 도나 알림 (D-05, D-23). 소리 한 번만 내고 말하지 않는다 */
+  /** 도나 알림 (D-05, D-23). 소리 한 번. 알바생 확인·대답 없음 처리는 한 줄을 읽는다 (아쉬운 리뷰는 turn 으로 연다) */
   notice: Notice | null;
   /** 사장님이 말했을 때 (v0.2.1부터 칩이 없다) */
   send: (text: string, confidence?: number, addressed?: boolean) => void;
@@ -79,7 +80,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   // 듣는 것은 홈에서만 한다. 이번 주, 매출, 설정은 눈으로 보는 화면이라 마이크가 필요 없다.
   const listenHere = micOn && pathname === '/';
   // 브리핑 중이거나 도나가 물어본 뒤에는 "다음", "응"처럼 부르지 않고 말해도 듣는다.
-  const turnOpen = !!turn && (turn.expects_reply || (!!turn.briefing && turn.type !== 'end'));
+  // 아쉬운 리뷰 처리를 물었을 때(ask_action)는 영업 중이라 계속 열어 두지 않고, 말한 뒤 8초만 듣는다 (그 뒤엔 "도나야, 진행해").
+  const turnOpen = !!turn && ((turn.expects_reply && turn.type !== 'ask_action') || (!!turn.briefing && turn.type !== 'end'));
+  const inBriefing = !!turn?.briefing && turn.type !== 'end';
   const open = turnOpen || followOpen;
   const openRef = useRef(open);
   openRef.current = open;
@@ -144,6 +147,8 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       const my = ++token.current;
       voice.cancelSpeech();
       lastTurnId.current = t.turn_id;
+      // 개발자 모드 탭에 도나가 한 답을 알린다 (그 탭에서는 사장님 화면이 안 보이므로)
+      sendDev({ type: 'turn', said: t.owner_said, headline: t.headline, kind: t.type, intent: t.intent, say: t.say.map((x) => x.text) });
       if (t.type === 'ignore') {
         // 도나에게 한 말이 아니다. 화면도 소리도 그대로 둔다.
         setHeard('');
@@ -263,6 +268,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       const { called, rest } = splitCall(raw);
       if (!called && !openRef.current) {
         // 손님이나 직원과 나눈 말이다. 화면에 적지도, 서버로 보내지도 않는다.
+        sendDev({ type: 'heard', text: raw, result: 'uncalled' });
         setHeard('');
         setBusy((b) => (b === 'hearing' ? null : b));
         return;
@@ -274,6 +280,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       const text = called ? rest : raw;
       // 너무 짧거나 못 알아들은 말은 서버로 보내지 않는다.
       if (text.length < 2 || confidence < 0.5) {
+        sendDev({ type: 'heard', text: raw, result: 'too_short' });
         const my = ++token.current;
         setBusy('not_understood');
         setTimeout(() => {
@@ -286,6 +293,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       }
       const addressed = called || justCalled.current;
       justCalled.current = false;
+      sendDev({ type: 'heard', text: raw, result: 'sent' });
       send(text, confidence, addressed);
     },
     [answerCall, openFollow, send],
@@ -325,26 +333,42 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     if (Platform.OS !== 'web' || typeof window === 'undefined' || !__DEV__) return;
     (window as any).__donna = { say: (text: string) => hearRef.current(text, 0.9), reset };
   }, [reset]);
+  // 다른 탭의 개발자 모드(/dev)가 보낸 사장님 말. 위의 __donna.say 와 같은 길이다 (lib/devChannel.ts)
+  useEffect(() => onDev((m) => m.type === 'say' && hearRef.current(m.text, 0.9)), []);
 
-  // 도나 알림: 홈에 있고 도나가 조용할 때 몇 초마다 본다. 알림 소리만 한 번 내고, 말은 사장님이 물을 때 한다.
+  // 도나 알림: 홈에 있고 도나가 조용할 때 몇 초마다 본다 (브리핑 중에는 끝난 뒤로 미룬다. 알림은 한 번 읽으면 다시 오지 않는다).
+  //   아쉬운 리뷰(opens_turn): 소리 → turn(event: notice) → 도나가 묻는다 → 8초 동안 "도나야" 없이 대답을 듣는다 (2026-11-18 팀 개선안)
+  //   알바생 확인, 대답 없음 처리(say): 소리 → 알림 카드 → 한 줄 읽기
+  //   알바생 가입: 소리와 알림 카드만
   const [notice, setNotice] = useState<Notice | null>(null);
-  const quiet = busy === null && pathname === '/';
+  const quiet = busy === null && pathname === '/' && !inBriefing;
   useEffect(() => {
     if (!quiet) return;
     const id = setInterval(() => {
       api
         .notices()
-        .then(({ notices }) => {
+        .then(async ({ notices }) => {
           if (!notices.length) return;
+          if (soundRef.current) voice.chime();
+          const asking = [...notices].reverse().find((n) => n.opens_turn);
+          if (asking) {
+            setNotice(null);
+            const t = await api.turn({ event: 'notice', noticeId: asking.id, lastTurnId: lastTurnId.current });
+            void handle(t);
+            return;
+          }
           setNotice(notices[notices.length - 1]);
           setTurn(null);
-          if (soundRef.current) voice.chime();
           reloadHome();
+          const lines = notices.flatMap((n) => n.say ?? []);
+          if (!lines.length) return;
+          const my = ++token.current;
+          if (await speakAll(lines.map((text) => ({ text, caption: null, focus: [] })), my)) openFollow();
         })
         .catch(() => {});
     }, 4000);
     return () => clearInterval(id);
-  }, [quiet, reloadHome]);
+  }, [quiet, reloadHome, handle, speakAll, openFollow]);
 
   const announce = useCallback(
     (headline: string, text: string) => {

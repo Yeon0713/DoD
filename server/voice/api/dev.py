@@ -1,16 +1,20 @@
 """개발·시연용 API (문서 9장). 실제 리뷰 플랫폼·예약 시스템 대신 여기로 데이터를 넣고 시각을 움직인다.
 
-리뷰가 들어와도 앱에는 아무것도 보내지 않는다. 백엔드만 알고 있다가(나누기, 허락받았으면 바로 답하기) 브리핑 때 말한다.
+2026-11-18: 영업 중에 들어온 아쉬운 리뷰는 사장님 앱에 알린다 (jobs/review_loop.py). 문 닫은 뒤의 리뷰는 지금처럼
+백엔드만 알고 있다가(허락받았으면 바로 답하기) 브리핑 때 말한다.
+GET /dev/platform 은 시연 화면 오른쪽 '리뷰 플랫폼' 칸이다 (올라간 답글이 보인다. 실제 플랫폼 화면을 흉내 내지 않는다).
 """
 
+import datetime as dt
 import json
 
 from fastapi import APIRouter, Body
+from fastapi.responses import JSONResponse
 
-from voice import clock, config, repo
+from voice import clock, config, repo, speech, staff
 from voice.api.errors import store_not_found
-from voice.api.schemas import ClockIn, ReviewIn, RunIn
-from voice.jobs import auto_reply, briefing, label, queue
+from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn
+from voice.jobs import auto_reply, briefing, label, queue, review_loop
 
 router = APIRouter(prefix="/dev")
 
@@ -33,20 +37,31 @@ def load_fixtures(payload: dict) -> dict:
         repo.save_review(label.label({"reply_status": "none", **raw, "store_id": store_id}))
     if "settings" in payload:
         repo.save_settings(store_id, payload["settings"])
-    if "sales" in payload:  # 포스 매출 (매출 탭). 목업 단계라 fixtures 가 곧 포스에서 받은 것이다
-        repo.put("sales", store_id, store_id, payload["sales"])
+    _put_pos_data(store_id, payload)
     for item in payload.get("activity", []):  # 지난 날 한 일 (일정 탭)
         repo.put("activity", f"{store_id}:{item['at'][:10]}:{item['id']}", store_id, item)
+    staff.seed(store_id, payload)  # 알바생, 초대 코드, 매뉴얼 (알바생 할 일)
+    for name, item in payload.get("demo_reviews", {}).items():  # 시연 리뷰 (POST /v1/dev/demo_review)
+        repo.put("demo_review", f"{store_id}:{name}", store_id, {**item, "name": name})
     queue.schedule_prepare(store_id)
     return {"store_id": store_id, "reviews": len(payload.get("reviews", []))}
+
+
+def _put_pos_data(store_id: str, payload: dict) -> None:
+    """포스 매출(매출 탭)과 다시 온 손님. 목업 단계라 fixtures 가 곧 포스·리뷰를 이어 본 결과다.
+    사장님이 정한 것이 아니라서, 켤 때마다 fixtures 의 것으로 새로 넣어도 된다 (seed)."""
+    if "sales" in payload:
+        repo.put("sales", store_id, store_id, payload["sales"])
+    for item in payload.get("revisits", []):
+        repo.put("revisit", f"{store_id}:{item['id']}", store_id, item)
 
 
 def add_review(body: dict) -> dict:
     store_id = body["store_id"]
     review_id = f"rv_{1000 + repo.next_number(f'review:{store_id}')}"
-    review = repo.save_review(label.label({**body, "id": review_id, "reply_status": "none"}))
-    if review["sentiment"] == "negative":
-        queue.add(store_id, "auto_reply", clock.parse(review["written_at"]) + config.AUTO_REPLY_DELAY, {"review_id": review_id})
+    written_at = body.get("written_at") or clock.iso(clock.now())
+    review = repo.save_review(label.label({**body, "written_at": written_at, "id": review_id, "reply_status": "none"}))
+    review_loop.on_new_review(review)  # 영업 중이면 알림 고리, 문 닫은 뒤면 10분 뒤 바로 답하기
     queue.run_due()
     if briefing.current(store_id) and clock.parse(review["written_at"]) <= clock.now():  # 준비한 뒤 새 리뷰 → 다시 만든다
         briefing.prepare(store_id)
@@ -71,6 +86,8 @@ def seed(name: str, *, fresh: bool) -> dict:
     result = {"store_id": store_id, "loaded": False}
     if fresh or repo.store(store_id) is None:
         result = {**load_fixtures(payload), "loaded": True}
+    else:  # 가게가 이미 있으면 사장님 기록은 두고, 매출과 다시 온 손님만 fixtures 의 새 것으로
+        _put_pos_data(store_id, payload)
     queue.run_due()
     if briefing.current(store_id) is None:
         briefing.prepare(store_id)
@@ -91,6 +108,46 @@ def post_review(body: ReviewIn):
     if repo.store(body.store_id) is None:
         return store_not_found()
     return {"review_id": add_review(body.model_dump())["id"]}
+
+
+@router.post("/demo_review")
+def post_demo_review(body: DemoReviewIn):
+    """픽스처의 시연 리뷰(leak, missing, cold, hall)를 지금 시각에 넣는다 (시연 화면의 '리뷰 넣기')."""
+    if repo.store(body.store_id) is None:
+        return store_not_found()
+    item = repo.get("demo_review", f"{body.store_id}:{body.name}")
+    if item is None:
+        return JSONResponse(status_code=404, content={"error": {"code": "demo_review_not_found", "message": f"시연 리뷰 '{body.name}'가 없어요."}})
+    fields = {k: item[k] for k in ("platform", "rating", "text", "order_channel", "menus") if k in item}
+    review = add_review({**fields, "store_id": body.store_id, "written_at": body.written_at})
+    return {"review_id": review["id"], "alert": repo.get("alert", f"al_{review['id']}") is not None}
+
+
+PLATFORM_LABELS = {"baemin": "배달 앱 리뷰", "coupang": "배달 앱 리뷰", "yogiyo": "배달 앱 리뷰", "naver": "지도 리뷰"}
+
+
+def _when_label(moment, now) -> str:
+    return speech.clock_label(moment) if moment.date() == now.date() else f"{moment.month}월 {moment.day}일"
+
+
+@router.get("/platform")
+def get_platform(store_id: str, limit: int = 8):
+    """시연 화면 오른쪽 위: 손님 리뷰와 올라간 답글 (최근 것 먼저). 답글은 올린 것만 보인다."""
+    if repo.store(store_id) is None:
+        return store_not_found()
+    now = clock.now()
+    written = [r for r in repo.reviews(store_id) if clock.parse(r["written_at"]) <= now]
+    items = []
+    for r in sorted(written, key=lambda r: r["written_at"], reverse=True)[:limit]:
+        posted = r.get("reply_status") == "posted" and r.get("reply_posted_at") and clock.parse(r["reply_posted_at"]) <= now
+        reply = None
+        if posted:
+            at = clock.parse(r["reply_posted_at"])
+            reply = {"text": r["reply_text"], "posted_label": _when_label(at, now), "fresh": now - at <= dt.timedelta(minutes=2)}
+        items.append({"id": r["id"], "platform_label": PLATFORM_LABELS.get(r.get("platform"), "리뷰"), "rating": r["rating"],
+                      "text": r["text"], "menus": r.get("menus") or [], "written_label": _when_label(clock.parse(r["written_at"]), now),
+                      "reply": reply})
+    return {"now": clock.iso(now), "now_label": speech.clock_label(now), "items": items}
 
 
 @router.post("/clock")

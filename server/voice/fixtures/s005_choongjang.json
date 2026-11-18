@@ -19,13 +19,52 @@
       {"id": "m_4", "name": "새뱅이 장칼국수", "price": 10000, "photo_url": "/static/menus/saebaengi-jangkalguksu.png"}
     ],
     "rain_menu": "옹심이",
+    "peak_hours": {"lunch": "12:00", "dinner": "17:00"},
+    "_peak_hours_comment": "식사 피크: s005.db 주문 시간대별 건수 (12시 4,915건, 17시 3,543건, 18시 3,120건). 좋은 리뷰 답글은 그 한 시간 전에 올린다.",
     "strengths": [
       {"key": "soup", "pattern": "들깨|국물|고소", "label": "고소한 들깨 국물", "headline": "들깨 국물을 좋아하세요", "keep_tip": "들깨는 지금처럼 그날 아침에 갈아 주세요"},
       {"key": "chewy", "pattern": "쫀득|쫄깃", "label": "쫀득한 옹심이", "headline": "옹심이를 좋아하세요", "keep_tip": "옹심이는 지금처럼 쫀득하게 빚어 주세요"}
     ],
     "facts": []
   },
-  "settings": {"negative_review_auto_reply": null},
+  "settings": {
+    "negative_review_auto_reply": null,
+    "compensation": {
+      "packaging": "다음 주문 때 감자전 하나를 서비스로 드릴게요.",
+      "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
+      "taste_temp": null,
+      "hall_service": null
+    }
+  },
+  "_staff_comment": "알바생 이름은 s005 데이터, 초대 코드·매뉴얼·정우는 가정. 정우는 초대만 받고 아직 안 들어왔다 (D-31).",
+  "staff": [
+    {"id": "st_namgung", "name": "남궁현", "call": "현", "joined": true},
+    {"id": "st_yang", "name": "양지성", "call": "지성", "joined": true},
+    {"id": "st_harin", "name": "문하린", "call": "하린", "joined": true},
+    {"id": "st_bae", "name": "배수아", "call": "수아", "joined": true},
+    {"id": "st_baek", "name": "백서윤", "call": "서윤", "joined": true},
+    {"id": "st_jungwoo", "name": "정우", "call": "정우", "joined": false}
+  ],
+  "invites": {"482017": "st_harin", "315904": "st_jungwoo"},
+  "manual": [
+    {"phase": "before_open", "title": "바닥과 테이블 청소"},
+    {"phase": "before_open", "title": "수저·냅킨 채우기"},
+    {"phase": "open", "title": "빈 테이블 정리"},
+    {"phase": "open", "title": "품절 메뉴 안내"},
+    {"phase": "closing", "title": "바닥 청소"},
+    {"phase": "closing", "title": "냉장고 온도 적기"}
+  ],
+  "_demo_reviews_comment": "시연·시험용 아쉬운 리뷰 (가정). POST /v1/dev/demo_review {store_id, name} 으로 지금 시각에 넣는다.",
+  "demo_reviews": {
+    "leak": {"platform": "baemin", "rating": 2, "order_channel": "delivery", "menus": ["들깨옹심이메밀칼국수"],
+             "text": "들깨옹심이메밀칼국수 시켰는데 국물이 다 새서 봉투가 흥건했어요. 맛은 괜찮은데 포장 좀 신경 써 주세요."},
+    "missing": {"platform": "baemin", "rating": 1, "order_channel": "delivery", "menus": ["새뱅이 장칼국수", "들깨옹심이"],
+                "text": "새뱅이 장칼국수랑 들깨옹심이 시켰는데 들깨옹심이가 안 왔어요. 확인 좀 해 주세요."},
+    "cold": {"platform": "baemin", "rating": 2, "order_channel": "delivery", "menus": ["멸치옹심이메밀칼국수"],
+             "text": "멸치옹심이메밀칼국수 국물이 식어서 미지근하게 왔어요."},
+    "hall": {"platform": "naver", "rating": 2, "order_channel": "hall", "menus": [],
+             "text": "주문하려고 불렀는데 직원분이 대답도 없이 지나가셨어요."}
+  },
   "reservations": [
     {"id": "rs_0031", "starts_at": "2026-11-17T12:00:00+09:00", "party_size": 12},
     {"id": "rs_0032", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 4},
@@ -65,8 +104,16 @@
     {"id": "rv_0400", "platform": "baemin", "rating": 5, "order_channel": "delivery", "written_at": "2026-11-14T19:40:00+09:00", "text": "들깨 국물에 양도 푸짐해요.", "reply_status": "posted", "reply_by": "donna", "reply_text": "푸짐하게 드셨다니 기뻐요.", "reply_posted_at": "2026-11-15T09:00:00+09:00"}
   ],
   "sales": {
-    "_comment": "포스 매출 (원). today_so_far 는 문을 연 뒤 지금까지, last_week_same_time 은 지난주 같은 요일 이맘때",
+    "_comment": "포스 매출 (원). today_so_far 는 문을 연 뒤 지금까지, last_week_same_time 은 지난주 같은 요일 이맘때. 10월 1일 ~ 11월 8일과 top_menus_month 는 server/db/data/s005.db 주문에서 셌다 (이번 달·지난달 이맘때 견주기, 매출 탭 G-04)",
     "daily": {
+      "2026-10-01": 1604000, "2026-10-02": 1362000, "2026-10-03": 1458000, "2026-10-04": 1890000, "2026-10-05": 1323000,
+      "2026-10-06": 1199000, "2026-10-07": 1348000, "2026-10-08": 1271000, "2026-10-09": 1190000, "2026-10-10": 1804000,
+      "2026-10-11": 2457000, "2026-10-12": 1123000, "2026-10-13": 1275000, "2026-10-14": 1430000, "2026-10-15": 1206000,
+      "2026-10-16": 1567000, "2026-10-17": 2293000, "2026-10-18": 1813000, "2026-10-19": 1210000, "2026-10-20": 1638000,
+      "2026-10-21": 1716000, "2026-10-22": 1585000, "2026-10-23": 1772000, "2026-10-24": 1913000, "2026-10-25": 1849000,
+      "2026-10-26": 1351000, "2026-10-27": 1468000, "2026-10-28": 1282000, "2026-10-29": 1122000, "2026-10-30": 1414000,
+      "2026-10-31": 1471000, "2026-11-01": 1477000, "2026-11-02": 1309000, "2026-11-03": 1316000, "2026-11-04": 1443000,
+      "2026-11-05": 1391000, "2026-11-06": 1534000, "2026-11-07": 2017000, "2026-11-08": 2466000,
       "2026-11-09": 1522000,
       "2026-11-10": 1142000, "2026-11-11": 1196000, "2026-11-12": 1088000, "2026-11-13": 1251000,
       "2026-11-14": 1873000, "2026-11-15": 2146000, "2026-11-16": 1284000
@@ -77,8 +124,37 @@
       {"id": "m_1", "label": "들깨옹심이메밀칼국수", "count": 38},
       {"id": "m_2", "label": "멸치옹심이메밀칼국수", "count": 27},
       {"id": "m_3", "label": "들깨옹심이", "count": 21}
+    ],
+    "top_menus_month": [
+      {"id": "m_1", "label": "들깨옹심이메밀칼국수", "count": 461},
+      {"id": "m_2", "label": "멸치옹심이메밀칼국수", "count": 308},
+      {"id": "m_3", "label": "들깨옹심이", "count": 284}
     ]
   },
+  "revisits": [
+    {"_comment": "도나 답글을 받고 다시 온 손님. s005.db 에서 리뷰를 쓴 손님(customer_key)이 답글 뒤 처음 다시 주문한 때. 답글 글은 가정이다 (매출 탭 G-04 ③)",
+     "id": "rvs_1109", "customer": "c5_0027", "came_back_at": "2026-11-09T18:15:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 2, "text": "가격 대비 양이 아쉬워요.", "written_at": "2026-11-06T20:13:00+09:00"},
+     "reply": {"by": "donna", "text": "양이 아쉬우셨다니 죄송합니다. 말씀 주신 점 꼭 살펴보겠습니다."}},
+    {"id": "rvs_1113", "customer": "c5_0001", "came_back_at": "2026-11-13T12:53:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 1, "text": "수도감세트 간이 너무 세요.", "written_at": "2026-11-12T15:18:00+09:00"},
+     "reply": {"by": "donna", "text": "간이 세게 느껴지셨다니 죄송합니다. 말씀 주신 점 주방과 함께 살펴보겠습니다."}},
+    {"id": "rvs_1115", "customer": "c5_0498", "came_back_at": "2026-11-15T14:08:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 2, "text": "가격 대비 양이 아쉬워요.", "written_at": "2026-10-24T23:12:00+09:00"},
+     "reply": {"by": "donna", "text": "양이 아쉬우셨다니 죄송합니다. 다음엔 든든하게 드실 수 있게 할게요."}},
+    {"id": "rvs_1116", "customer": "c5_0001", "came_back_at": "2026-11-16T17:14:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 5, "text": "추운 날 옹심이 한 그릇 하니까 몸이 녹네요.", "written_at": "2026-11-12T14:29:00+09:00"},
+     "reply": {"by": "donna", "text": "추운 날 옹심이 한 그릇으로 몸 녹이셨다니 저희도 기쁩니다. 또 추운 날 따뜻하게 모실게요."}},
+    {"id": "rvs_1118", "customer": "c5_0495", "came_back_at": "2026-11-18T19:58:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 3, "text": "맛은 좋지만 국물이 조금 짰어요.", "written_at": "2026-10-02T14:26:00+09:00"},
+     "reply": {"by": "donna", "text": "맛있게 드셨다니 다행이에요. 국물 간 말씀 고맙습니다."}},
+    {"id": "rvs_1121", "customer": "c5_0027", "came_back_at": "2026-11-21T15:50:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 2, "text": "가격 대비 양이 아쉬워요.", "written_at": "2026-11-06T20:13:00+09:00"},
+     "reply": {"by": "donna", "text": "양이 아쉬우셨다니 죄송합니다. 말씀 주신 점 꼭 살펴보겠습니다."}},
+    {"id": "rvs_1122", "customer": "c5_0146", "came_back_at": "2026-11-22T16:13:00+09:00", "channel": "delivery",
+     "review": {"platform": "baemin", "rating": 5, "text": "수도감세트 처음 먹어봤는데 기대 이상이었어요.", "written_at": "2026-10-12T21:34:00+09:00"},
+     "reply": {"by": "donna", "text": "처음 드신 수도감세트가 마음에 드셨다니 기뻐요. 다음엔 들깨옹심이도 꼭 맛보세요."}}
+  ],
   "activity": [
     {"id": "a_1109_heard", "actor": "owner", "text": "오늘 일정 브리핑을 들었어요", "at": "2026-11-09T09:20:00+09:00"},
     {"id": "a_1110_read", "actor": "donna", "text": "리뷰 4개를 읽고 나눴어요", "at": "2026-11-10T09:00:00+09:00"},

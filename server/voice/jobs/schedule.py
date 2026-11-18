@@ -1,83 +1,146 @@
 """F6 좋은 리뷰 답글 올릴 때와 이유 정하기 (규칙). 답글 본문은 voice_reply 에이전트가 쓴다.
 
-내일부터 7일 안의 '좋은 때'를 우선순위대로 찾는다.
-  weather  비 소식(rain_chance ≥ 0.6)이 있는 첫날 아침 8시
-  game     첫 경기 시작 1시간 30분 전 (정시로 내림)
-  event    첫 행사 전날 오전 11시
-  season   (비 소식이 없을 때) 최고 기온 5도 이하인 첫날 아침 8시
-  weekend  다음 토요일 오전 11시
-  lunch    (점심을 말한 리뷰가 있을 때) 앞의 때 다음 평일, 문 여는 시각. 점심 메뉴를 고를 때 보시게
-답글 기다리는 좋은 리뷰는 먼저 말이 맞는 때(비 오는 날 → weather, 점심 → lunch, 주말 → weekend)에 하나씩 붙이고,
-나머지를 오래된 것부터 앞의 때부터 붙인다. 남는 리뷰는 마지막 때에 함께 올린다 (같은 때는 한 줄).
+2026-11-18 팀 개선안 (donna-voice/docs/test-scenarios-closed-loop.md P): 올리는 때는 외식을 고민하는 때로 고정한다.
+  weekday_to_weekend  월~목에 쓴 리뷰 → 그 주 토요일, 주말 첫 식사 피크 한 시간 전 (10:30 ~ 11:30 안으로).
+                      토요일에 쉬면 일요일. 그때가 이미 지났으면 지금 뒤의 첫 식사 피크 한 시간 전.
+  weekend_next_peak   금~일에 쓴 리뷰 → 쓴 뒤 24 ~ 48시간 안의 첫 식사 피크 한 시간 전.
+                      그 안에 없으면 (지났거나 쉬는 날) max(지금, 쓴 뒤 24시간) 뒤의 첫 식사 피크 한 시간 전.
+식사 피크는 가게의 store.peak_hours {"lunch", "dinner"} (포스 주문 시간대로 정한 값), 없으면 점심 12시 · 저녁 6시.
+날씨·행사·경기·추위는 시각을 바꾸지 않는다. 올리는 날의 것을 답글 글(context)에만 넣는다.
+같은 때에 올리는 답글은 한 줄로 묶는다 (예약 카드는 3줄까지).
 """
 
 import datetime as dt
-import re
 
-from app.core.seoul_time import SEOUL, at_time
-from voice import speech, width
+from app.core.seoul_time import at_time
+from voice import hours, speech, width
 from voice.clock import parse
 
 RAIN_CHANCE = 0.6
 COLD_MAX = 5
 MAX_ROWS = 3
-AFFINITY = {"weather": re.compile(r"비\s?(오는|올|와|올때)"), "lunch": re.compile(r"점심"), "weekend": re.compile(r"주말")}
+DEFAULT_PEAKS = {"lunch": "12:00", "dinner": "18:00"}
+WEEKEND_EARLIEST, WEEKEND_LATEST = "10:30", "11:30"  # 토요일 아침 발송 창 (사장님 인터뷰 루틴)
+MEAL_NAMES = {"lunch": "점심", "dinner": "저녁"}
 
 
-def _at(day: dt.date, hour: int) -> dt.datetime:
-    return dt.datetime(day.year, day.month, day.day, hour, tzinfo=SEOUL)
+def peaks(store: dict) -> dict[str, str]:
+    return {**DEFAULT_PEAKS, **(store.get("peak_hours") or {})}
 
 
-def _short(name: str, fallback: str) -> str:
-    return name if width.fits(name, "reason.label") else fallback
+def _minus_hour(hhmm: str) -> str:
+    return hours.hhmm(hours.minutes(hhmm) - 60)
 
 
-def occasions(data: dict[str, list[dict]], today: dt.date, reviews: list[dict] | None = None, store: dict | None = None) -> list[dict]:
-    """{kind, label, explanation, post_at(datetime)} 를 우선순위 순서로."""
-    days = [today + dt.timedelta(days=n) for n in range(1, 8)]
-    rain_menu = (store or {}).get("rain_menu")
-    weather = {w["date"]: w for w in data.get("weather", [])}
-    found: list[dict] = []
-
-    rainy = next((d for d in days if (weather.get(d.isoformat()) or {}).get("rain_chance", 0) >= RAIN_CHANCE), None)
-    if rainy:
-        found.append({"kind": "weather", "label": "비 소식", "post_at": _at(rainy, 8),
-                      "explanation": f"{speech.weekday(rainy)}요일엔 비가 와서, 그날 아침에 비 오는 날 {rain_menu or '메뉴'}를 권하는 답글을 올려요"})
-    games = sorted((g for g in data.get("game", []) if parse(g["starts_at"]).date() in days), key=lambda g: g["starts_at"])
-    if games:
-        start = parse(games[0]["starts_at"])
-        post_at = (start - dt.timedelta(minutes=90)).replace(minute=0)
-        found.append({"kind": "game", "label": _short(games[0]["name"], "경기"), "post_at": post_at,
-                      "explanation": f"{speech.weekday(start.date())}요일 {games[0]['name']} 전에, 경기 보기 전에 들르시게 해요"})
-    events = sorted((e for e in data.get("event", []) if parse(e["starts_at"]).date() in days), key=lambda e: e["starts_at"])
-    if events:
-        start = parse(events[0]["starts_at"])
-        eve = start.date() - dt.timedelta(days=1)
-        found.append({"kind": "event", "label": _short(events[0]["name"], "행사"), "post_at": _at(max(eve, days[0]), 11),
-                      "explanation": f"{events[0]['name']} 전날에 미리 올려 답글을 보고 방문하시게 해요"})
-    cold = next((d for d in days if (weather.get(d.isoformat()) or {}).get("temp_max", 99) <= COLD_MAX), None)
-    if cold and not rainy:
-        found.append({"kind": "season", "label": "추위", "post_at": _at(cold, 8),
-                      "explanation": "날이 추워져서 국물 메뉴를 권하는 답글을 올려요"})
-    saturday = next(d for d in days if d.weekday() == 5)
-    found.append({"kind": "weekend", "label": "주말", "post_at": _at(saturday, 11),
-                  "explanation": "리뷰를 많이 보는 토요일 오전에 모아서 올려요"})
-    opens = (store or {}).get("open_time")
-    if reviews and opens and any(AFFINITY["lunch"].search(r["text"]) for r in reviews) and opens < "12:00":
-        used = {o["post_at"].date() for o in found}
-        after = min(used)
-        lunch_day = next((d for d in days if d > after and d.weekday() < 5 and d not in used), None)
-        if lunch_day:
-            found.append({"kind": "lunch", "label": "점심 손님", "post_at": at_time(lunch_day, opens),
-                          "explanation": f"{speech.weekday(lunch_day)}요일은 점심 메뉴를 고를 때 보시게 오전에 올려요"})
+def slots(store: dict, start: dt.date, days: int = 10) -> list[tuple[dt.datetime, str]]:
+    """start 날부터 문 여는 날마다 (식사 피크 한 시간 전, 'lunch' | 'dinner')."""
+    found = []
+    for n in range(days):
+        day = start + dt.timedelta(days=n)
+        if hours.on(store, day) is None:
+            continue
+        for meal, peak in sorted(peaks(store).items(), key=lambda kv: kv[1]):
+            found.append((at_time(day, _minus_hour(peak)), meal))
     return found
 
 
-def card_text(kind: str, menus: list[dict], rain_menu: str | None = None) -> str:
-    """scheduled[].text (폭 13 안)."""
+def _weekend_morning(store: dict, written: dt.datetime) -> dt.datetime | None:
+    """그 주 토요일(쉬면 일요일)의 첫 식사 피크 한 시간 전, 10:30 ~ 11:30 안으로 맞춘 시각."""
+    saturday = written.date() + dt.timedelta(days=(5 - written.weekday()) % 7)
+    for day in (saturday, saturday + dt.timedelta(days=1)):
+        if hours.on(store, day) is None:
+            continue
+        first = min(peaks(store).values())
+        moment = min(max(_minus_hour(first), WEEKEND_EARLIEST), WEEKEND_LATEST)
+        return at_time(day, moment)
+    return None
+
+
+def post_time(review: dict, store: dict, now: dt.datetime) -> dict:
+    """{kind, label, meal, post_at(datetime)} 이 리뷰의 답글을 올릴 때."""
+    written = parse(review["written_at"])
+    if written.weekday() <= 3:  # 월~목
+        moment = _weekend_morning(store, written)
+        if moment and moment > now:
+            return {"kind": "weekday_to_weekend", "label": "주말 점심 전", "meal": "lunch", "post_at": moment}
+    else:  # 금~일
+        early, late = written + dt.timedelta(hours=24), written + dt.timedelta(hours=48)
+        for moment, meal in slots(store, early.date(), 4):
+            if early <= moment <= late and moment > now:
+                return {"kind": "weekend_next_peak", "label": f"{MEAL_NAMES[meal]} 한 시간 전", "meal": meal, "post_at": moment}
+    after = max(now, written + dt.timedelta(hours=24)) if written.weekday() >= 4 else now
+    moment, meal = next((m, meal) for m, meal in slots(store, after.date(), 14) if m > after)
+    kind = "weekday_to_weekend" if written.weekday() <= 3 else "weekend_next_peak"
+    return {"kind": kind, "label": f"{MEAL_NAMES[meal]} 한 시간 전", "meal": meal, "post_at": moment}
+
+
+def context_for(data: dict[str, list[dict]], day: dt.date, store: dict | None = None) -> dict:
+    """올리는 날의 날씨·행사·경기. 답글 글에만 쓴다 (시각은 바꾸지 않는다)."""
+    weather = next((w for w in data.get("weather", []) if w["date"] == day.isoformat()), None) or {}
+    event = next((e for e in sorted(data.get("event", []), key=lambda e: e["starts_at"]) if parse(e["starts_at"]).date() == day), None)
+    game = next((g for g in sorted(data.get("game", []), key=lambda g: g["starts_at"]) if parse(g["starts_at"]).date() == day), None)
+    rain = weather.get("rain_chance", 0) >= RAIN_CHANCE
+    return {
+        "rain": rain,
+        "cold": not rain and weather.get("temp_max", 99) <= COLD_MAX,
+        "event": event["name"] if event else None,
+        "game": game["name"] if game else None,
+        "rain_menu": (store or {}).get("rain_menu"),
+    }
+
+
+def template_key(reason: dict) -> str:
+    """답글 템플릿 고르기 (voice_reply.POSITIVE_TEMPLATES). 그날의 일이 먼저, 없으면 올리는 때."""
+    context = reason.get("context") or {}
+    if context.get("rain"):
+        return "weather"
+    if context.get("event"):
+        return "event"
+    if context.get("game"):
+        return "game"
+    if context.get("cold"):
+        return "season"
+    if reason.get("kind") == "weekend_next_peak":
+        return "dinner" if reason.get("meal") == "dinner" else "lunch"
+    return "weekend"
+
+
+def explanation(reason: dict, post_at: dt.datetime) -> str:
+    """말할 때 쓰는 한 문장 (마침표 없이). 예약 카드에는 넣지 않는다."""
+    when = f"{speech.weekday(post_at.date())}요일 {speech.clock_label(post_at)}"
+    if reason["kind"] == "weekday_to_weekend":
+        return f"평일에 오신 손님 리뷰는 주말 외식을 고민하는 {when}에 올려요"
+    return f"주말에 오신 손님 리뷰는 {MEAL_NAMES.get(reason.get('meal'), '식사')} 한 시간 전인 {when}에 올려요"
+
+
+def context_line(reason: dict) -> str | None:
+    """그날의 일로 글을 바꿨으면 한 문장 (마침표 없이)."""
+    context = reason.get("context") or {}
+    menu = context.get("rain_menu") or "국물 요리"
+    if context.get("rain"):
+        return f"그날 비 소식이 있어서 {speech.josa(menu, '을', '를')} 권하는 답글로 썼어요"
+    if context.get("event"):
+        return f"그날 {context['event']} 가시는 길에 들르시라는 답글로 썼어요"
+    if context.get("game"):
+        return f"그날 {context['game']} 보기 전에 들르시라는 답글로 썼어요"
+    if context.get("cold"):
+        return "그날 날이 추워서 국물 메뉴를 권하는 답글로 썼어요"
+    return None
+
+
+def occasion_for(review: dict, data: dict[str, list[dict]], store: dict, now: dt.datetime) -> dict:
+    """voice_reply 에 넘기는 때와 이유: {kind, label, meal, post_at(datetime), context, template, explanation}."""
+    timing = post_time(review, store, now)
+    reason = {**timing, "context": context_for(data, timing["post_at"].date(), store)}
+    return {**reason, "template": template_key(reason), "explanation": explanation(reason, timing["post_at"])}
+
+
+def card_text(reason: dict, menus: list[dict], rain_menu: str | None = None) -> str:
+    """scheduled[].text (폭 13 안). 그날의 일이 있으면 그것을, 없으면 올리는 때를."""
     from voice.jobs.strengths import SOUP_RE
 
-    if kind == "weather":
+    key = template_key(reason)
+    if key == "weather":
         soup = next((m["name"] for m in menus if SOUP_RE.search(m["name"])), "")
         short = rain_menu or ("전골" if "전골" in soup else "탕" if "탕" in soup else "국물")
         return width.fit("scheduled.text", f"비 오는 날 {short} 권하기", "비 오는 날 국물 권하기")
@@ -87,30 +150,8 @@ def card_text(kind: str, menus: list[dict], rain_menu: str | None = None) -> str
         "season": "추운 날 국물 권하기",
         "weekend": "주말에 리뷰를 많이 봐요",
         "lunch": "점심 메뉴 고를 때 보시게",
-    }[kind]
-
-
-def assign(reviews: list[dict], found: list[dict]) -> list[tuple[dict, dict]]:
-    """(리뷰, 때) 짝. 말이 맞는 때에 먼저 하나씩 붙이고, 나머지는 오래된 것부터 아직 빈 때에 앞에서부터 붙인다.
-    때는 MAX_ROWS 개까지 쓰고, 남는 리뷰는 마지막 때에 함께 붙인다."""
-    slots = found[:MAX_ROWS]
-    ordered = sorted(reviews, key=lambda r: r["written_at"])
-    pairs: list[tuple[dict, dict]] = []
-    taken: set[int] = set()
-    left = []
-    for review in ordered:
-        match = next((n for n, slot in enumerate(slots) if n not in taken and slot["kind"] in AFFINITY
-                      and AFFINITY[slot["kind"]].search(review["text"])), None)
-        if match is None:
-            left.append(review)
-        else:
-            taken.add(match)
-            pairs.append((review, slots[match]))
-    free = [n for n in range(len(slots)) if n not in taken]
-    for number, review in enumerate(left):
-        slot = free[number] if number < len(free) else len(slots) - 1
-        pairs.append((review, slots[slot]))
-    return pairs
+        "dinner": "저녁 메뉴 고를 때 보시게",
+    }[key]
 
 
 def rows(scheduled: list[dict], menus: list[dict], now: dt.datetime, rain_menu: str | None = None) -> list[dict]:
@@ -123,10 +164,13 @@ def rows(scheduled: list[dict], menus: list[dict], now: dt.datetime, rain_menu: 
     for number, (post_at_text, members) in enumerate(list(groups.items())[:MAX_ROWS], 1):
         post_at = parse(post_at_text)
         reason = members[0]["reply_reason"]
+        said = reason.get("explanation") or ""
+        extra = context_line(reason)
         result.append({
             "id": f"sr_{number}", "day_label": speech.weekday(post_at.date()), "time_label": speech.clock_label(post_at),
             "post_at": post_at.isoformat(timespec="seconds"), "reason": {"kind": reason["kind"], "label": reason["label"]},
-            "text": card_text(reason["kind"], menus, rain_menu), "review_ids": [m["id"] for m in members],
-            "explanation": reason["explanation"],  # 말할 때 쓴다. 카드에는 앱이 쓰지 않는 칸
+            "text": card_text(reason, menus, rain_menu), "review_ids": [m["id"] for m in members],
+            "explanation": said,  # 말할 때 쓴다. 카드에는 앱이 쓰지 않는 칸
+            "context_line": extra,
         })
     return result

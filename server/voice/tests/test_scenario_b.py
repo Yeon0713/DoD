@@ -1,10 +1,10 @@
-"""시나리오 B: 허락한 다음 날. 밤에 아쉬운 리뷰가 오면 30분 안에 바로 답하고, 아침 브리핑 3단계에서 알려 준다. 문서 13장."""
+"""시나리오 B: 허락한 다음 날. 문 닫은 뒤(22:00) 밤에 아쉬운 리뷰가 오면 30분 안에 바로 답하고, 아침 브리핑 3단계에서 알려 준다. 문서 13장."""
 
 from voice import width
 from voice.tests.conftest import Donna, baseline
 
 NIGHT_REVIEW = {"platform": "baemin", "rating": 1, "text": "배달이 너무 늦어서 다 식어서 왔어요. 곱창은 맛있는데 아쉽네요.",
-                "written_at": "2026-11-16T21:40:00+09:00", "order_channel": "delivery"}
+                "written_at": "2026-11-16T22:40:00+09:00", "order_channel": "delivery"}
 
 
 def night_then_morning() -> tuple[Donna, str]:
@@ -12,7 +12,7 @@ def night_then_morning() -> tuple[Donna, str]:
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]  # 밤 리뷰는 dev/reviews 로 넣는다
     payload["settings"] = {"negative_review_auto_reply": True}
     donna = Donna()
-    donna.clock("2026-11-16T21:40:00+09:00")
+    donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)
     created = donna.review(**NIGHT_REVIEW)
     assert list(created) == ["review_id"]  # B2: 리뷰가 들어와도 앱에 보내는 것은 없다 (백엔드만 안다)
@@ -25,7 +25,7 @@ def test_b1_auto_reply_within_30_minutes():
     review = next(r for r in donna.state()["review"] if r["id"] == review_id)
     assert review["sentiment"] == "negative" and review["topic"] == "delivery" and review["summary"] == "배달이 늦어 음식이 식었대요"
     assert review["reply_status"] == "posted" and review["reply_by"] == "donna"
-    assert review["replied_in_minutes"] <= 30 and review["reply_posted_at"] == "2026-11-16T21:50:00+09:00"
+    assert review["replied_in_minutes"] <= 30 and review["reply_posted_at"] == "2026-11-16T22:50:00+09:00"
     assert review["reply_text"].startswith("늦은 배달로 불편을 드려 죄송합니다")  # 에이전트를 끈 테스트라 안전 템플릿
     assert donna.home()["briefing_ready"] is True  # 09:00 에 작업 큐가 브리핑을 준비했다
 
@@ -49,7 +49,7 @@ def test_b3_to_b6_negative_step_and_detail():
     assert b4["type"] == "show_detail" and len(b4["say"]) == 1
     full = b4["cards"][0]
     assert full["variant"] == "full" and full["text"] == NIGHT_REVIEW["text"]
-    assert full["reply"]["text"].startswith("늦은 배달로") and full["reply"]["posted_at"] == "2026-11-16T21:50:00+09:00"
+    assert full["reply"]["text"].startswith("늦은 배달로") and full["reply"]["posted_at"] == "2026-11-16T22:50:00+09:00"
 
     b5 = donna.turn("읽어 줘")
     spoken = [s["text"] for s in b5["say"]]
@@ -67,7 +67,7 @@ def test_no_auto_reply_without_permission_or_after_30_minutes():
     payload = baseline()
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
     donna = Donna()
-    donna.clock("2026-11-16T21:40:00+09:00")
+    donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)  # 허락을 아직 안 물음
     review_id = donna.review(**NIGHT_REVIEW)["review_id"]
     donna.clock("2026-11-17T09:00:00+09:00")

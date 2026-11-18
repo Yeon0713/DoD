@@ -64,10 +64,11 @@ def awaiting(view: VoiceStore) -> list[dict]:
 
 
 def auto_replied(view: VoiceStore, now: dt.datetime) -> list[dict]:
-    """지난 하루 동안 도나가 바로 답한 아쉬운 리뷰 (최근 것 먼저)."""
+    """지난 하루 동안 도나가 바로 답한 아쉬운 리뷰 (최근 것 먼저). 사장님이 알림을 듣고 "진행해"로 올린 것은 이미 아시니 빼다."""
     since = now - dt.timedelta(days=1)
     found = [r for r in view.reviews() if r.get("reply_by") == "donna" and r.get("sentiment") == "negative"
-             and r.get("reply_status") == "posted" and since <= parse(r["reply_posted_at"]) <= now]
+             and r.get("reply_status") == "posted" and r.get("reply_trigger") != "owner_yes"
+             and since <= parse(r["reply_posted_at"]) <= now]
     return sorted(found, key=lambda r: r["reply_posted_at"], reverse=True)
 
 
@@ -80,16 +81,19 @@ def recent_positive(view: VoiceStore, now: dt.datetime) -> list[dict]:
 
 
 def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
+    """답글 기다리는 좋은 리뷰마다 올릴 때(schedule.occasion_for: 평일 리뷰 → 토요일 오전, 주말 리뷰 → 24~48시간 안 식사 피크
+    한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다."""
     waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and r.get("reply_status", "none") == "none"]
     if not waiting:
         return 0
-    for review, slot in schedule.assign(waiting, schedule.occasions(view.data, now.date(), waiting, view.store)):
+    for review in sorted(waiting, key=lambda r: r["written_at"]):
+        slot = schedule.occasion_for(review, view.data, view.store, now)
         occasion = {**slot, "post_at": iso(slot["post_at"])}
         written = voice_reply.write(view, review, "SCHEDULED", occasion)
         review.update({
             "reply_status": "scheduled", "reply_by": "donna", "reply_text": written["text"], "reply_source": written["source"],
             "reply_notes": written["notes"], "reply_post_at": occasion["post_at"],
-            "reply_reason": {"kind": slot["kind"], "label": slot["label"], "explanation": slot["explanation"]},
+            "reply_reason": {key: slot[key] for key in ("kind", "label", "meal", "context", "explanation")},
         })
         repo.save_review(review)
         queue.add(view.store_id, "post_scheduled", slot["post_at"])
@@ -244,9 +248,17 @@ def replied_answer(review: dict, now: dt.datetime) -> dict:
     minutes = review.get("replied_in_minutes") or 1
     headline = "방금 답글을 달았어요" if just_now else f"{minutes}분 만에 답했어요"
     second = "방금 사과 답글을 달았어요." if just_now else f"{minutes}분 만에 사과 답글을 달았어요."
+    says = [say(f"{_when(written, now)} {who} {told(review['summary'])} 리뷰를 남기셨어요.", None, [review["id"]])]
+    if review.get("reply_trigger") == "timeout":  # 영업 중 알림에 대답이 없어 사과만 먼저 올린 것 (jobs/review_loop.py)
+        says.append(say(f"{minutes}분 만에 사과 답글만 먼저 달았어요.", None, [review["id"]]))
+        record = repo.get("alert", f"al_{review['id']}") or {}
+        left = [w for w, on in (("서비스 안내", record.get("compensation")), ("할 일", record.get("card"))) if on]
+        if left:
+            says.append(say(f"{speech.josa('와 '.join(left), '은', '는')} 넣지 않았어요."))
+    else:
+        says.append(say(second, None, [review["id"]]))
     reply = {"text": review["reply_text"], "posted_at": review["reply_posted_at"], "by": "donna"}
-    return answer(headline, [say(f"{_when(written, now)} {who} {told(review['summary'])} 리뷰를 남기셨어요.", None, [review["id"]]),
-                             say(second, None, [review["id"]])], [review_card(review, reply)])
+    return answer(headline, says, [review_card(review, reply)])
 
 
 def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tuple[dict | None, dict | None]:
@@ -259,8 +271,11 @@ def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tu
             return None, None
         response = answer(
             "제가 바로 답할까요?",
+            # 2026-11-18: 영업 중에 온 아쉬운 리뷰는 바로 여쭤보고 사장님 한마디로 올린다 (review_loop). 이 허락은
+            # 문 닫은 뒤에 온 리뷰, 여쭤봐도 대답이 없을 때 사과만 먼저 다는 것이다.
             [say("아쉬운 리뷰는 빨리 답할수록 좋아요.", "아쉬운 리뷰는 빨리 답할수록 좋아요."),
-             say("앞으로는 제가 30분 안에 사과 답글을 달고, 브리핑 때 알려 드릴까요?", None, ["pm_reply", "pm_brief"])],
+             say("영업 중에 오면 바로 여쭤볼게요."),
+             say("문 닫은 뒤에 왔거나 대답이 없으실 때는, 제가 30분 안에 사과 답글을 달고 브리핑 때 알려 드릴까요?", None, ["pm_reply", "pm_brief"])],
             [{"type": "rows", "id": "permission", "rows": [
                 {"id": "pm_reply", "kind": "reply", "value": "30분 안에 사과 답글"},
                 {"id": "pm_brief", "kind": "briefing", "value": "브리핑 때 알려 드려요"},
@@ -328,10 +343,12 @@ def step_scheduling(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, di
     rows = schedule.rows(scheduled, view.menus, now, view.store.get("rain_menu"))
     if not rows:
         return None, None
-    says = [say("좋은 리뷰 답글은 가장 잘 보일 때 올리려고 예약해 뒀어요.")]
+    says = [say("좋은 리뷰 답글은 손님이 외식을 고민할 때 올리려고 예약해 뒀어요.")]
     for row in rows:
         says.append(say(f"{row['explanation']}.", None, [row["id"]]))  # say 는 한 문장씩
-    card_rows = [{k: v for k, v in row.items() if k != "explanation"} for row in rows]
+        if row.get("context_line"):
+            says.append(say(f"{row['context_line']}.", None, [row["id"]]))
+    card_rows = [{k: v for k, v in row.items() if k not in ("explanation", "context_line")} for row in rows]
     response = answer("답글은 예약해 뒀어요", says, [{"type": "scheduled", "id": "scheduled_replies", "items": card_rows}])
 
     by_id = {r["id"]: r for r in scheduled}

@@ -26,6 +26,10 @@ POST /api/dev_tools/ui_text/save            화면 글: 수정을 mobile/scripts
 POST /api/dev_tools/ui_text/apply           화면 글: 저장하고 앱 코드에 넣은 뒤 타입 검사 {"edits"}
 GET  /api/dev_tools/ui_text/export          화면 글: 밖에서 고치는 JSON 내려받기 (모든 원본 + 빈 "수정" 칸)
 POST /api/dev_tools/ui_text/import          화면 글: 밖에서 고친 JSON 을 올려 수정에 더하기 (그 JSON 그대로)
+GET  /api/dev_tools/evals                   평가: 결과 폴더 목록 (스위트, 시각, 커밋, 시스템, 대표 지표)
+GET  /api/dev_tools/evals/run?id=           평가: 실행 하나 (지표, 그래프용 charts, 사례, 짝 비교, 심판 검증). failed_only, system, limit, offset, case
+GET  /api/dev_tools/evals/trend?suite=&metric=  평가: 같은 스위트·지표의 실행별 값
+GET  /api/dev_tools/evals/trace?id=&run_id= 평가: 그 결과 폴더의 harness_trace.db 단계
 시연의 시계 옮기기는 DEV_CLOCK_ENABLED=true 도 필요하다.
 시계 앞당기기와 초기화는 팀원이 만든 /dev/clock, /dev/reset 을 쓴다 (DEV_CLOCK_ENABLED=true 필요).
 """
@@ -180,3 +184,29 @@ def ui_text_import(doc: dict = Body(...)):
     if not isinstance(doc.get("화면"), list):
         raise ApiError(422, "UI_TEXT_BAD_FILE", "화면 글 JSON 이 아니에요. 대시보드에서 내려받은 파일의 '수정' 칸만 고쳐서 올려 주세요.")
     return ui_text.run("import", {"doc": doc})
+
+
+# ── 평가 (server/db/app_data/harness_eval 결과 폴더. 운영 기록과 섞지 않는다) ──
+
+from app.modules.dev_tools import eval_reader  # noqa: E402
+
+
+@router.get("/evals", summary="평가: 결과 폴더 목록")
+def evals():
+    return eval_reader.list_runs()
+
+
+@router.get("/evals/run", summary="평가: 실행 하나")
+def eval_run(id: str, failed_only: bool = False, system: str | None = None,
+             limit: int = Query(100, ge=1, le=2000), offset: int = Query(0, ge=0), case: int | None = Query(None, ge=0)):
+    return eval_reader.get_run(id, failed_only=failed_only, system=system, limit=limit, offset=offset, case=case)
+
+
+@router.get("/evals/trend", summary="평가: 같은 스위트·지표의 실행별 값")
+def eval_trend(suite: str, metric: str):
+    return eval_reader.trend(suite, metric)
+
+
+@router.get("/evals/trace", summary="평가: 결과 폴더의 실행 단계")
+def eval_trace(id: str, run_id: str):
+    return eval_reader.trace_steps(id, run_id)

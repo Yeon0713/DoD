@@ -1,0 +1,2262 @@
+{
+ "version": "intents_v1",
+ "verified_by": null,
+ "note": "Claude Code 가 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다.",
+ "cases": [
+  {
+   "id": "scenario_c:C1",
+   "text": "다시 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C2",
+   "text": "오늘 일정 부리핑 해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C3",
+   "text": "3번 테이블 치워 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C4",
+   "text": "어서 오세요 몇 분이세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C5",
+   "text": "그거 뭐였지 그 저기",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C6",
+   "text": "그만",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "scenario_c"
+  },
+  {
+   "id": "scenario_c:C7",
+   "text": "리뷰 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "scenario_c",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "scenario_c:C8",
+   "text": "다음",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": true,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "scenario_c"
+  },
+  {
+   "id": "doc:briefing.start:1",
+   "text": "오늘 일정 브리핑해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.start:2",
+   "text": "브리핑",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.start:3",
+   "text": "오늘 뭐 있어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:briefing.start:1",
+   "text": "오늘 브리핑 좀 해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.start:2",
+   "text": "브리핑 시작해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.start:3",
+   "text": "오늘 일정 알려 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.start:4",
+   "text": "오늘 뭐 해야 돼",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.start:5",
+   "text": "브리핑 부탁해",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:briefing.start:1",
+   "text": "오늘 일정 부리핑 해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.start:2",
+   "text": "브리펑 해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.start:3",
+   "text": "뿌리핑 시작",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "typo"
+  },
+  {
+   "id": "doc:briefing.next:1",
+   "text": "다음",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.next:2",
+   "text": "넘어가",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.next:3",
+   "text": "계속",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:briefing.next:1",
+   "text": "다음 거",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.next:2",
+   "text": "그다음",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.next:3",
+   "text": "넘겨 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.next:4",
+   "text": "다음으로 가자",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.next:5",
+   "text": "계속해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:briefing.next:1",
+   "text": "다음꺼",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.next:2",
+   "text": "다음거 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.next:3",
+   "text": "넘어 가",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "typo"
+  },
+  {
+   "id": "doc:briefing.repeat:1",
+   "text": "다시 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.repeat:2",
+   "text": "뭐라고",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "doc"
+  },
+  {
+   "id": "doc:briefing.repeat:3",
+   "text": "못 들었어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:briefing.repeat:1",
+   "text": "한 번 더 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.repeat:2",
+   "text": "다시 한번",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.repeat:3",
+   "text": "잘 못 들었어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.repeat:4",
+   "text": "다시 얘기해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.repeat:5",
+   "text": "다시 들려줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:briefing.repeat:1",
+   "text": "다시 말해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.repeat:2",
+   "text": "뭐라고?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.repeat:3",
+   "text": "몬 들었어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "typo"
+  },
+  {
+   "id": "doc:briefing.restart:1",
+   "text": "처음부터 다시",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:briefing.restart:1",
+   "text": "처음부터 다시 해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.restart:2",
+   "text": "처음부터 해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.restart:3",
+   "text": "처음부터 다시 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.restart:4",
+   "text": "맨 처음부터 다시",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:briefing.restart:5",
+   "text": "처음부터 다시 브리핑해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:briefing.restart:1",
+   "text": "처음부터 다시 해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.restart:2",
+   "text": "처음 부터 다시",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "typo"
+  },
+  {
+   "id": "typo:briefing.restart:3",
+   "text": "처음부터 다시해주세여",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "typo"
+  },
+  {
+   "id": "doc:briefing.jump:1",
+   "text": "리뷰 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "doc",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "doc:briefing.jump:2",
+   "text": "리뷰 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "doc",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "paraphrase:briefing.jump:1",
+   "text": "리뷰는",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "paraphrase",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "paraphrase:briefing.jump:2",
+   "text": "리뷰 좀 알려 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "paraphrase",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "paraphrase:briefing.jump:3",
+   "text": "리뷰 얘기해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "paraphrase",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "paraphrase:briefing.jump:4",
+   "text": "리뷰 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "paraphrase",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "paraphrase:briefing.jump:5",
+   "text": "리뷰",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "paraphrase",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "typo:briefing.jump:1",
+   "text": "리뷰 어떄",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "typo",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "typo:briefing.jump:2",
+   "text": "리뷰 보여조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "typo",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "typo:briefing.jump:3",
+   "text": "리뷰 말해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "source": "typo",
+   "expected_jump_to": "reviews"
+  },
+  {
+   "id": "doc:detail.show:1",
+   "text": "화면에 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "doc"
+  },
+  {
+   "id": "doc:detail.show:2",
+   "text": "자세히 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:detail.show:1",
+   "text": "화면에 띄워 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.show:2",
+   "text": "자세히 좀",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.show:3",
+   "text": "자세히 알려 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.show:4",
+   "text": "화면으로 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.show:5",
+   "text": "화면에 좀 보여 줄래",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:detail.show:1",
+   "text": "화면에 보여조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.show:2",
+   "text": "자세히 보여조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.show:3",
+   "text": "화면에보여줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "typo"
+  },
+  {
+   "id": "doc:detail.read:1",
+   "text": "읽어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:detail.read:1",
+   "text": "소리 내서 읽어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.read:2",
+   "text": "그거 읽어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.read:3",
+   "text": "답글 읽어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.read:4",
+   "text": "읽어 봐",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.read:5",
+   "text": "읽어 줄래",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:detail.read:1",
+   "text": "읽어조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.read:2",
+   "text": "일거 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.read:3",
+   "text": "읽어 주세여",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "typo"
+  },
+  {
+   "id": "doc:detail.back:1",
+   "text": "돌아가기",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "doc"
+  },
+  {
+   "id": "doc:detail.back:2",
+   "text": "됐어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:detail.back:1",
+   "text": "돌아가 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.back:2",
+   "text": "뒤로",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.back:3",
+   "text": "닫아 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.back:4",
+   "text": "뒤로 가",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:detail.back:5",
+   "text": "원래대로 돌아가",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:detail.back:1",
+   "text": "돌아 가기",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.back:2",
+   "text": "뒤로가조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "typo"
+  },
+  {
+   "id": "typo:detail.back:3",
+   "text": "닫아조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.back",
+   "source": "typo"
+  },
+  {
+   "id": "doc:permission.yes:1",
+   "text": "응 그렇게 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "doc"
+  },
+  {
+   "id": "doc:permission.yes:2",
+   "text": "그래",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "doc"
+  },
+  {
+   "id": "doc:permission.yes:3",
+   "text": "좋아",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:permission.yes:1",
+   "text": "네",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.yes:2",
+   "text": "응",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.yes:3",
+   "text": "부탁해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.yes:4",
+   "text": "그러자",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.yes:5",
+   "text": "오케이",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:permission.yes:1",
+   "text": "응 그러케 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "typo"
+  },
+  {
+   "id": "typo:permission.yes:2",
+   "text": "그래요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "typo"
+  },
+  {
+   "id": "typo:permission.yes:3",
+   "text": "조아",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "typo"
+  },
+  {
+   "id": "doc:permission.no:1",
+   "text": "아니 내가 볼게",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "doc"
+  },
+  {
+   "id": "doc:permission.no:2",
+   "text": "아니",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "doc"
+  },
+  {
+   "id": "doc:permission.no:3",
+   "text": "됐어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:permission.no:1",
+   "text": "싫어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.no:2",
+   "text": "내가 할게",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.no:3",
+   "text": "하지 마",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.no:4",
+   "text": "괜찮아",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:permission.no:5",
+   "text": "놔둬",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:permission.no:1",
+   "text": "아니 내가 볼께",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "typo"
+  },
+  {
+   "id": "typo:permission.no:2",
+   "text": "아니요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "typo"
+  },
+  {
+   "id": "typo:permission.no:3",
+   "text": "됫어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 3,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.no",
+   "source": "typo"
+  },
+  {
+   "id": "doc:stop:1",
+   "text": "그만",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "doc"
+  },
+  {
+   "id": "doc:stop:2",
+   "text": "됐어 그만해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:stop:1",
+   "text": "멈춰",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:stop:2",
+   "text": "스톱",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:stop:3",
+   "text": "조용히 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:stop:4",
+   "text": "이제 됐어 그만",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:stop:5",
+   "text": "홈으로 가",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:stop:1",
+   "text": "그마안",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "typo"
+  },
+  {
+   "id": "typo:stop:2",
+   "text": "그만해조",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "typo"
+  },
+  {
+   "id": "typo:stop:3",
+   "text": "스탑",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "typo"
+  },
+  {
+   "id": "doc:question:1",
+   "text": "내일 예약 있어?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "doc"
+  },
+  {
+   "id": "doc:question:2",
+   "text": "이번 주 비 와?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "doc"
+  },
+  {
+   "id": "paraphrase:question:1",
+   "text": "이번 주 행사 있어?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:question:2",
+   "text": "오늘 날씨 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:question:3",
+   "text": "주말에 경기 있나",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:question:4",
+   "text": "예약 몇 팀이야",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:question:5",
+   "text": "축제 언제야",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:question:1",
+   "text": "내일 예약 이써?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "typo"
+  },
+  {
+   "id": "typo:question:2",
+   "text": "이번주 비와?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "typo"
+  },
+  {
+   "id": "typo:question:3",
+   "text": "날씨 어떄",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "typo"
+  },
+  {
+   "id": "paraphrase:navigate.sales:1",
+   "text": "매출 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.sales:2",
+   "text": "오늘 얼마 팔았어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.sales:3",
+   "text": "장사 어땠어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.sales:4",
+   "text": "매출 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.sales:5",
+   "text": "많이 팔았어?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:navigate.sales:1",
+   "text": "매출 어떄",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.sales:2",
+   "text": "매츨 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.sales:3",
+   "text": "장사 잘됬어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "typo"
+  },
+  {
+   "id": "paraphrase:navigate.week:1",
+   "text": "이번 주 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.week:2",
+   "text": "달력 열어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.week:3",
+   "text": "언제 바빠",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.week:4",
+   "text": "이번 주 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.week:5",
+   "text": "일정 탭 열어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:navigate.week:1",
+   "text": "이번주 보여조",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.week:2",
+   "text": "달력 열어조",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.week:3",
+   "text": "언제 바뻐",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "typo"
+  },
+  {
+   "id": "paraphrase:navigate.settings:1",
+   "text": "설정 열어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.settings:2",
+   "text": "설정",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.settings:3",
+   "text": "설정 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.settings:4",
+   "text": "설정 화면",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "paraphrase"
+  },
+  {
+   "id": "paraphrase:navigate.settings:5",
+   "text": "설정으로 가",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "paraphrase"
+  },
+  {
+   "id": "typo:navigate.settings:1",
+   "text": "설정 열어조",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.settings:2",
+   "text": "셜정 열어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "typo"
+  },
+  {
+   "id": "typo:navigate.settings:3",
+   "text": "설졍",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "typo"
+  },
+  {
+   "id": "doc:not_for_donna:1",
+   "text": "3번 테이블 치워 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "doc"
+  },
+  {
+   "id": "doc:not_for_donna:2",
+   "text": "어서 오세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "doc"
+  },
+  {
+   "id": "kitchen:1",
+   "text": "3번 테이블 치워 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:2",
+   "text": "어서 오세요 몇 분이세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:3",
+   "text": "포장이세요?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:4",
+   "text": "계산은 저쪽에서 해 주세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:5",
+   "text": "맛있게 드세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:6",
+   "text": "감사합니다 안녕히 가세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:7",
+   "text": "여기 물 좀 갖다 드려",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:8",
+   "text": "앞치마 어디 뒀어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:9",
+   "text": "불 좀 줄여",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:10",
+   "text": "접시 더 꺼내 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:11",
+   "text": "이모 김치 좀 더 주세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:12",
+   "text": "사장님 여기 계산이요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:13",
+   "text": "주문하시겠어요?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:14",
+   "text": "자리 안내해 드릴게요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:15",
+   "text": "손님 오셨어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:16",
+   "text": "두 분이세요?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:17",
+   "text": "냉장고에 육수 넣어 놨어?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:18",
+   "text": "면 삶아",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:19",
+   "text": "오늘 재료 들어왔어?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "kitchen:20",
+   "text": "튀김기 기름 갈아야겠다",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen"
+  },
+  {
+   "id": "unknown:1",
+   "text": "그거 뭐였지 그 저기",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:2",
+   "text": "도나 그거 있잖아",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:3",
+   "text": "왜 그런 거야",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:4",
+   "text": "어떻게 하라고?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:5",
+   "text": "무슨 말이야",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:6",
+   "text": "도나야 음",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:7",
+   "text": "도나야 그 뭐냐",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:8",
+   "text": "도나야 고양이 좋아해?",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:9",
+   "text": "저기 그거 말이야",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  },
+  {
+   "id": "unknown:10",
+   "text": "도나야 3번 테이블 치워 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "unknown",
+   "source": "unknown"
+  }
+ ]
+}

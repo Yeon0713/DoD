@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # 0 이면 개발자 대시보드에 '단가 미설정'으로 보이고 비용은 0원으로 센다
     clova_price_input_per_1k: float = 0
     clova_price_output_per_1k: float = 0
+    # 에이전트 평가(server/Harness/evals)의 CLOVA X 심판 모델. 답글 검토기(CLOVA_STUDIO_MODEL)와 다른 모델을 쓴다. 서버 기능은 쓰지 않는다
+    eval_judge_model: str = "HCX-007"
 
     # AI 포스터 그림 (app/poster_ai). codex: 이 컴퓨터에 ChatGPT 계정으로 로그인한 Codex CLI 의 그림 만들기(gpt-image-2)를 쓴다
     # (구독제, API 키 없음. 데모용. 나중에 OpenAI API 로 옮긴다). mock: 받은 사진으로 그림만 합친다 (시험용, 글자 없음)

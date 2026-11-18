@@ -57,10 +57,13 @@ def test_scenario_a_full_flow(donna: Donna):
     a6 = donna.turn("다음")
     assert a6["type"] == "answer" and a6["briefing"] == {"step": 3, "total": 5, "step_key": "scheduling"}
     items = a6["cards"][0]["items"]
-    assert [i["reason"]["kind"] for i in items] == ["weather", "game", "weekend"]
+    # P12 (test-scenarios-closed-loop.md): 주말 리뷰는 24~48시간 안 식사 피크 한 시간 전, 평일 리뷰는 토요일 오전.
+    # 그날 강남 페스티벌은 시각을 바꾸지 않고 글에만 들어간다.
+    assert [i["reason"]["kind"] for i in items] == ["weekend_next_peak", "weekday_to_weekend"]
     assert [(i["day_label"], i["time_label"], i["text"]) for i in items] == [
-        ("목", "아침 8시", "비 오는 날 전골 권하기"), ("금", "오후 5시", "경기 보기 전에 들르시게"), ("토", "오전 11시", "주말에 리뷰를 많이 봐요")]
-    assert [i["reason"]["label"] for i in items] == ["비 소식", "한국시리즈", "주말"]
+        ("화", "오전 11시", "행사 가기 전에 들르시게"), ("토", "오전 11시", "주말에 리뷰를 많이 봐요")]
+    assert [i["reason"]["label"] for i in items] == ["점심 한 시간 전", "주말 점심 전"]
+    assert [i["review_ids"] for i in items] == [["rv_0408"], ["rv_0409", "rv_0410"]]
     assert all("explanation" not in i for i in items)  # 말할 때만 쓰는 칸은 카드에 넣지 않는다
 
     a7 = donna.turn("다음")
@@ -80,10 +83,10 @@ def test_scheduled_replies_are_written_and_queued(donna: Donna):
     assert all(r["reply_text"] and r["reply_source"] == "TEMPLATE" for r in scheduled)
     assert {j["kind"] for j in state["job"] if not j["done"]} >= {"post_scheduled", "prepare_briefing"}
 
-    # 예약한 시각이 지나면 올린다 (목요일 아침 8시 답글)
-    donna.clock("2026-11-19T08:00:00+09:00")
+    # 예약한 시각이 지나면 올린다 (일요일 리뷰 → 화요일 점심 한 시간 전 11시)
+    donna.clock("2026-11-17T11:00:00+09:00")
     posted = {r["id"]: r for r in donna.state()["review"] if r.get("reply_status") == "posted" and r.get("reply_by") == "donna"}
-    assert list(posted) == ["rv_0408"] and posted["rv_0408"]["reply_posted_at"] == "2026-11-19T08:00:00+09:00"
+    assert list(posted) == ["rv_0408"] and posted["rv_0408"]["reply_posted_at"] == "2026-11-17T11:00:00+09:00"
 
 
 def test_home_before_preparation():

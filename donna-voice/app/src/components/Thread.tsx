@@ -5,7 +5,7 @@ import { useConversation } from '@/lib/conversation';
 import { useLayout } from '@/lib/layout';
 import { space } from '@/theme/tokens';
 
-import { Donna } from './dock';
+import { Donna, donnaMoves } from './dock';
 
 /**
  * 가운데 구역. 내용을 위에서부터 쌓고, 덩어리 사이는 16.
@@ -21,7 +21,7 @@ export function Thread({ children, follow = false, withDonna = false }: { childr
   const scroll = useRef<ComponentRef<typeof ScrollView>>(null);
   const [box, setBox] = useState(0);
   const [content, setContent] = useState(0);
-  const moving = voiceState === 'hearing' || voiceState === 'waiting' || voiceState === 'speaking';
+  const moving = donnaMoves(voiceState);
   // 휴대폰: 도나는 알약 위로 8만큼 겹쳐 선다. 내용 끝(아래 여백 16 포함)이 도나 머리보다 위에 있을 때만 보인다.
   // 태블릿 세로: 내용 끝과 알약 사이 남은 자리의 가운데에 선다. 도나가 다 들어갈 때만 보인다.
   const centered = mode === 'tabletPortrait';

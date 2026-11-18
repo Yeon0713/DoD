@@ -128,11 +128,11 @@ def test_scenario_b_with_agent_reply(clova_on):
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
     payload["settings"] = {"negative_review_auto_reply": True}
     donna = Donna()
-    donna.clock("2026-11-16T21:40:00+09:00")
+    donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)
     clova_on(FakeClova(submit(), *critic_pass()))
     review_id = donna.review(**NIGHT_REVIEW)["review_id"]
-    donna.clock("2026-11-16T21:55:00+09:00")  # 21:50 바로 답하기만 돈다 (브리핑 준비는 다음 날 09:00)
+    donna.clock("2026-11-16T22:55:00+09:00")  # 22:50 바로 답하기만 돈다 (문 닫은 뒤 리뷰) (브리핑 준비는 다음 날 09:00)
     review = next(r for r in donna.state()["review"] if r["id"] == review_id)
     assert review["reply_status"] == "posted" and review["reply_text"] == GOOD and review["reply_source"] == "AGENT"
     assert review["replied_in_minutes"] == 10

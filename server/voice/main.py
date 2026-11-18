@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from voice import config, tts
-from voice.api import dev, home, tabs, turn
+from voice.api import account, dev, home, staff, tabs, turn
 from voice.api import tts as tts_api
 from voice.jobs import queue
 
@@ -65,8 +65,9 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    for module in (home, turn, tabs, tts_api, dev):
+    for module in (home, turn, tabs, tts_api, dev, account, staff):
         app.include_router(module.router, prefix="/v1")
+    account.mount(app)  # 가입·로그인: 메인 서버의 /api/auth, /api/naver, /api/stores, /api/owner_check
     app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")
     return app
 

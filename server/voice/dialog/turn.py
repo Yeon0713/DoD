@@ -8,6 +8,9 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 - 브리핑 응답은 jobs/briefing.prepare 가 미리 만든 것을 꺼내기만 한다. 여기서는 단계 번호와 turn_id 만 붙인다.
 - session(가게·날짜마다 하나)에 지금 단계(step), 보기 상태(mode: idle | briefing | detail | ended), 직전 응답 종류를 기억한다.
   ignore 와 not_understood 는 직전 상황을 바꾸지 않는다 (허락을 물은 뒤 주방 말이 끼어도 "응"을 허락으로 알아듣게).
+- 아쉬운 리뷰 알림 (2026-11-18, jobs/review_loop.py): 앱이 알림을 열면(event: notice) ask_action 으로 묻는다.
+  "응, 진행해"·"쿠폰 빼고"·"안 해"는 브리핑이 없어도 처리한다. 대답한 뒤에도 잠깐은 ask_action 상황으로 둔다
+  (두 번 "응"해도 "이미 올렸어요"). 질문이 열려 있으면 "도나야, 진행해"처럼 불러서 한 말도 그 질문의 대답으로 본다.
 """
 
 import copy
@@ -19,6 +22,7 @@ from voice.context import load
 from voice.dialog import intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.jobs import briefing as briefing_job
+from voice.jobs import review_loop
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -28,6 +32,7 @@ SITUATIONS = {
     "show_detail": "도나가 리뷰와 답글을 화면에 띄웠어요",
     "answer": "도나가 브리핑 중이에요",
     "end": "브리핑이 끝났어요",
+    "ask_action": "도나가 '아쉬운 리뷰에 사과 답글을 올리고, 알바생 할 일에 고칠 것을 넣을까요?' 하고 물었어요",
 }
 
 
@@ -45,7 +50,8 @@ def understand(text: str, session: dict, view, addressed: bool = False) -> Inten
         return found
     judged = intent_judge.judge(view, text, SITUATIONS.get(session.get("last_type") or "", "도나는 듣고만 있어요"))
     if judged and not (addressed and judged["intent"] == "not_for_donna"):
-        return Intent(judged["intent"], judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm")
+        edits = intent_rules.edits_in(intent_rules.normalize(text)) if judged["intent"].startswith("action.") else None
+        return Intent(judged["intent"], judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm", edits=edits)
     return intent_rules.heuristic(text, addressed)
 
 
@@ -108,6 +114,10 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return answer_question(view, intent.owner_said)
     if name.startswith("navigate."):
         return _navigate(view, name.split(".", 1)[1])
+    if name.startswith("action.") or name == "notice.open":  # 아쉬운 리뷰 고리. 브리핑과 상관없이
+        if name == "action.repeat":
+            name = "notice.open"
+        return {**review_loop.decide(view, name, intent.edits, session.get("alert_id")), "keep_context": "ask_action"}
     if brief is None:
         return _not_ready()
 
@@ -195,22 +205,33 @@ def handle(request: dict) -> dict:
     session_id = request.get("session_id") or f"sess_{clock.now():%Y%m%d}_{store_id}"
     session = repo.get("session", session_id) or {"id": session_id, "store_id": store_id, "step": None, "mode": "idle", "last_type": None}
     utterance = request.get("utterance") or None
-    if request.get("event") == "auto_next" or utterance is None:
+    if request.get("event") == "notice":
+        notice = repo.get("notice", request.get("notice_id") or "") or {}
+        session["alert_id"] = notice.get("alert_id") or (review_loop.pending(store_id) or {}).get("id")
+        intent = Intent("notice.open", None)
+    elif request.get("event") == "auto_next" or utterance is None:
         intent = Intent("briefing.next", None)
     else:
-        intent = understand(utterance["text"], session, view, bool(utterance.get("addressed")))
+        addressed = bool(utterance.get("addressed"))
+        # 묻고 있는 아쉬운 리뷰가 있으면 "도나야, 진행해"도 그 대답이다 (허락 질문·자세히 보기 중이면 그쪽이 먼저)
+        if session.get("last_type") not in ("ask_permission", "show_detail") and addressed and review_loop.pending(store_id):
+            session["last_type"] = "ask_action"
+        if session.get("last_type") != "ask_action":
+            session.pop("alert_id", None)
+        intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
     response = dispatch(intent, session, brief, view)
     response.setdefault("briefing", None)
     if response["type"] not in ("ignore", "not_understood"):
-        session["last_type"] = response["type"]
+        session["last_type"] = response.get("keep_context") or response["type"]
     response = {
         "turn_id": f"t_{repo.next_number(f'turn:{store_id}'):04d}", "type": response["type"], "intent": intent.name,
         "owner_said": None if response["type"] == "ignore" else intent.owner_said, "briefing": response["briefing"],
         "headline": response["headline"], "say": response["say"], "cards": response["cards"],
         "expects_reply": response["expects_reply"],
         **({"permission": response["permission"]} if response.get("permission") else {}),
+        **({"action": response["action"]} if response.get("action") else {}),
         **({"tab": response["tab"]} if response.get("tab") else {}),
     }
     session["last_turn_id"] = response["turn_id"]

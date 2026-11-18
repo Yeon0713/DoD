@@ -3,6 +3,7 @@
   prepare_briefing  출근 한 시간 전 (open_time - 60분). 끝나면 다음 영업일 것을 다시 넣는다. 쉬는 요일은 건너뛴다
   auto_reply        아쉬운 리뷰가 들어오고 10분 뒤 (허락은 돌 때 다시 본다)
   post_scheduled    예약한 답글을 올릴 시각
+  review_alert      영업 중 아쉬운 리뷰: 바로 알림 / review_remind 15분 뒤 다시 알림 / review_fallback 25분 대답 없음 처리
 
 run_due(지금까지) 는 예정 시각이 지난 작업을 시각 순서로 돌린다. 작업은 clock.at(예정 시각) 안에서 돌아서,
 dev/clock 으로 시계를 한꺼번에 옮겨도 그 작업이 원래 돌았어야 할 시각에 돈 것으로 적힌다.
@@ -14,7 +15,7 @@ import logging
 import threading
 
 from app.core.seoul_time import at_time
-from voice import clock, config, repo
+from voice import clock, config, hours, repo
 from voice.clock import iso, parse
 
 logger = logging.getLogger(__name__)
@@ -30,13 +31,19 @@ def add(store_id: str, kind: str, due_at: dt.datetime, payload: dict | None = No
                                               "payload": payload or {}, "done": False})
 
 
-def next_prepare_at(store: dict, after: dt.datetime) -> dt.datetime:
-    """after 보다 뒤의 첫 브리핑 준비 시각 (쉬는 요일 건너뜀)."""
-    closed = set(store.get("closed_weekdays") or [])
+def next_prepare_at(store: dict, after: dt.datetime, settings: dict | None = None) -> dt.datetime:
+    """after 보다 뒤의 첫 브리핑 준비 시각 (쉬는 요일 건너뜀). 그날 여는 시각 1시간 전, 사장님이 고른 알림 시각이
+    그보다 이르면 알림 시각 (알림을 받고 부르면 이미 준비돼 있게)."""
     for n in range(0, 8):
         day = after.date() + dt.timedelta(days=n)
-        moment = at_time(day, store["open_time"]) - config.PREPARE_BEFORE_OPEN
-        if moment > after and day.weekday() not in closed:
+        today = hours.on(store, day)
+        if today is None:
+            continue
+        moment = at_time(day, today["open"]) - config.PREPARE_BEFORE_OPEN
+        notify = hours.notify_time(store, settings or {}, day)
+        if notify:
+            moment = min(moment, at_time(day, notify))
+        if moment > after:
             return moment
     raise ValueError("일주일 내내 쉬는 가게예요")
 
@@ -45,7 +52,16 @@ def schedule_prepare(store_id: str, after: dt.datetime | None = None) -> dict | 
     store = repo.store(store_id)
     if store is None:
         return None
-    return add(store_id, "prepare_briefing", next_prepare_at(store, after or clock.now()))
+    return add(store_id, "prepare_briefing", next_prepare_at(store, after or clock.now(), repo.settings(store_id)))
+
+
+def reschedule_prepare(store_id: str) -> dict | None:
+    """장사 시간이나 알림 시각이 바뀌면, 아직 돌지 않은 준비 작업을 빼고 새 시각으로 다시 넣는다."""
+    now = clock.now()
+    for job in repo.all_of("job", store_id):
+        if job["kind"] == "prepare_briefing" and not job["done"] and parse(job["due_at"]) > now:
+            repo.put("job", job["id"], store_id, {**job, "done": True, "skipped": True})
+    return schedule_prepare(store_id, after=now)
 
 
 def _pending(until: dt.datetime) -> list[dict]:
@@ -70,6 +86,11 @@ def run_job(job: dict) -> object:
         return reviewed is not None
     if job["kind"] == "post_scheduled":
         return auto_reply.post_scheduled(store_id)
+    if job["kind"] in ("review_alert", "review_remind", "review_fallback"):  # 영업 중 아쉬운 리뷰 (jobs/review_loop.py)
+        from voice.jobs import review_loop
+
+        step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback}[job["kind"]]
+        return step(store_id, job["payload"]["review_id"]) is not None
     raise ValueError(f"모르는 작업: {job['kind']}")
 
 

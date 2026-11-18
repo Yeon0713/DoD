@@ -1,7 +1,7 @@
 """일정 탭(GET /v1/week), 매출 탭(GET /v1/sales), 도나 알림(GET /v1/notices). 문서 16-2.
 
 일정 탭은 "바쁠 것 같다"는 추측을 보여 주지 않는다. 날짜와 시각이 있는 사실(잡힌 일)과 그날 한 일만 보여 준다.
-매출은 포스 매출(fixtures 의 sales)에서 나온다. 알림은 알바생 기능을 연결할 때까지 비어 있다.
+매출은 포스 매출(fixtures 의 sales)에서 나온다. 알림은 voice/notices.py.
 """
 
 import datetime as dt
@@ -9,7 +9,7 @@ import re
 
 from fastapi import APIRouter
 
-from voice import activity, clock, config, repo, speech
+from voice import activity, clock, config, hours, notices, repo, speech
 from voice.api.errors import store_not_found
 from voice.api.home import date_label, time_of
 from voice.clock import parse
@@ -164,12 +164,59 @@ def _won(n: int) -> str:
     return f"{round(n / 10000):,}만 원"
 
 
+def _diff(diff: int) -> dict:
+    """견주는 한 줄의 재료. 화면은 화살표 + 숫자(갈색 굵게) + 많아요/적어요 (Figma G-04)."""
+    return {"direction": "up" if diff >= 0 else "down", "diff_label": _won(abs(diff)),
+            "diff_text": f"{_won(abs(diff))} {'많아요' if diff >= 0 else '적어요'}"}
+
+
+def _month(daily: dict, today: dt.date, today_amount: int, today_share: float) -> dict:
+    """이번 달 지금까지 ↔ 지난달 같은 날 이맘때. 지난달 오늘 몫은 지난주 같은 요일이 이맘때까지 판 비율로 어림한다."""
+    first = today.replace(day=1)
+    last_first = (first - dt.timedelta(days=1)).replace(day=1)
+    this_total = sum(v for k, v in daily.items() if first.isoformat() <= k < today.isoformat()) + today_amount
+    last_days = [last_first + dt.timedelta(days=i) for i in range(today.day - 1)]
+    last_total = sum(daily.get(d.isoformat(), 0) for d in last_days if d.month == last_first.month)
+    try:
+        same_day = last_first.replace(day=today.day)
+        last_total += round(daily.get(same_day.isoformat(), 0) * today_share)
+    except ValueError:  # 지난달에 그 날짜가 없다 (31일 등)
+        pass
+    return {"label": "이번 달 지금까지", "amount": this_total, "amount_label": _won(this_total),
+            "compare_label": "지난달 이맘때보다", "has_last": last_total > 0, **_diff(this_total - last_total)}
+
+
+def _came_back(item: dict) -> str:
+    at = parse(item["came_back_at"])
+    how = "배달로 다시 주문했어요" if item.get("channel") == "delivery" else "가게에 다시 오셨어요"
+    return f"{at.month}월 {at.day}일 {how}"
+
+
+def _revisits(store_id: str, now: dt.datetime) -> dict:
+    """도나 답글을 받고 다시 온 손님 (Figma G-04 ③). 답글이 올라간 뒤 처음 다시 온 때를 센다.
+    '답글 덕분에'라고 하지 않는다. 다시 온 사실만 적는다. 목업 단계라 fixtures 의 revisits 가 곧 포스·리뷰를 이어 본 결과다."""
+    monday = dt.datetime.combine(now.date() - dt.timedelta(days=now.weekday()), dt.time(0), tzinfo=now.tzinfo)
+    items = sorted((r for r in repo.all_of("revisit", store_id) if parse(r["came_back_at"]) <= now), key=lambda r: r["came_back_at"])
+    this_week = [r for r in items if parse(r["came_back_at"]) >= monday]
+    last_week = [r for r in items if monday - dt.timedelta(days=7) <= parse(r["came_back_at"]) < monday]
+    latest = None
+    if items:
+        r = items[-1]
+        written = parse(r["review"]["written_at"])
+        latest = {"came_back_label": _came_back(r), "date_label": f"{parse(r['came_back_at']).month}월 {parse(r['came_back_at']).day}일",
+                  "review": {"rating": r["review"]["rating"], "text": r["review"]["text"], "date_label": f"{written.month}월 {written.day}일 리뷰"},
+                  "reply": {"text": r["reply"]["text"], "by": r["reply"].get("by", "donna")}}
+    return {"label": "도나 답글을 받고 이번 주에 다시 온 손님", "count": len(this_week), "count_label": f"{len(this_week)}명",
+            "last_week_label": f"지난주에는 {len(last_week)}명", "latest": latest}
+
+
 def sales(store_id: str) -> dict:
     store = repo.store(store_id)
     data = repo.get("sales", store_id) or {"daily": {}}
     now = clock.now()
     today = now.date()
-    opened = now.time().replace(tzinfo=None) >= time_of(store["open_time"])
+    hours_today = hours.on(store, today)
+    opened = hours_today is not None and now.time().replace(tzinfo=None) >= time_of(hours_today["open"])
     daily = data.get("daily", {})
 
     def amount(day: dt.date) -> int:
@@ -181,36 +228,41 @@ def sales(store_id: str) -> dict:
     week_days = [monday + dt.timedelta(days=i) for i in range(7)]
     this_week = [amount(d) for d in week_days]
     last_week = [daily.get((d - dt.timedelta(days=7)).isoformat(), 0) for d in week_days]
+    same = data.get("last_week_same_time", 0) if opened else 0
+    last_same_day = daily.get((today - dt.timedelta(days=7)).isoformat(), 0)
+    share = (same / last_same_day) if opened and last_same_day else 0.0
     if opened:
-        same = data.get("last_week_same_time", 0)
         diff = this_week[today.weekday()] - same
         primary = {"label": "오늘 지금까지", "amount": this_week[today.weekday()], "amount_label": _won(this_week[today.weekday()]),
-                   "compare_label": f"지난주 {speech.weekday(today)}요일 이맘때", "compare_amount_label": _won(same),
-                   "direction": "up" if diff >= 0 else "down",
-                   "compare_text": f"지난주 이맘때보다 {_won(abs(diff))} {'많아요' if diff >= 0 else '적어요'}"}
+                   "compare_label": f"지난주 {speech.weekday(today)}요일 이맘때", "compare_amount": same, "compare_amount_label": _won(same),
+                   "compare_text": f"지난주 이맘때보다 {_won(abs(diff))} {'많아요' if diff >= 0 else '적어요'}", **_diff(diff)}
     else:
         yesterday = today - dt.timedelta(days=1)
         y_amount = daily.get(yesterday.isoformat(), 0)
         before = daily.get((yesterday - dt.timedelta(days=7)).isoformat(), 0)
         diff = y_amount - before
         primary = {"label": "어제", "amount": y_amount, "amount_label": _won(y_amount),
-                   "compare_label": f"지난주 {speech.weekday(yesterday)}요일", "compare_amount_label": _won(before),
-                   "direction": "up" if diff >= 0 else "down",
-                   "compare_text": f"지난주 {speech.weekday(yesterday)}요일보다 {_won(abs(diff))} {'많아요' if diff >= 0 else '적어요'}"}
+                   "compare_label": f"지난주 {speech.weekday(yesterday)}요일", "compare_amount": before, "compare_amount_label": _won(before),
+                   "compare_text": f"지난주 {speech.weekday(yesterday)}요일보다 {_won(abs(diff))} {'많아요' if diff >= 0 else '적어요'}", **_diff(diff)}
+    primary["short_text"] = f"지난주보다 {primary['diff_text']}"
     bars = [{"weekday_label": speech.weekday(d), "date": d.isoformat(), "amount": this_week[i],
              "amount_label": _won(this_week[i]) if this_week[i] else None, "last_week_amount": last_week[i],
              "last_week_label": _won(last_week[i]), "is_today": d == today, "is_future": d > today} for i, d in enumerate(week_days)]
     this_total = sum(this_week)
-    last_total = sum(last_week[: today.weekday() + (1 if opened else 0)])
+    last_total = sum(last_week[: today.weekday()]) + same
     wdiff = this_total - last_total
+    menus_month = data.get("top_menus_month") or []
     return {
         "headline": f"{primary['label']} {primary['amount_label']} 팔았어요" if primary["amount"] else "아직 매출이 없어요",
         "say": f"{primary['label']} {primary['amount_label']} 팔았어요. {primary['compare_text']}." if primary["amount"] else "아직 매출이 없어요.",
         "primary": primary,
         "week": {"bars": bars, "max_amount": max(this_week + last_week + [1]), "total_label": _won(this_total),
-                 "compare_text": f"지난주 이맘때보다 {_won(abs(wdiff))} {'많아요' if wdiff >= 0 else '적어요'}",
-                 "direction": "up" if wdiff >= 0 else "down"},
+                 "label": "이번 주 지금까지", "amount": this_total, "compare_label": "지난주 이맘때보다",
+                 "compare_text": f"지난주 이맘때보다 {_won(abs(wdiff))} {'많아요' if wdiff >= 0 else '적어요'}", **_diff(wdiff)},
+        "month": _month(daily, today, this_week[today.weekday()], share),
+        "revisits": _revisits(store_id, now),
         "top_menus": {"label": "어제 잘 팔린 메뉴", "unit": "개", "items": data.get("top_menus_yesterday", [])},
+        "top_menus_month": {"label": "이번 달 가장 많이 나간 메뉴", "unit": "그릇", "items": menus_month} if menus_month else None,
     }
 
 
@@ -230,7 +282,7 @@ def get_sales(store_id: str):
 
 @router.get("/notices")
 def get_notices(store_id: str):
-    """도나 알림 (D-05, D-23: 알바생 가입, 확인 안 한 일). 알바생 기능을 연결하기 전이라 비어 있다."""
+    """도나 알림 (voice/notices.py): 영업 중 아쉬운 리뷰, 알바생 확인, 대답 없음 처리, 알바생 가입. 한 번 읽으면 다시 주지 않는다."""
     if repo.store(store_id) is None:
         return store_not_found()
-    return {"notices": []}
+    return {"notices": notices.unseen(store_id)}

@@ -1,7 +1,7 @@
 {
  "version": "intents_v1",
  "verified_by": null,
- "note": "Claude Code 가 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다.",
+ "note": "Claude Code 가 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다. 2026-11-18: closed_loop 16줄(아쉬운 리뷰 처리를 물은 뒤 ask_action — 승인 4, 고치기 4, 취소 3, 주방 말 5)을 더했다.",
  "cases": [
   {
    "id": "scenario_c:C1",
@@ -2257,6 +2257,198 @@
    },
    "expected_intent": "unknown",
    "source": "unknown"
+  },
+  {
+   "id": "closed_loop:1",
+   "text": "응, 진행해",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.approve",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:2",
+   "text": "그렇게 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.approve",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:3",
+   "text": "올려 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.approve",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:4",
+   "text": "진행해",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.approve",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:5",
+   "text": "카드는 넣지 마",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.edit",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:6",
+   "text": "아니, 서비스는 빼",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.edit",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:7",
+   "text": "보상은 넣지 마",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.edit",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:8",
+   "text": "할 일은 빼",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.edit",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:9",
+   "text": "안 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.cancel",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:10",
+   "text": "됐어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.cancel",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:11",
+   "text": "내가 쓸게",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "action.cancel",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:12",
+   "text": "3번 테이블 치워 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:13",
+   "text": "네 손님 포장이세요?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:14",
+   "text": "어서 오세요 몇 분이세요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:15",
+   "text": "계산은 카드로 하실게요?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "closed_loop"
+  },
+  {
+   "id": "closed_loop:16",
+   "text": "접시 좀 가져다줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": "ask_action"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "closed_loop"
   }
  ]
 }

@@ -1,7 +1,13 @@
 // 서버와 주고받는 곳은 이 파일 하나다. 모양은 docs/v0.2.0-voice-agent-handoff.md 4 ~ 5장, 17장(v0.2.1 화면 포맷).
 
 export const BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8100').replace(/\/$/, '');
-export const STORE_ID = 's005';
+/** 지금 보고 있는 가게. 로그인한 계정의 가게로 바뀐다 (lib/session.tsx). 로그인 전에는 시연 가게(초옹장). */
+export const DEMO_STORE_ID = 's005';
+let currentStore = DEMO_STORE_ID;
+export const setStoreId = (id: string | null | undefined) => {
+  currentStore = id || DEMO_STORE_ID;
+};
+export const storeId = () => currentStore;
 /** 서버가 준 그림 주소 (/static/...)를 쓸 수 있는 주소로. */
 export const media = (url: string | null | undefined) => (!url ? null : /^https?:/.test(url) ? url : `${BASE}${url}`);
 
@@ -21,7 +27,8 @@ export type ReviewCard = {
 };
 export type TipCard = { type: 'tip'; id: string; kind: 'improve' | 'keep' | 'prepare'; text: string };
 export type BarsCard = { type: 'bars'; id: string; unit: string; title?: string; items: { id: string; label: string; count: number }[] };
-export type ReasonKind = 'weather' | 'game' | 'event' | 'weekend' | 'season' | 'reservation' | 'lunch';
+/** weekday_to_weekend: 평일 손님 리뷰 → 토요일 오전, weekend_next_peak: 주말 손님 리뷰 → 24~48시간 안 식사 피크 한 시간 전 (2026-11-18) */
+export type ReasonKind = 'weather' | 'game' | 'event' | 'weekend' | 'season' | 'reservation' | 'lunch' | 'weekday_to_weekend' | 'weekend_next_peak';
 export type ScheduledCard = {
   type: 'scheduled'; id: string;
   items: { id: string; day_label: string; time_label: string; post_at: string; reason: { kind: ReasonKind; label: string }; text: string }[];
@@ -32,7 +39,8 @@ export type QuoteCard = { type: 'quote'; id: string; label: string; text: string
 /** 인스타 게시물 모양 그대로 (D-15). */
 export type InstaPostCard = { type: 'insta_post'; id: string; handle: string; logo_url: string; slide: number; slides: number; photo_url: string | null; top_label: string; title: string; caption: string };
 /** 알바생에게 시킨 것 (D-24, D-33). state: todo / done / canceled */
-export type ChecklistCard = { type: 'checklist'; id: string; title: string; items: { id: string; title: string; sub: string; state: 'todo' | 'done' | 'canceled' }[] };
+/** tone urgent: 아쉬운 리뷰에서 나온 알바생 교정 카드 (2026-11-18) */
+export type ChecklistCard = { type: 'checklist'; id: string; title: string; items: { id: string; title: string; sub: string; state: 'todo' | 'done' | 'canceled'; tone?: 'urgent' }[] };
 export type PeopleCard = { type: 'people'; id: string; title: string; items: { id: string; name: string; sub: string }[] };
 export type InviteCard = { type: 'invite'; id: string; message: string; url: string; code: string };
 export type ManualCard = { type: 'manual'; id: string; groups: { id: string; kind: 'before_open' | 'open' | 'closing'; label: string; text: string }[] };
@@ -58,9 +66,13 @@ export type Home = {
   cards: Card[];
 };
 
-export type Notice = { id: string; kind: 'staff_joined' | 'unconfirmed' | 'story'; text: string; time_label: string };
+/** 도나 알림. opens_turn: 소리를 내고 turn(event: notice)로 열어 도나가 묻는다 (아쉬운 리뷰). say: 소리를 내고 읽는다. */
+export type Notice = {
+  id: string; kind: 'staff_joined' | 'unconfirmed' | 'story' | 'negative_review' | 'staff_checked' | 'reply_fallback';
+  text: string; time_label: string; say?: string[]; opens_turn?: boolean; alert_id?: string | null;
+};
 
-export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
+export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'ask_action' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
 
 export type Turn = {
   turn_id: string;
@@ -75,6 +87,8 @@ export type Turn = {
   tab?: 'sales' | 'week' | 'settings' | 'home';
   /** 앱이 열어야 하는 것 (카카오톡 공유, 인스타) */
   open?: 'kakao_share' | 'instagram';
+  /** ask_action: 도나가 아쉬운 리뷰 처리를 물었다 ("응, 진행해" / "쿠폰 빼고" / "안 해") */
+  action?: { kind: 'review_fix'; alert_id: string; compensation: boolean; staff_card: string | null; deadline_at: string };
 };
 
 export type Actor = 'donna' | 'owner';
@@ -122,26 +136,66 @@ export type Week = {
   past: { label: string; date_label: string; items: DoneItem[] }[];
 };
 
+/** 지난번과 견주는 한 줄. 화면은 화살표 + diff_label(갈색 굵게) + 많아요/적어요 (Figma G-04). */
+type Diff = { direction: 'up' | 'down'; diff_label: string; diff_text: string };
+
 export type Sales = {
   headline: string;
-  primary: { label: string; amount: number; amount_label: string; compare_label: string; compare_amount_label: string; direction: 'up' | 'down'; compare_text: string };
-  week: { bars: { weekday_label: string; date: string; amount: number; amount_label: string | null; last_week_amount: number; last_week_label: string; is_today: boolean; is_future: boolean }[]; max_amount: number; total_label: string; compare_text: string; direction: 'up' | 'down' };
+  /** ① 오늘 지금까지 (문 열기 전에는 어제) ↔ 지난주 같은 요일 이맘때 */
+  primary: Diff & {
+    label: string; amount: number; amount_label: string;
+    compare_label: string; compare_amount: number; compare_amount_label: string; compare_text: string; short_text: string;
+  };
+  /** ② 이번 주 지금까지 ↔ 지난주 이맘때 */
+  week: Diff & {
+    label: string; amount: number; total_label: string; compare_label: string; compare_text: string;
+    bars: { weekday_label: string; date: string; amount: number; amount_label: string | null; last_week_amount: number; last_week_label: string; is_today: boolean; is_future: boolean }[];
+    max_amount: number;
+  };
+  /** ② 이번 달 지금까지 ↔ 지난달 이맘때 */
+  month: Diff & { label: string; amount: number; amount_label: string; compare_label: string; has_last: boolean };
+  /** ③ 도나 답글을 받고 이번 주에 다시 온 손님 */
+  revisits: {
+    label: string; count: number; count_label: string; last_week_label: string;
+    latest: { came_back_label: string; date_label: string; review: { rating: number; text: string; date_label: string }; reply: { text: string; by: 'donna' | 'owner' } } | null;
+  };
   top_menus: { label: string; unit: string; items: { id: string; label: string; count: number }[] };
+  /** ④ 이번 달 가장 많이 나간 메뉴 */
+  top_menus_month: { label: string; unit: string; items: { id: string; label: string; count: number }[] } | null;
 };
 
+export type DayHours = { weekday: number; label: string; closed: boolean; open: string; close: string };
 export type Settings = {
   negative_review_auto_reply: boolean | null;
   store: { id: string; name: string };
   open_time_label: string;
   close_time_label: string;
-  briefing_time_label: string;
+  /** 브리핑은 사장님이 부를 때 한다. 알림은 기본 문 열기 1시간 전이고 사장님이 고른다 (G-08). */
+  briefing_notify: {
+    on: boolean; time: string; time_label: string; is_default: boolean; default_time: string;
+    options: { time: string; label: string; sub: string; is_default: boolean }[];
+  };
+  /** 요일별 장사 시간 (G-06). naver_days 는 '네이버에서 다시 불러오기'로 되돌릴 시간 */
+  hours: { summary_label: string; days: DayHours[]; naver_days: DayHours[] };
+  account: { store_name: string; address: string | null };
+  /** 알바생 화면에 들어온 사람 수. 없으면 null (줄을 숨긴다) */
+  staff_count: number | null;
+  /** 아쉬운 리뷰 답글에 붙일 사장님이 정한 보상 한 문장 (불만 종류마다). 화면은 아직 없다 */
+  compensation?: Record<'packaging' | 'missing' | 'taste_temp' | 'hall_service', string | null>;
   platforms: { key: string; name: string; connected: boolean }[];
+};
+export type SettingsPatch = {
+  negative_review_auto_reply?: boolean | null;
+  briefing_notify?: { on?: boolean; time?: string | null };
+  hours?: { days: { closed: boolean; open: string; close: string }[] };
 };
 
 // ---------- 알바생 앱 (F-02 ~ F-09) ----------
 export type StaffTask = {
   id: string; title: string; sub: string; fresh: boolean; repeat: 'daily' | 'today'; kind: 'do' | 'dont';
   must_confirm: boolean; confirmed: boolean; done: boolean; has_words: boolean;
+  /** 아쉬운 리뷰에서 나온 교정 카드 (맨 위, 확인해야 퇴근) */
+  urgent?: boolean; detail?: string | null;
 };
 export type StaffToday = {
   store: { name: string; logo_url: string | null };
@@ -151,19 +205,41 @@ export type StaffToday = {
   /** '지금' 선이 이 때 묶음 뒤에 온다. null 이면 맨 위 */
   now_after: 'before_open' | 'open' | 'closing' | null;
   groups: { phase: 'before_open' | 'open' | 'closing'; label: string; now: boolean; must: StaffTask[]; tasks: StaffTask[] }[];
+  /** 아직 확인하지 않은 교정 카드. 화면 맨 위 */
+  urgent?: StaffTask[];
 };
 export type StaffTaskDetail = StaffTask & { tag: string; owner_words: string | null; owner_words_label: string | null; until: string | null };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+/** 시연 화면 오른쪽 위 '리뷰 플랫폼' (GET /v1/dev/platform). 올라간 답글이 보인다. */
+export type Platform = {
+  now: string; now_label: string;
+  items: { id: string; platform_label: string; rating: number; text: string; menus: string[]; written_label: string;
+    reply: { text: string; posted_label: string; fresh: boolean } | null }[];
+};
+
+/** 서버가 거절한 까닭. code 는 화면에 보여 주지 않고, message 는 사장님이 읽을 수 있는 말이다 */
+export class ApiFailure extends Error {
+  constructor(public code: string, message: string) {
+    super(message);
+  }
+}
+
+/** timeout: 말로 하는 대화는 5초를 넘기면 못 쓴다. 가게를 네이버 지도에서 읽는 것처럼 오래 걸리는 것은 늘려 부른다 */
+export async function request<T>(path: string, init?: RequestInit, timeout = 5000): Promise<T> {
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 5000); // 말로 하는 대화는 5초를 넘기면 못 쓴다
+  const timer = setTimeout(() => ctrl.abort(), timeout);
   try {
     const res = await fetch(`${BASE}${path}`, {
       ...init,
       signal: ctrl.signal,
       headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
     });
-    if (!res.ok) throw new Error(`서버 오류 ${res.status}`);
+    if (!res.ok) {
+      // 가입 흐름(/api/*)은 {"error": {"code", "message"}} 로 까닭을 알려 준다
+      const body = (await res.json().catch(() => null)) as { error?: { code?: string; message?: string } | string } | null;
+      const err = body && typeof body.error === 'object' ? body.error : null;
+      throw new ApiFailure(err?.code ?? `HTTP_${res.status}`, err?.message ?? `서버 오류 ${res.status}`);
+    }
     return (await res.json()) as T;
   } finally {
     clearTimeout(timer);
@@ -175,13 +251,20 @@ const newId = (p: string) => `${p}_${Date.now().toString(36)}_${(seq++).toString
 const SESSION_ID = newId('sess');
 
 export const api = {
-  home: () => request<Home>(`/v1/home?store_id=${STORE_ID}`),
-  week: () => request<Week>(`/v1/week?store_id=${STORE_ID}`),
-  sales: () => request<Sales>(`/v1/sales?store_id=${STORE_ID}`),
-  settings: () => request<Settings>(`/v1/settings?store_id=${STORE_ID}`),
-  patchSettings: (patch: Partial<Pick<Settings, 'negative_review_auto_reply'>>) =>
-    request<Settings>('/v1/settings', { method: 'PATCH', body: JSON.stringify({ store_id: STORE_ID, ...patch }) }),
-  notices: () => request<{ notices: Notice[] }>(`/v1/notices?store_id=${STORE_ID}`),
+  home: () => request<Home>(`/v1/home?store_id=${storeId()}`),
+  week: () => request<Week>(`/v1/week?store_id=${storeId()}`),
+  sales: () => request<Sales>(`/v1/sales?store_id=${storeId()}`),
+  settings: () => request<Settings>(`/v1/settings?store_id=${storeId()}`),
+  patchSettings: (patch: SettingsPatch) =>
+    request<Settings>('/v1/settings', { method: 'PATCH', body: JSON.stringify({ store_id: storeId(), ...patch }) }),
+  notices: () => request<{ notices: Notice[] }>(`/v1/notices?store_id=${storeId()}`),
+  /** 시연 화면(/demo)만 쓴다 (개발용 API, 문서 9장) */
+  dev: {
+    fixtures: (fixture = 's005_choongjang') => request<{ store_id: string; now: string }>('/v1/dev/fixtures', { method: 'POST', body: JSON.stringify({ fixture }) }, 180000),
+    clock: (now: string | null) => request<{ now: string }>('/v1/dev/clock', { method: 'POST', body: JSON.stringify({ now }) }, 60000),
+    demoReview: (name: string) => request<{ review_id: string; alert: boolean }>('/v1/dev/demo_review', { method: 'POST', body: JSON.stringify({ store_id: storeId(), name }) }, 60000),
+    platform: () => request<Platform>(`/v1/dev/platform?store_id=${storeId()}`),
+  },
   instagramConnect: () => request<{ connected: boolean; say: string }>('/v1/instagram/connect', { method: 'POST', body: '{}' }),
   staff: {
     checkCode: (code: string) => request<{ ok: boolean; message?: string; store?: { name: string; logo_url: string }; staff_id?: string; name?: string }>('/v1/staff/invite/check', { method: 'POST', body: JSON.stringify({ code }) }),
@@ -194,17 +277,18 @@ export const api = {
     confirm: (id: string, staff_id: string) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/confirm`, { method: 'POST', body: JSON.stringify({ staff_id }) }),
     checkout: (staff_id: string) => request<{ ok: boolean }>('/v1/staff/checkout', { method: 'POST', body: JSON.stringify({ staff_id }) }),
   },
-  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next'; lastTurnId?: string | null }) =>
+  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice'; noticeId?: string; lastTurnId?: string | null }) =>
     request<Turn>('/v1/turn', {
       method: 'POST',
       body: JSON.stringify({
         request_id: newId('req'),
-        store_id: STORE_ID,
+        store_id: storeId(),
         session_id: SESSION_ID,
         client_time: new Date().toISOString(),
         // addressed: "도나야"로 불러서 한 말 (부르는 말은 떼고 보낸다). v0.2.1부터 칩이 없어 source 는 voice 하나다.
         utterance: input.text ? { text: input.text, confidence: input.confidence ?? 1, source: 'voice', addressed: !!input.addressed } : null,
         event: input.event ?? null,
+        notice_id: input.noticeId ?? null,
         context: { last_turn_id: input.lastTurnId ?? null, donna_was_speaking: false, heard_until: null },
       }),
     }),

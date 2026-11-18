@@ -28,6 +28,7 @@ GET  /api/dev_tools/ui_text/export          화면 글: 밖에서 고치는 JSON
 POST /api/dev_tools/ui_text/import          화면 글: 밖에서 고친 JSON 을 올려 수정에 더하기 (그 JSON 그대로)
 GET  /api/dev_tools/evals                   평가: 결과 폴더 목록 (스위트, 시각, 커밋, 시스템, 대표 지표)
 GET  /api/dev_tools/evals/run?id=           평가: 실행 하나 (지표, 그래프용 charts, 사례, 짝 비교, 심판 검증). failed_only, system, limit, offset, case
+GET  /api/dev_tools/evals/scorecard?picks=     평가: 맨 위 질문 1~5 카드 (picks=지표key:결과폴더,… 로 실행 고르기)
 GET  /api/dev_tools/evals/trend?suite=&metric=  평가: 같은 스위트·지표의 실행별 값
 GET  /api/dev_tools/evals/trace?id=&run_id= 평가: 그 결과 폴더의 harness_trace.db 단계
 시연의 시계 옮기기는 DEV_CLOCK_ENABLED=true 도 필요하다.
@@ -200,6 +201,11 @@ def evals():
 def eval_run(id: str, failed_only: bool = False, system: str | None = None,
              limit: int = Query(100, ge=1, le=2000), offset: int = Query(0, ge=0), case: int | None = Query(None, ge=0)):
     return eval_reader.get_run(id, failed_only=failed_only, system=system, limit=limit, offset=offset, case=case)
+
+
+@router.get("/evals/scorecard", summary="평가: 맨 위 질문 1~5 카드")
+def eval_scorecard(picks: str | None = None):
+    return eval_reader.scorecard_view(eval_reader.parse_picks(picks))
 
 
 @router.get("/evals/trend", summary="평가: 같은 스위트·지표의 실행별 값")

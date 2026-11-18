@@ -208,6 +208,52 @@ def _all_runs() -> list[dict]:
     return sorted(runs, key=_started, reverse=True)
 
 
+_RAW: dict[Path, tuple[float, int, dict]] = {}  # result.json → (고친 시각, 크기, 본문). 맨 위 카드 계산용 (cases 원래 모양)
+
+
+def _raw_bodies() -> list[dict]:
+    """결과 폴더마다 result.json 본문에 _folder 를 붙인 것 (Harness.evals.scorecard 가 받는 모양)."""
+    if not EVAL_ROOT.is_dir():
+        return []
+    out = []
+    for folder in EVAL_ROOT.iterdir():
+        path = folder / "result.json"
+        if not (folder.is_dir() and ID_RE.match(folder.name)):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        cached = _RAW.get(path)
+        if not (cached and cached[:2] == (stat.st_mtime, stat.st_size)):
+            body = _load(folder)
+            if not isinstance(body, dict):
+                continue
+            cached = (stat.st_mtime, stat.st_size, {**body, "_folder": folder})
+            _RAW[path] = cached
+        out.append(cached[2])
+    return out
+
+
+def parse_picks(text: str | None) -> dict[str, str]:
+    """"q3.missed_compensation:guards-…,q5.turn_briefing:voice-…" → {지표 key: 결과 폴더}. 모르는 key·이상한 폴더는 버린다."""
+    from Harness.evals import scorecard
+
+    picks = {}
+    for part in (text or "").split(","):
+        key, _, run_id = part.strip().partition(":")
+        if key in scorecard.ITEM_BY_KEY and ID_RE.match(run_id or ""):
+            picks[key] = run_id
+    return picks
+
+
+def scorecard_view(picks: dict[str, str] | None = None) -> dict:
+    """평가 탭 맨 위 질문 1~5 카드. summary(마크다운)와 같은 계산(Harness.evals.scorecard)이다."""
+    from Harness.evals import scorecard
+
+    return scorecard.scorecard(_raw_bodies(), picks)
+
+
 # ── API ──
 
 

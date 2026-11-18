@@ -357,14 +357,31 @@ mark { background: #ffe58a; }
 .viz-goal.none { background: var(--bg); color: var(--ink-2); }
 .viz-badges { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 
-/* 맨 위 요약 카드 */
-.viz-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; }
-.viz-sum-card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; display: grid; gap: 6px; align-content: start; }
-.viz-sum-q { font-size: 12px; color: var(--ink-2); font-weight: 600; }
-.viz-sum-metric { font-size: 13px; font-weight: 600; }
-.viz-sum-row { display: grid; grid-template-columns: 1fr 56px 52px; gap: 6px; align-items: center; }
-.viz-sum-foot { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-.viz-sum-foot .btn-outline { margin-left: auto; }
+/* 맨 위 질문 1~5 카드 (scorecard) */
+.sc-cards { display: grid; gap: 0; }
+.sc-item { padding: 6px 0 8px; }
+.sc-item + .sc-item { border-top: 1px dashed var(--line); }
+.sc-item-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 13px; margin-bottom: 4px; }
+.sc-id { font-size: 10px; color: var(--ink-3); }
+.sc-pick { margin-left: auto; font-size: 12px; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); }
+.sc-row { display: grid; grid-template-columns: 150px minmax(220px, 1.4fr) auto; gap: 4px 12px; align-items: center; padding: 3px 0; font-size: 13px; }
+.sc-row .sc-src { grid-column: 2 / -1; }
+.sc-badges { display: inline-flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.sc-src { display: block; font-size: 11px; }
+.sc-gray, .sc-off, .sc-off .viz-sys { color: var(--ink-3); }
+.sc-off .viz-sys i { opacity: 0.35; }
+.viz-goal.sc-gray { background: var(--bg); color: var(--ink-3); }
+.sc-pair { display: grid; gap: 2px; }
+.sc-pair-row { display: grid; grid-template-columns: 150px 1fr 1fr; gap: 12px; align-items: start; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.sc-pair-head { border-top: none; padding-top: 0; }
+.sc-pair-cell { display: grid; gap: 3px; }
+.sc-small { margin-top: 6px; display: grid; gap: 2px; }
+.sc-small .mono { font-size: 10px; color: var(--ink-3); }
+.sc-line { max-width: 660px; }
+@media (max-width: 900px) {
+  .sc-row, .sc-pair-row { grid-template-columns: 1fr; }
+  .sc-row .sc-src { grid-column: auto; }
+}
 
 /* 지표 점 그림 */
 .viz-dotrow { display: grid; grid-template-columns: 260px 1fr 260px 64px; gap: 12px; align-items: center; padding: 7px 0; border-top: 1px solid var(--line); }

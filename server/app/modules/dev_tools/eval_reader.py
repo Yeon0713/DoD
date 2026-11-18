@@ -208,6 +208,52 @@ def _all_runs() -> list[dict]:
     return sorted(runs, key=_started, reverse=True)
 
 
+_RAW: dict[Path, tuple[float, int, dict]] = {}  # result.json → (고친 시각, 크기, 본문). 맨 위 카드 계산용 (cases 원래 모양)
+
+
+def _raw_bodies() -> list[dict]:
+    """결과 폴더마다 result.json 본문에 _folder 를 붙인 것 (Harness.evals.scorecard 가 받는 모양)."""
+    if not EVAL_ROOT.is_dir():
+        return []
+    out = []
+    for folder in EVAL_ROOT.iterdir():
+        path = folder / "result.json"
+        if not (folder.is_dir() and ID_RE.match(folder.name)):
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        cached = _RAW.get(path)
+        if not (cached and cached[:2] == (stat.st_mtime, stat.st_size)):
+            body = _load(folder)
+            if not isinstance(body, dict):
+                continue
+            cached = (stat.st_mtime, stat.st_size, {**body, "_folder": folder})
+            _RAW[path] = cached
+        out.append(cached[2])
+    return out
+
+
+def parse_picks(text: str | None) -> dict[str, str]:
+    """"q3.missed_compensation:guards-…,q5.turn_briefing:voice-…" → {지표 key: 결과 폴더}. 모르는 key·이상한 폴더는 버린다."""
+    from Harness.evals import scorecard
+
+    picks = {}
+    for part in (text or "").split(","):
+        key, _, run_id = part.strip().partition(":")
+        if key in scorecard.ITEM_BY_KEY and ID_RE.match(run_id or ""):
+            picks[key] = run_id
+    return picks
+
+
+def scorecard_view(picks: dict[str, str] | None = None) -> dict:
+    """평가 탭 맨 위 질문 1~5 카드. summary(마크다운)와 같은 계산(Harness.evals.scorecard)이다."""
+    from Harness.evals import scorecard
+
+    return scorecard.scorecard(_raw_bodies(), picks)
+
+
 # ── API ──
 
 
@@ -275,7 +321,7 @@ def get_run(run_id: str, *, failed_only: bool = False, system: str | None = None
     total = len(cases)
     return {**run, "cases": cases[offset:offset + limit], "cases_total": total, "cases_all": len(run["cases"]),
             "offset": offset, "limit": limit, "pairs": pairs(run["cases"], run["systems"]), "judge_check": judge_check(run),
-            "charts": charts(run)}
+            "charts": charts(run, folder_of(run_id))}
 
 
 def trend(suite: str, metric: str) -> dict:
@@ -326,8 +372,12 @@ SUMMARY = [  # (질문, 스위트, 지표 id, 세트)
 #   guards → critic 기준(놓침 0, 오거절 10% 이하, guards_eval.critic_target) / A·B 지표 → B 가 A 보다 나쁘지 않음
 GOAL_NOTES = {"ab": "B(하네스)가 A(단일)보다 나쁘지 않음", "critic": "LLM 검토기 기준: 놓침 0, 오거절 10% 이하 (전체 세트)",
               "none": "기준 없음 (비교만)"}
-STATUS_FIXED = {"AGENT": "good", "FALLBACK": "warning", "TEMPLATE": "serious", "NONE": "critical"}
-SOURCES = ["AGENT", "FALLBACK", "TEMPLATE", "NONE"]
+STATUS_FIXED = {"AGENT": "good", "SINGLE_CALL": "good2", "FALLBACK": "warning", "TEMPLATE": "serious", "NONE": "critical"}
+SOURCES = ["AGENT", "SINGLE_CALL", "FALLBACK", "TEMPLATE", "NONE"]
+# 결과 구성: 생성이 성공했으면 적합 여부로, 아니면 실패 원인(Harness/evals/fail_cause)으로 나눈다
+OUTCOME_ORDER = [("success_fit", "good"), ("success_unfit", "good2"), ("transport", "neutral"), ("rejected", "critical"),
+                 ("budget", "serious"), ("no_submit", "warning"), ("other", "neutral2")]
+OUTCOME_SUITES = ("reply", "batch")
 TOP_REASONS = 8
 GRID_ROWS = 300
 LATENCY_BUDGET = {"reply": "prep_budget_seconds", "intent": "judge_budget_seconds"}
@@ -426,6 +476,27 @@ def _conditions(run: dict) -> dict | None:
             total = cell["pass"] + cell["fail"] + cell["unknown"]
             cell["total"], cell["rate"] = total, (cell["pass"] / total) if total else None
     return {"conditions": names, "systems": out}
+
+
+def _outcome_mix(run: dict, folder: Path | None) -> dict | None:
+    """시스템마다 사례 구성: 생성 성공·적합 / 생성 성공·부적합 / 실패 원인별. fail_cause 가 없는 예전 결과는
+    그 폴더의 harness_trace.db·clova_usage.db 를 읽어 같은 규칙으로 가른다 (호출 없음). 기준선 R(규칙)은 뺀다."""
+    if run["suite"] not in OUTCOME_SUITES or folder is None:
+        return None
+    from Harness.evals import fail_cause
+
+    out: dict[str, dict[str, int]] = {}
+    for case in run["cases"]:
+        raw = case["raw"]
+        if raw.get("part") == "batch" or raw.get("source") == "RULE" or not raw.get("source"):
+            continue
+        cause = fail_cause.reread_case(folder, raw)[0]
+        key = (("success_fit" if case["ok"] else "success_unfit") if cause == "none" else cause)
+        row = out.setdefault(case["system"] or "-", {})
+        row[key] = row.get(key, 0) + 1
+    if not out:
+        return None
+    return {"order": [{"key": k, "status": st} for k, st in OUTCOME_ORDER], "systems": out}
 
 
 def _source_mix(run: dict) -> dict | None:
@@ -577,10 +648,10 @@ def _cases_grid(run: dict) -> dict | None:
     return {"conditions": conditions, "rows": rows[:GRID_ROWS], "total": len(rows)}
 
 
-def charts(run: dict) -> dict:
+def charts(run: dict, folder: Path | None = None) -> dict:
     return {
         "q1": {"recall_precision": _recall_precision(run), "confusion": _confusion(run)},
-        "q2": {"conditions": _conditions(run), "source_mix": _source_mix(run)},
+        "q2": {"conditions": _conditions(run), "source_mix": _source_mix(run), "outcome_mix": _outcome_mix(run, folder)},
         "q3": {"scatter": _guards_scatter(run), "by_kind": _by_kind(run)},
         "q4": {"pass_distribution": _pass_distribution(run), "batch_grid": _batch_grid(run), "reasons": _reasons(run)},
         "q5": {"latency": _latency(run), "cost": _cost(run)},

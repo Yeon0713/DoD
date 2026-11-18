@@ -6,6 +6,7 @@
   - 지표 하나는 metric() 이 만드는 dict 하나다. result.json 의 metrics 와 대시보드 표가 이 모양을 쓴다.
 """
 
+import math
 import statistics
 from collections.abc import Hashable, Iterable, Sequence
 
@@ -95,6 +96,26 @@ def latency(seconds: Sequence[float | None], budget: float | None = None) -> dic
         "total": len(seconds),
         "within_budget_rate": None if within is None else ratio(within, len(seconds)),
     }
+
+
+def wilson_interval(numerator: int, denominator: int, z: float = 1.96) -> tuple[float, float] | None:
+    """비율의 95% 신뢰 구간 (Wilson). 분모가 0 이면 None. 0/n, n/n 에서도 구간이 0~1 을 넘지 않는다."""
+    if denominator == 0:
+        return None
+    p = numerator / denominator
+    z2 = z * z
+    centre = (p + z2 / (2 * denominator)) / (1 + z2 / denominator)
+    half = z * math.sqrt(p * (1 - p) / denominator + z2 / (4 * denominator * denominator)) / (1 + z2 / denominator)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def percentile(values: Sequence[float], q: float) -> float | None:
+    """q(0~100) 백분위수. 가장 가까운 순위(nearest-rank) 방식이라 늘 잰 값 중 하나다. 값이 없으면 None."""
+    if not values:
+        return None
+    ordered = sorted(values)
+    rank = max(1, math.ceil(q / 100 * len(ordered)))
+    return ordered[min(rank, len(ordered)) - 1]
 
 
 def per_fit(total: float, fit_count: int) -> float | None:

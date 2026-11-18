@@ -148,3 +148,38 @@ def test_run_charts_and_summary(client):
     q2 = summary[2]
     assert q2["run"] == "reply-20261118-100000" and q2["values"]["B"]["value"] == 0.5 and q2["diff"] == 0.0
     assert q2["goal"] is True and summary[1]["run"] is None
+
+
+def test_outcome_mix_splits_success_by_fit_and_failures_by_cause(client):
+    """결과 구성: 생성 성공은 적합 여부로, 실패는 원인으로. fail_cause 가 없는 예전 줄은 그 폴더의 실행 기록으로 가른다."""
+    mix = client.get("/api/dev_tools/evals/run", params={"id": "reply-20261118-100000"}).json()["charts"]["q2"]["outcome_mix"]
+    assert mix["systems"] == {"A": {"success_fit": 1}, "B": {"no_submit": 1}}  # B 실행 rb1 은 제출 없이 끝난 기록
+    assert [o["key"] for o in mix["order"]][:3] == ["success_fit", "success_unfit", "transport"]
+
+
+def test_scorecard_cards_use_shared_calculation_and_picks(client, tmp_path):
+    """맨 위 질문 1~5 카드: summary 명령과 같은 계산(Harness.evals.scorecard). 실행 고르기(picks)와 기준점 차이."""
+    from Harness.evals import scorecard
+
+    root = tmp_path / "harness_eval"
+    for name, started, numerator, baseline in (("intent-20261117-090000", "2026-11-17T09:00:00+09:00", 6, True),
+                                                ("intent-20261118-090000", "2026-11-18T09:00:00+09:00", 2, False)):
+        write(root, name, {"schema": 1, "suite": "intent", "started_at": started, "git": {"commit": "def5678"},
+                           "config": {"baseline": baseline}, "systems": ["rule"],
+                           "metrics": [metric("false_activation_rate", "rule", numerator, 40, question=4),
+                                       metric("missed_command_rate_addressed", "rule", 0, 4, question=4)], "cases": []})
+    body = client.get("/api/dev_tools/evals/scorecard").json()
+    assert [q["title"] for q in body["questions"]] == list(scorecard.QUESTIONS.values()) and body["min_denominator"] == 10
+    items = {item["key"]: item for q in body["questions"] for item in q["items"]}
+    rule = next(c for c in items["q4.false_activation"]["cells"] if c["system"] == "rule")
+    assert rule["folder"] == "intent-20261118-090000" and (rule["numerator"], rule["denominator"]) == (2, 40)
+    assert rule["status"] == "ok" and len(rule["interval"]) == 2 and abs(rule["baseline_diff"] + 0.1) < 1e-9
+    assert next(c for c in items["q4.missed_addressed"]["cells"] if c["system"] == "rule")["status"] == "too_few"
+    assert all(c["status"] == "not_run" for c in items["q5.turn_briefing"]["cells"])
+    assert [o["folder"] for o in items["q4.false_activation"]["options"]] == ["intent-20261118-090000", "intent-20261117-090000"]
+    picked = client.get("/api/dev_tools/evals/scorecard",
+                        params={"picks": "q4.false_activation:intent-20261117-090000,모르는:x,q4.window:../bad"}).json()
+    items = {item["key"]: item for q in picked["questions"] for item in q["items"]}
+    assert items["q4.false_activation"]["picked"] == "intent-20261117-090000" and items["q4.window"]["picked"] is None
+    assert next(c for c in items["q4.false_activation"]["cells"] if c["system"] == "rule")["numerator"] == 6
+    assert eval_reader.parse_picks("q4.window:../bad,q4.window:intent-1") == {"q4.window": "intent-1"}

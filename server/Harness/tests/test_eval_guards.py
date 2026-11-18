@@ -227,6 +227,19 @@ def test_score_by_kind_flaky_and_targets(monkeypatch):
     assert result["flaky"]["critic"] == ["x1", "x4"]
     assert result["by_kind"]["critic"]["normal"] == {"total": 4, "pass": 1, "false_reject": 3}
     assert result["critic_target"]["critic_cases"] == {"missed": 0, "false_reject_rate": 0.5, "pass": False}
+    assert (rows[("compensation_false_alarm_rate", "all")]["numerator"],
+            rows[("compensation_false_alarm_rate", "all")]["denominator"]) == (0, 4)  # 정상 거절은 모두 지어낸 사정
+
+
+def test_compensation_false_alarm_counts_only_good_rejected_for_compensation():
+    def row(expected_ok, outcome, detected):
+        return {"expected_ok": expected_ok, "outcome": outcome, "detected": detected}
+
+    rows = [row(True, "false_reject", ["compensation"]), row(True, "false_reject", ["memory", "compensation"]),
+            row(True, "false_reject", ["fabricated"]), row(True, "pass", []), row(True, "unknown", []),
+            row(False, "caught", ["compensation"])]
+    assert guards_eval.compensation_false_alarms(rows) == (2, 5)
+    assert guards_eval.compensation_false_alarms([]) == (0, 0)
 
 
 def test_recommend_prefers_fewer_misses_then_fewer_false_rejects_then_speed():
@@ -307,7 +320,8 @@ def test_regex_suite_writes_result_without_key(fake_gold, tmp_path, monkeypatch)
     assert body["suite"] == "guards" and body["systems"] == ["regex"]
     assert body["config"]["sets"] == {"critic_cases": 41, "normal": 2, "violation": 2}
     assert body["config"]["judge_gold_reply"] is False and body["config"]["normal_verified"] is False
-    assert set(body["config"]["gold"]["sets"]) == {"critic_cases", "normal", "violation"}
+    assert set(body["config"]["gold"]["sets"]) >= {"critic_cases", "normal", "violation"}  # 가게 사실이 있으면 normal_needs_context 도
+    assert body["config"]["store_facts_verified"] is True and body["config"]["normal_set_version"] == "v2"
     assert len(body["cases"]) == 45 * 2 and body["tables"]["flaky"]["regex"] == []  # 정규식은 흔들리지 않는다
     assert (out.parent / "sets" / "guards_violation.json").exists()
 

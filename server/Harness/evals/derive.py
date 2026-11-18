@@ -28,7 +28,7 @@ import copy
 import json
 import random
 import re
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 
 from app.analysis.review.hcx_classifier import mask_personal_info
@@ -78,8 +78,11 @@ def _base(case: dict) -> dict:
             "gold": {key: case["gold"][key] for key in ("sentiment", "complaint_types")}}
 
 
-def normal_set(cases: list[dict], *, seed: int = SEED, count: int = NORMAL_COUNT) -> list[dict]:
-    pool = [case for case in _policy_fit_pool(cases) if len(case["gold"]["reply"].strip()) <= NORMAL_MAX_CHARS]
+def normal_set(cases: list[dict], *, seed: int = SEED, count: int = NORMAL_COUNT,
+               keep: Callable[[dict], bool] | None = None) -> list[dict]:
+    """keep 이 있으면 그것을 통과한 사례만 풀에 남기고 뽑는다 (정상 세트 v2: 근거로 설명되는 답글만)."""
+    pool = [case for case in _policy_fit_pool(cases) if len(case["gold"]["reply"].strip()) <= NORMAL_MAX_CHARS
+            and (keep is None or keep(case))]
     chosen = _by_id(_rng(seed, "normal").sample(pool, min(count, len(pool))))
     return [{"case_id": f"{case['case_id']}-ok", **_base(case), "kind": "normal", "reply": case["gold"]["reply"],
              "expected_ok": True, "verified": False} for case in chosen]
@@ -125,10 +128,11 @@ def _swap_partner(case: dict, pool: list[dict], rng: random.Random) -> dict | No
     return rng.choice(candidates) if candidates else None
 
 
-def violation_set(cases: list[dict], templates: dict, *, seed: int = SEED, count: int = VIOLATION_COUNT) -> list[dict]:
-    """normal 의 답변마다 위반 하나. 바꿔 끼울 답변은 정책에 맞는 답변 전체(holdout 제외)에서 고른다."""
+def violation_set(cases: list[dict], templates: dict, *, seed: int = SEED, count: int = VIOLATION_COUNT,
+                  keep: Callable[[dict], bool] | None = None) -> list[dict]:
+    """normal 의 답변마다 위반 하나 (keep 은 normal_set 과 같다). 바꿔 끼울 답변은 정책에 맞는 답변 전체(holdout 제외)에서 고른다."""
     by_id = {case["case_id"]: case for case in cases}
-    sources = [by_id[row["source_case_id"]] for row in normal_set(cases, seed=seed, count=count)]
+    sources = [by_id[row["source_case_id"]] for row in normal_set(cases, seed=seed, count=count, keep=keep)]
     pool = [case for case in _policy_fit_pool(cases) if len(case["gold"]["reply"].strip()) <= NORMAL_MAX_CHARS]
     rng = _rng(seed, "violation")
     kinds = list(VIOLATION_KINDS)

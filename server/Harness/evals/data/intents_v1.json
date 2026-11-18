@@ -1,7 +1,7 @@
 {
  "version": "intents_v1",
  "verified_by": null,
- "note": "Claude Code 가 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다. 2026-11-18: closed_loop 16줄(아쉬운 리뷰 처리를 물은 뒤 ask_action — 승인 4, 고치기 4, 취소 3, 주방 말 5)을 더했다.",
+ "note": "자동 생성, 사람 확인 필요. 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다. 2026-11-18: closed_loop 16줄(아쉬운 리뷰 처리를 물은 뒤 ask_action — 승인 4, 고치기 4, 취소 3, 주방 말 5)을 더했다. 2026-11-18: 호출어 세트 wake 26줄(앱이 호출어를 떼지 못하고 글자 그대로 보낸 말. 부른 것으로 봐야 할 변형 16, 부르지 않은 비슷한 말 10)을 더했다. 사람 확인 전이라 verified_by 는 비워 둔다. 같은 날: 부른 말 addressed 14줄(앱이 \"도나야\"를 떼고 addressed true 로 보낸 말. 손님·테이블 같은 가게 말이 섞여도 무시하면 안 된다)을 더했다.",
  "cases": [
   {
    "id": "scenario_c:C1",
@@ -2449,6 +2449,488 @@
    },
    "expected_intent": "not_for_donna",
    "source": "closed_loop"
+  },
+  {
+   "id": "wake:call:1",
+   "text": "돈아야 오늘 일정 브리핑해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:2",
+   "text": "또나야 브리핑 해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:3",
+   "text": "도나 야 오늘 뭐 있어",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:4",
+   "text": "도나야 오늘 일정 브리핑해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:5",
+   "text": "도나야 다음",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:6",
+   "text": "또나야 다음",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:7",
+   "text": "돈아야 다시 말해 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:8",
+   "text": "도나야 그만",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:9",
+   "text": "도나 야 화면에 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:10",
+   "text": "또나야 아쉬운 리뷰 보여 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "expected_jump_to": "negative",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:11",
+   "text": "도나야 내일 예약 몇 팀이야",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:12",
+   "text": "돈아야 이번 주 매출 어때",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:13",
+   "text": "도나야 오늘 손님 많을까",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:14",
+   "text": "도나야, 설정 열어 줘",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.settings",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:15",
+   "text": "또나야 응 그렇게 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "wake"
+  },
+  {
+   "id": "wake:call:16",
+   "text": "도나야 처음부터 다시",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:1",
+   "text": "돈 놔야 돼 거기",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:2",
+   "text": "도나 와",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:3",
+   "text": "토나와 진짜",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:4",
+   "text": "돈 나와야 계산하지",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:5",
+   "text": "또 나와야 돼 이거",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:6",
+   "text": "도마 어디 놨어",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:7",
+   "text": "돈 다 놔야지",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:8",
+   "text": "토마토 나와야 해",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:9",
+   "text": "도나쓰 두 개 포장이요",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "wake:not:10",
+   "text": "도너츠 나왔어요",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "wake"
+  },
+  {
+   "id": "addressed:1",
+   "text": "오늘 손님 많을까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:2",
+   "text": "다음",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.next",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:3",
+   "text": "그만",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "stop",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:4",
+   "text": "내일 예약 몇 팀이야",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:5",
+   "text": "포장 주문 리뷰 보여 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.jump",
+   "expected_jump_to": "reviews",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:6",
+   "text": "손님 리뷰 읽어 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "show_detail"
+   },
+   "expected_intent": "detail.read",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:7",
+   "text": "이번 주 매출 어때",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.sales",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:8",
+   "text": "다시 말해 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.repeat",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:9",
+   "text": "화면에 보여 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "detail.show",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:10",
+   "text": "응 그렇게 해",
+   "addressed": true,
+   "context": {
+    "briefing_step": 2,
+    "donna_was_speaking": false,
+    "last_type": "ask_permission"
+   },
+   "expected_intent": "permission.yes",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:11",
+   "text": "테이블 예약 몇 개야",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:12",
+   "text": "처음부터 다시",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "briefing.restart",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:13",
+   "text": "이번 주 달력 보여 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "navigate.week",
+   "source": "addressed"
+  },
+  {
+   "id": "addressed:14",
+   "text": "오늘 일정 브리핑해 줘",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "briefing.start",
+   "source": "addressed"
   }
  ]
 }

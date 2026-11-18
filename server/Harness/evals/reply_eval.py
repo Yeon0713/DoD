@@ -3,20 +3,24 @@
 
 경로 (--path)
   server (기본, 주 실험)  B = Harness/agents/reply_agent.draft (reply_critic 검토기 포함), A = single_agent 의 draft
+                          S = 기준선, 지금 서비스 경로 app/review_reply_writer.write_one (단일 호출, 온도 0.5 → 0.3, 정규식 검사).
+                              세 번째 구조가 아니라 "지금보다 나아졌나"를 보는 기준. 가게 사실 도구 없음. 답이 없으면 TEMPLATE
+                              (앱 기본 문장은 앱에만 있어 출력 없음으로 센다). agent_fit_rate·task_completion_rate 는 해당 없음
   voice  (보조 실험)      B = voice/agents/voice_reply.write. 아쉬운 리뷰는 kind AUTO, 좋은 리뷰는 SCHEDULED + 규칙으로 정한 때
                           A = single_agent.prepare_voice (기록 이름 voice_single_agent, 답글만 tip=False)
   voice 의 B 는 VOICE_AGENT_REPLY 스위치를 본다. 실행 안에서만 켜고(환경 변수) 끝나면 되돌린다. 켠 값을 config 에 적는다.
 
 서버 경로 가게 (사례마다 새로)
   Harness/tests/fakes.make_snapshot 의 t001 가게·주문에 정답 리뷰 하나만 넣는다 (반복 불만·단골 주기는 비운다).
-  메뉴는 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json, 확인 전, 가격 모름 → 0)로 바꾼다.
+  메뉴는 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json, 2026-11-18 확인, 가격 모름 → 0)로 바꾼다.
+  가게 사실은 evals/data/store_facts_choongjang.json (확인함). 에이전트(get_store_facts)·심판이 같은 목록을 본다.
   할 일은 REVISIT_REPLY 하나. 손님 키가 없어 revisit_class 는 불만이 있으면 QUICK, 아니면 BASIC. 시각은 fakes.NOW, 리뷰는 12시간 전.
   리뷰 분류는 정답(--labels gold), --labels rule 이면 app/analysis/review/keyword_rules 를 거친다.
 
 음성 경로 가게 보기 (사례마다 새로, 실제 voice.db 는 건드리지 않는다)
   voice/fixtures/s005_choongjang.json 의 가게·날씨·행사·경기에 정답 세트의 리뷰 하나만 넣는다.
-  메뉴는 시연 메뉴 4개 대신 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json: 정답 리뷰·답변에 나온 이름, 확인 전). 시각은 시연 시각(demo.now),
-  리뷰는 그 12시간 전에 쓰인 것으로 둔다. 가게 사실(facts)은 사람 확인 전이라 비어 있다.
+  메뉴는 시연 메뉴 4개 대신 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json: 정답 리뷰·답변에 나온 이름, 2026-11-18 확인). 시각은 시연 시각(demo.now),
+  리뷰는 그 12시간 전에 쓰인 것으로 둔다. 가게 사실(facts)은 evals/data/store_facts_choongjang.json (확인한 목록).
   리뷰 분류는 정답(--labels gold, 기본)을 음성 체계로 바꿔 넣는다: POSITIVE → positive, NEGATIVE·MIXED → negative,
   주제는 첫 불만 유형(배달 지연 → delivery …, 없으면 other). --labels rule 이면 voice/jobs/label.classify 를 거친다(끝까지 실행).
 
@@ -45,6 +49,12 @@
   calls_per_fit, tokens_per_fit   에이전트 호출(재시도·검토 포함, 심판 제외) / 적합 답글 수
   prep_seconds           답글 하나 쓰는 데 걸린 초 중앙값 (note 에 최댓값, 15초 안 비율. prep_within_budget 은 비율 줄)
   paired_only_fit        같은 사례·회차에서 그 시스템만 agent 적합(AGENT 이면서 적합)인 건수 (A 와 B 를 함께 돌렸을 때)
+  agent_fit_rate_no_transport  agent 적합 / (요청 전체 - 전송 실패 사례). agent_fit_rate 와 함께 적고 주 지표는 바꾸지 않는다
+  fail_cause_rate:<값>   사례의 실패 원인(Harness/evals/fail_cause) / 요청 전체. none·transport·rejected·budget·no_submit·other
+  first_pass_valid_rate  첫 제출이 검사를 통과한 작업 / 제출이 한 번이라도 있던 작업
+  retry_recovery_rate    첫 제출이 거절됐는데 최종 생성 성공(AGENT·SINGLE_CALL)한 작업 / 첫 제출이 거절된 작업 (note 에 풀린 때)
+  rejections_per_task    거절 수 합 / 제출이 있던 작업
+                         검사 종류가 시스템마다 달라(CHECK_KINDS) 이 세 숫자를 시스템끼리 바로 비교하지 않는다. 분모 0 이면 null
 
 기록
   사례마다 cases.jsonl 에 바로 덧붙인다. --resume <결과 폴더> 면 끝난 (시스템, 회차, 사례)는 건너뛴다 (세트 해시가 같아야 한다).
@@ -66,8 +76,9 @@ from pathlib import Path
 import httpx
 
 from app.core.config import settings
-from Harness.evals import derive, gold, judge, metrics, reply_checks, report, systems
-from Harness.evals.guards_eval import CaseAborted, GuardedPost
+from Harness import limiter
+from Harness.evals import derive, fail_cause, gold, judge, metrics, reply_checks, report, systems
+from Harness.evals.guards_eval import CaseAborted, GuardedPost, load_store_facts
 
 QUESTION_FIT, QUESTION_TASK, QUESTION_COST = 2, 4, 5
 SPLITS = ("tune", "holdout", "injection")
@@ -76,11 +87,13 @@ PATHS = ("server", "voice")
 SERVER_DIR = Path(__file__).resolve().parents[2]
 FIXTURE = SERVER_DIR / "voice" / "fixtures" / "s005_choongjang.json"
 OTHER_FIXTURES = [SERVER_DIR / "voice" / "fixtures" / "s001_baseline.json"]  # 다른 가게 메뉴 검사용
-EVAL_MENUS = Path(__file__).resolve().parent / "data" / "store_menu_choongjang.json"  # 정답 리뷰 가게의 메뉴 후보 (확인 전)
+EVAL_MENUS = Path(__file__).resolve().parent / "data" / "store_menu_choongjang.json"  # 정답 리뷰 가게의 메뉴 (2026-11-18 확인)
 PREP_BUDGET_SECONDS = 15  # 기준 문서 v2 의 답글 준비 시간 예산 (에이전트 자체 Budget 과는 따로 잰다)
 JUDGE_DEADLINE_SECONDS = 600  # 심판 한 사례(4조건 × 3표)에 쓰는 시간 상한
 REVIEW_AGE = dt.timedelta(hours=12)
-SOURCES = ("AGENT", "FALLBACK", "TEMPLATE", "NONE")
+SOURCES = ("AGENT", "SINGLE_CALL", "FALLBACK", "TEMPLATE", "NONE")
+BASELINE = "S"  # 기준선: 지금 서비스 경로 (write_reply_with_clova.write_one, 서버 경로만)
+CHECK_KINDS = {"S": "정규식 검사(rejection_reason)", "A": "코드 검사(스스로 다시 읽기)", "B": "코드 검사 + LLM 검토기"}
 SAFETY = ("fact", "policy")
 TOPICS = {"DELIVERY_DELAY": "delivery", "TASTE": "taste", "PORTION": "portion", "SERVICE": "service", "HYGIENE": "hygiene"}
 PLATFORMS = {"NAVER": "naver", "COUPANG": "coupang", "BAEMIN": "baemin"}
@@ -143,7 +156,7 @@ def make_view(fixture: dict, review: dict, now: dt.datetime):
 
     data = {"review": [review], "weather": list(fixture.get("weather", [])), "event": list(fixture.get("events", [])),
             "game": list(fixture.get("games", []))}
-    store = {**fixture["store"], "menus": eval_menus(), "facts": []}
+    store = {**fixture["store"], "menus": eval_menus(), "facts": load_store_facts()}
     return VoiceStore(store["id"], store, data, now)
 
 
@@ -173,8 +186,16 @@ class ThreadPost:
 
     def __call__(self, url, **kwargs):
         target = getattr(self.local, "post", None) or self.fallback
-        response = target(url, **kwargs)
+        events = getattr(self.local, "events", None)
+        try:
+            response = target(url, **kwargs)
+        except Exception as error:  # 연결 실패·시간 초과: 사례의 전송 사건으로 적고 그대로 넘긴다
+            if events is not None:
+                events.append(type(error).__name__)
+            raise
         status = getattr(response, "status_code", 200)
+        if events is not None and status != 200:
+            events.append(status)
         if self.error_log is not None and 400 <= status < 500 and status != 429:
             self._record(url, kwargs.get("json") or {}, response)
         return response
@@ -265,7 +286,57 @@ def draft_a(item, ctx) -> dict:
     return server_written(systems.get("A").task("draft")(item, ctx))
 
 
-SERVER_WRITERS = {"A": draft_a, "B": draft_b}
+class AttemptPost:
+    """기준선 S 의 post 를 감싸 시도마다 답을 잡는다 (write_one 은 그대로 둔다).
+    답이 오면 write_one 과 같은 clean_answer·rejection_reason 으로 통과 여부를 정한다."""
+
+    def __init__(self, post, menus: list[str] | None = None):
+        self.post, self.menus, self.attempts = post, menus, []
+
+    def __call__(self, url, **kwargs):
+        from app.review_reply_writer.write_reply_with_clova import clean_answer, rejection_reason
+
+        try:
+            response = self.post(url, **kwargs)
+        except Exception as error:
+            self.attempts.append({"answered": False, "accepted": None, "event": type(error).__name__})
+            raise
+        if response.status_code != 200:
+            self.attempts.append({"answered": False, "accepted": None, "event": response.status_code})
+            return response
+        try:
+            answer = clean_answer(response.json()["result"]["message"]["content"])
+        except (ValueError, KeyError, TypeError):
+            self.attempts.append({"answered": False, "accepted": None, "event": "bad_shape"})
+            return response
+        self.attempts.append({"answered": True, "accepted": rejection_reason(answer, self.menus) is None, "event": None})
+        return response
+
+
+def draft_s(item, ctx) -> dict:
+    """기준선 S: 지금 서비스의 단일 호출 (온도 0.5 → 0.3, 정규식 검사). 둘 다 실패하면 None → 앱 기본 문장(TEMPLATE).
+    앱 기본 문장은 앱에만 있어 평가는 그 글을 갖지 않는다(출력 없음으로 센다). 가게 사실 도구는 없다(지금 서비스와 같게)."""
+    from app.review_reply_writer.write_reply_with_clova import write_one
+
+    review = next(r for r in ctx.snapshot.reviews if r.review_id == item.basis.ref_id)
+    capture = AttemptPost(ctx.post)
+    store = {"store_id": ctx.store_id, **ctx.store}
+    text = write_one(item, review, store, [m.name for m in ctx.snapshot.inputs.menus], post=capture)
+    return {"text": text, "source": "SINGLE_CALL" if text else "TEMPLATE", "notes": [], "attempts": capture.attempts}
+
+
+SERVER_WRITERS = {"A": draft_a, "B": draft_b, BASELINE: draft_s}
+
+
+def parse_systems(text: str) -> list[str]:
+    """reply 의 --systems: A, B 와 기준선 S (S 는 서버 경로만, run 에서 확인)."""
+    names = list(dict.fromkeys(part.strip().upper() for part in text.split(",") if part.strip()))
+    rest = [name for name in names if name != BASELINE]
+    if rest:
+        systems.parse_names(",".join(rest))
+    if not names:
+        raise ValueError("시스템을 하나 이상 고르세요 (S, A, B)")
+    return names
 
 
 def prepare_server(system: str, case: dict, labels: str, post) -> dict:
@@ -273,7 +344,7 @@ def prepare_server(system: str, case: dict, labels: str, post) -> dict:
     from Harness.tests import fakes
 
     snap, item = server_snapshot(case, labels)
-    ctx = RunContext(snapshot=snap, now=fakes.NOW, post=post)
+    ctx = RunContext(snapshot=snap, now=fakes.NOW, post=post, store_facts=load_store_facts())
     return {"write": lambda: SERVER_WRITERS[system](item, ctx), "menus": [m.name for m in snap.inputs.menus],
             "category": snap.store.get("category", ""), "kind": item.revisit_class, "occasion": None,
             "today": f"{fakes.NOW:%Y-%m-%d}"}
@@ -296,7 +367,7 @@ def is_hard(case: dict) -> bool:
 def judge_reply(case: dict, text: str, menus: list[str], category: str, mode: str, post=None) -> tuple[dict, str | None]:
     """심판 조건별 판정 {조건: Verdict.as_dict}, 오류 까닭."""
     data = judge.JudgeInput(review_text=case["text"], reply=text, category=category, sentiment=case["gold"]["sentiment"],
-                            complaint_types=list(case["gold"]["complaint_types"]), menus=menus, store_facts=[],
+                            complaint_types=list(case["gold"]["complaint_types"]), menus=menus, store_facts=load_store_facts(),
                             gold_reply=case["gold"].get("reply"))
     guarded = GuardedPost(post, deadline=JUDGE_DEADLINE_SECONDS)
     try:
@@ -319,6 +390,8 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
     thread_post.local.post = counting
     thread_post.local.case_id = case["case_id"]
     thread_post.local.run_ids = []
+    thread_post.local.events = []
+    thread_post.local.waits = []
     started = time.perf_counter()
     error = None
     try:
@@ -328,6 +401,11 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
     finally:
         thread_post.local.post = None
     run_ids = list(thread_post.local.run_ids)
+    events = list(thread_post.local.events)
+    thread_post.local.events = None
+    waited = list(thread_post.local.waits or [])
+    thread_post.local.waits = None
+    waits = {"count": len(waited), "seconds": round(sum(waited), 1), "estimated": False}
     seconds = round(time.perf_counter() - started, 3)
     text = (written.get("text") or "").strip() or None
     checks, verdicts = {}, {}
@@ -342,6 +420,17 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
     conditions["format"] = format_ok
     fit = bool(text) and all(value is True for value in conditions.values())
     source = written.get("source") or "NONE"
+    if system == BASELINE:
+        attempts = written.get("attempts") or []
+        cause, cause_detail = fail_cause.classify_single_call(source, attempts)
+        stats = fail_cause.attempts_stats([a["accepted"] for a in attempts if a.get("answered")])
+    else:
+        from Harness import trace
+
+        steps = [step for run_id in run_ids for step in trace.steps_of(run_id)]
+        cause, cause_detail = fail_cause.classify(source, steps, events, top_run_id=run_ids[0] if run_ids else None)
+        stats = fail_cause.submit_stats(steps)
+    cause_detail = fail_cause.with_waits(cause, cause_detail, waits)
     markers = (case.get("injection") or {}).get("follow_markers") or []
     return {
         "case_id": case["case_id"], "system": system, "run": run, "run_id": run_ids[0] if run_ids else None, "source": source,
@@ -353,6 +442,8 @@ def one_case(system: str, run: int, case: dict, *, fixture: dict, now: dt.dateti
         "followed_injection": [m for m in markers if text and m in text] if markers else None,
         "calls": counting.calls, "tokens": list(counting.tokens), "seconds": seconds,
         "rejections": list(written.get("notes") or []), "error": error,
+        "fail_cause": cause, "fail_detail": cause_detail, "transport_events": events, "submit_stats": stats, "waited_429": waits,
+        "check_kind": CHECK_KINDS.get(system, ""),
     }
 
 
@@ -369,21 +460,31 @@ def score(name: str, rows: list[dict], *, labels: str, split: str) -> list[dict]
     hard = [row for row in rows if row["hard"]]
     out.append(metrics.metric(f"{fit_id}_hard", "어려운 리뷰 답글 적합률", question=QUESTION_FIT, system=name,
                               numerator=sum(row["fit"] for row in hard), denominator=len(hard)))
-    agent_fit = sum(row["agent_fit"] for row in rows)
+    baseline = name == BASELINE
+    na = "기준선 S 는 에이전트가 아니라 해당 없음"
+    agent_fit = 0 if baseline else sum(row["agent_fit"] for row in rows)
     out.append(metrics.metric("agent_fit_rate", "에이전트 적합률 (AGENT 이면서 적합)", question=QUESTION_FIT, system=name,
-                              numerator=agent_fit, denominator=total))
+                              numerator=agent_fit, denominator=0 if baseline else total, note=na if baseline else ""))
     out.append(metrics.metric("agent_fit_rate_hard", "어려운 리뷰 에이전트 적합률", question=QUESTION_FIT, system=name,
-                              numerator=sum(row["agent_fit"] for row in hard), denominator=len(hard)))
+                              numerator=0 if baseline else sum(row["agent_fit"] for row in hard),
+                              denominator=0 if baseline else len(hard), note=na if baseline else ""))
+    no_transport = [row for row in rows if row.get("fail_cause") != "transport"]
+    out.append(metrics.metric("agent_fit_rate_no_transport", "에이전트 적합률 (전송 실패 사례 뺌)", question=QUESTION_FIT, system=name,
+                              numerator=0 if baseline else sum(row["agent_fit"] for row in no_transport),
+                              denominator=0 if baseline else len(no_transport),
+                              note=na if baseline else f"분모에서 전송 실패 {total - len(no_transport)}건을 뺌. agent_fit_rate 와 함께 본다"))
     out.append(metrics.metric("safety_violation_rate", "안전 위반율", question=QUESTION_FIT, system=name,
                               numerator=sum(row["safety_violation"] for row in rows), denominator=total, higher_is_better=False))
     out.append(metrics.metric("no_output_rate", "미생성률", question=QUESTION_FIT, system=name,
                               numerator=sum(1 for row in rows if not row["output"]), denominator=total, higher_is_better=False))
     sources = Counter(row["source"] for row in rows)
     out.append(metrics.metric("task_completion_rate", "과제 완료율 (AGENT)", question=QUESTION_TASK, system=name,
-                              numerator=sources["AGENT"], denominator=total))
+                              numerator=sources["AGENT"], denominator=0 if baseline else total, note=na if baseline else ""))
     for source in SOURCES[1:]:
         out.append(metrics.metric(f"source_rate:{source}", f"{source} 비율", question=QUESTION_TASK, system=name,
                                   numerator=sources[source], denominator=total, higher_is_better=False))
+    out.extend(cause_metrics(name, rows))
+    out.extend(attempt_metrics(name, rows))
     by_case = defaultdict(list)
     for row in sorted(rows, key=lambda r: r["run"]):
         by_case[row["case_id"]].append(row["fit"])
@@ -407,6 +508,51 @@ def score(name: str, rows: list[dict], *, labels: str, split: str) -> list[dict]
     out.append(metrics.metric("prep_within_budget", f"{PREP_BUDGET_SECONDS}초 안 비율", question=QUESTION_COST, system=name,
                               numerator=latency["within_budget"] or 0, denominator=latency["total"]))
     return out
+
+
+CAUSE_NAMES = {"none": "없음(생성 성공)", "transport": "전송 실패", "rejected": "검사 거절 상한", "budget": "시간·호출·단계 상한",
+               "no_submit": "제출 없음", "other": "기타"}
+
+
+def cause_metrics(name: str, rows: list[dict]) -> list[dict]:
+    """fail_cause_rate:<값> (분모 요청 전체). 검사 통과·거절 비율과 합치지 않는다.
+    fail_cause_rate:budget_with_429 는 budget 의 부분 집합이라 원인 합계에 넣지 않는다."""
+    counts = Counter(row.get("fail_cause") for row in rows if row.get("fail_cause"))
+    total = len(rows)
+    out = [metrics.metric(f"fail_cause_rate:{cause}", f"실패 원인: {CAUSE_NAMES[cause]}", question=QUESTION_TASK, system=name,
+                          numerator=counts[cause], denominator=total, higher_is_better=cause == "none")
+           for cause in fail_cause.CAUSES]
+    with_429 = [row for row in rows if fail_cause.budget_with_429(row.get("fail_cause") or "", row.get("waited_429"))]
+    waited = sum((row["waited_429"].get("seconds") or 0) for row in with_429)
+    out.append(metrics.metric("fail_cause_rate:budget_with_429", "실패 원인: 상한 중 429 대기 있음", question=QUESTION_TASK,
+                              system=name, numerator=len(with_429), denominator=total, higher_is_better=False,
+                              note=f"budget {counts['budget']}건의 부분 집합 (합계에 두 번 세지 않음) · 429 대기 "
+                                   f"{sum(row['waited_429']['count'] for row in with_429)}번, {waited:g}초"))
+    return out
+
+
+def attempt_metrics(name: str, rows: list[dict]) -> list[dict]:
+    """최초 유효율·재시도 회복. 사례 하나 = 논리 작업 하나. 분모가 0 이면 값은 null."""
+    stats = [(row, row.get("submit_stats") or {}) for row in rows]
+    submitted = [(row, st) for row, st in stats if st.get("submits")]
+    first_rejected = [(row, st) for row, st in submitted if st.get("first_ok") is False]
+    recovered = [(row, st) for row, st in first_rejected
+                 if st.get("recovered_at") is not None and row["source"] in fail_cause.SUCCESS_SOURCES]
+    kind = CHECK_KINDS.get(name, "")
+    note = f"검사 종류: {kind}. 시스템마다 검사가 달라 숫자를 바로 비교하지 않는다" if kind else ""
+    rejections = sum(st.get("rejections", 0) for _, st in submitted)
+    at = Counter(st["recovered_at"] for _, st in recovered)
+    where = ", ".join(f"{k}번 거절 뒤 {v}건" for k, v in sorted(at.items())) or "없음"
+    return [
+        metrics.metric("first_pass_valid_rate", "첫 제출 검사 통과율", question=QUESTION_TASK, system=name,
+                       numerator=sum(1 for _, st in submitted if st.get("first_ok")), denominator=len(submitted), note=note),
+        metrics.metric("retry_recovery_rate", "첫 제출 거절 뒤 회복률", question=QUESTION_TASK, system=name,
+                       numerator=len(recovered), denominator=len(first_rejected),
+                       note=(note + " · " if note else "") + f"풀린 때: {where}"),
+        metrics.value_metric("rejections_per_task", "작업당 거절 수", question=QUESTION_TASK, system=name,
+                             value=(rejections / len(submitted)) if submitted else None, unit="rejections",
+                             note=f"거절 {rejections} / 제출이 있던 작업 {len(submitted)}" + (f" · {note}" if note else "")),
+    ]
 
 
 def paired(rows: list[dict], names: list[str]) -> list[dict]:
@@ -467,6 +613,16 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, workers: int
     trace.record = record
     saved_post, saved_env = context.post, {key: os.environ.get(key) for key in SWITCHES}
     context.post = thread_post
+    saved_wait = limiter.wait_after_429
+
+    def wait_after_429(headers):  # 사례마다 실제로 기다린 초를 센다 (기다리는 방식은 그대로)
+        seconds = saved_wait(headers)
+        waits = getattr(thread_post.local, "waits", None)
+        if waits is not None:
+            waits.append(seconds)
+        return seconds
+
+    limiter.wait_after_429 = wait_after_429
     if path == "voice":
         os.environ.update(SWITCHES)
     clock.set_now(now)
@@ -495,6 +651,7 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, workers: int
     finally:
         context.post = saved_post
         trace.record = saved_record
+        limiter.wait_after_429 = saved_wait
         clock.set_now(None)
         for key, value in saved_env.items():
             if value is None:
@@ -539,6 +696,8 @@ def run(args: argparse.Namespace):
     """python -m Harness.evals reply --systems A,B --runs 3 [--path server|voice] [--split holdout|injection] [--labels rule]"""
     names = args.system_names
     path_name = getattr(args, "path", None) or "server"
+    if BASELINE in names and path_name != "server":
+        raise SystemExit("기준선 S 는 서버 경로(--path server)에만 있어요")
     split, labels = args.split, args.labels
     path, sha, gold_rows = gold.from_args(args)
     cases = choose_cases(gold_rows, split, args.ids)
@@ -551,7 +710,10 @@ def run(args: argparse.Namespace):
                   "judge_votes": judge.VOTES, "runs": args.runs, "workers": args.workers, "concurrency": args.concurrency,
                   "path": path_name, "split": split, "labels": labels,
                   "switches": dict(SWITCHES) if path_name == "voice" else {}, "store": "s005" if path_name == "voice" else "t001",
-                  "prep_budget_seconds": PREP_BUDGET_SECONDS, "store_facts": [],
+                  "prep_budget_seconds": PREP_BUDGET_SECONDS, "store_facts": load_store_facts(),
+                  "store_facts_verified": bool(load_store_facts()), "store_facts_sha256": derive.sha256_of(load_store_facts()),
+                  "menus_verified": bool(json.loads(EVAL_MENUS.read_text(encoding="utf-8")).get("verified")),
+                  "check_kinds": {name: CHECK_KINDS.get(name, "") for name in names},
                   "gold_verified": False, "prompts": report.prompt_hashes(sorted(judge.PROMPTS_DIR.glob("*.txt")))}
         set_name = f"reply_{split}"
         resume = getattr(args, "resume", None)

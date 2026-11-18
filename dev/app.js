@@ -1168,12 +1168,12 @@ content.addEventListener("change", (e) => {
 
 // ── 탭: 평가 (server/db/app_data/harness_eval 결과 폴더) ──
 // 평가 스위트(python -m Harness.evals …)가 남긴 result.json 을 본다. 운영 기록(AI·에이전트 탭)과 섞지 않는다.
-// 맨 위 질문 1~5 요약 카드 → 실행 목록 → 고른 실행의 질문별 그래프(+ "표로 보기") → 사례 격자·사례 → 짝 비교·심판 검증.
+// 맨 위 질문 1~5 카드(scorecard) → 실행 목록 → 고른 실행의 질문별 그래프(+ "표로 보기") → 사례 격자·사례 → 짝 비교·심판 검증.
 // 그래프는 라이브러리 없이 SVG·HTML 로 그린다. 집계는 서버(eval_reader.charts)가 하고 여기서는 그리기만 한다.
 // 색: 시스템(정체) = --viz-1~4 를 이름에 고정, 상태 = --viz-good·warning·serious·critical(늘 글자와 함께), 크기 = 파랑 단계.
 // 글자·축·격자는 대시보드 색 변수(--ink, --ink-2, --ink-3, --line, --surface, --bg)를 써서 테마를 따른다.
 
-const evalView = { id: null, system: "", failedOnly: true, offset: 0, metric: null, open: new Set(), steps: {}, set: null, focus: null };
+const evalView = { id: null, system: "", failedOnly: true, offset: 0, metric: null, open: new Set(), steps: {}, set: null, focus: null, picks: {} };
 const EVAL_PAGE = 30;
 const EVAL_QUESTIONS = {
   1: "질문 1. 리뷰를 바르게 가르는가",
@@ -1182,12 +1182,15 @@ const EVAL_QUESTIONS = {
   4: "질문 4. 에이전트가 믿을 만하게 동작하는가",
   5: "질문 5. 비용과 시간",
 };
-const VIZ_SLOT = { A: 1, B: 2, rule: 1, hcx: 2, voice: 3, regex: 1, critic: 2, judge_tools: 3, judge_thinking: 4, "rule+judge": 2 };
+const VIZ_SLOT = { A: 1, B: 2, S: 3, R: 3, rule: 1, hcx: 2, voice: 3, regex: 1, critic: 2, judge_tools: 3, judge_thinking: 4, "rule+judge": 2 };
 const VIZ_STATUS_INK = { warning: "#0b0b0b", neutral: "#0b0b0b" }; // 밝은 칸 안 글자는 검정, 나머지 흰색 (두 모드 같음)
 const VIZ_SEQ = ["--viz-seq-0", "--viz-seq-1", "--viz-seq-2", "--viz-seq-3", "--viz-seq-4", "--viz-seq-5", "--viz-seq-6", "--viz-seq-7"];
-const SOURCE_NAMES = { AGENT: "에이전트", FALLBACK: "물러나기", TEMPLATE: "템플릿", NONE: "출력 없음" };
+const SOURCE_NAMES = { AGENT: "에이전트", SINGLE_CALL: "단일 호출", FALLBACK: "물러나기", TEMPLATE: "템플릿", NONE: "출력 없음" };
+// 결과 구성: 생성 성공이면 적합 여부, 아니면 실패 원인 (서버 Harness/evals/fail_cause)
+const OUTCOME_NAMES = { success_fit: "생성 성공 · 적합", success_unfit: "생성 성공 · 부적합", transport: "전송 실패",
+  rejected: "검사 거절 상한", budget: "시간·호출·단계 상한", no_submit: "제출 없음", other: "기타" };
 // 화면에는 코드 이름 대신 뜻 이름을 쓴다 (코드 이름은 마우스를 올리면 보인다)
-const SYSTEM_NAMES = { A: "A 단일 에이전트", B: "B 하네스", rule: "규칙", hcx: "HCX 분류기", voice: "음성 규칙", regex: "금지어 정규식",
+const SYSTEM_NAMES = { A: "A 단일 에이전트", B: "B 하네스", S: "S 지금 서비스(기준선)", R: "R 규칙 한 줄(기준선)", rule: "규칙", hcx: "HCX 분류기", voice: "음성 규칙", regex: "금지어 정규식",
   critic: "LLM 검토기", judge_tools: "심판(도구)", judge_thinking: "심판(추론)", "rule+judge": "규칙+판정 에이전트" };
 const COND_NAMES = { fact: "사실", policy: "정책", core: "핵심 내용", response: "응대", format: "형식", consistency: "일관성" };
 const KIND_NAMES = { normal: "정상 답글", compensation: "보상 약속", fabricated: "지어낸 가게 사정", blame: "손님·남 탓", memory: "기억하는 척",
@@ -1239,37 +1242,188 @@ function evalDiff(a, b) {
   return `<span class="tag ${good ? "ok" : "warn"}">${good ? "▲" : "▼"} B−A ${shown}</span>`;
 }
 
-// ── 맨 위: 질문 1~5 요약 카드 ──
+// ── 맨 위: 질문 1~5 카드 (서버 Harness/evals/scorecard 와 summary 명령이 같은 계산) ──
+// 지표마다 그 스위트의 가장 최근 실행이 기본, 드롭다운으로 바꾼다(evalView.picks). 값·분자/분모·95% 구간(사례 단위)·목표와 통과·
+// 결과 폴더·커밋·시각·지표 id 를 보인다. 분모 10 미만은 "표본 부족", 결과가 없으면 "안 돌림"(회색), 통과 배지는 표본이 충분할 때만.
 
-function evalGoal(card) {
-  if (!card.run) return '<span class="viz-goal none">? 결과 없음</span>';
-  if (card.goal === true) return `<span class="viz-goal pass" title="${esc(card.goal_note)}">✓ 목표 통과</span>`;
-  if (card.goal === false) return `<span class="viz-goal fail" title="${esc(card.goal_note)}">✗ 목표 미달</span>`;
-  return `<span class="viz-goal none" title="${esc(card.goal_note ?? "")}">– 기준 없음</span>`;
+function scPct(v) { return v == null ? "-" : `${(Math.round(v * 1000) / 10).toFixed(1)}%`; }
+function scSec(v) { return v == null ? "-" : `${Number(v) < 10 ? Number(v).toFixed(2) : Number(v).toFixed(1)}초`; }
+
+function scBadge(item, cell) {
+  if (cell.status === "not_run") return '<span class="viz-goal none sc-gray">안 돌림</span>';
+  if (cell.status === "too_few") return `<span class="viz-goal none" title="분모(또는 잰 수)가 10 미만">표본 부족</span>`;
+  if (cell.passed === true) return `<span class="viz-goal pass" title="목표 ${esc(item.target)}">✓ 목표 통과</span>`;
+  if (cell.passed === false) return `<span class="viz-goal fail" title="목표 ${esc(item.target)}">✗ 목표 미달</span>`;
+  return '<span class="viz-goal none">– 기준 없음</span>';
 }
 
-function evalSummaryCards(summary) {
-  if (!summary?.length) return "";
-  return `<div class="viz-summary">${summary.map((card) => {
-    const systems = Object.keys(card.values);
-    const rows = systems.map((s) => {
-      const v = card.values[s];
-      const width = v?.unit === "ratio" && v.value != null ? v.value * 100 : null;
-      return `<div class="viz-sum-row"><span class="viz-sys"><i style="background:${vizColor(s, systems)}"></i>${esc(sysName(s))}</span>
-        <span class="viz-mini">${width == null ? "" : `<span style="width:${width}%;background:${vizColor(s, systems)}"></span>`}</span>
-        <span class="num small">${v?.value == null ? "-" : v.unit === "ratio" ? vizPct(v.value) : Number(v.value).toFixed(1)}</span></div>`;
-    }).join("");
-    const diff = card.diff == null ? "" : (() => {
-      const good = (card.diff > 0) === card.higher_is_better || Math.abs(card.diff) < 1e-9;
-      return `<span class="tag ${good ? "ok" : "warn"}">B−A ${card.diff > 0 ? "+" : ""}${(card.diff * 100).toFixed(1)}%p</span>`;
-    })();
-    return `<div class="viz-sum-card">
-      <div class="viz-sum-q">${esc(EVAL_QUESTIONS[card.question])}</div>
-      <div class="viz-sum-metric">${esc(metricName(card.name ?? card.metric))}${card.set ? ` <span class="muted small">[${esc(nm(SET_NAMES, card.set))}]</span>` : ""}
-        <span class="muted small">${card.higher_is_better === false ? "↓ 낮을수록 좋음" : "↑ 높을수록 좋음"}</span></div>
-      ${rows || '<div class="muted small">아직 돌린 결과가 없어요</div>'}
-      <div class="viz-sum-foot">${evalGoal(card)}${diff}${card.run ? `<button class="btn-outline small" data-eval-pick="${esc(card.run)}">이 실행</button>` : ""}</div>
-      ${card.goal_note ? `<div class="muted small">${esc(card.goal_note)}</div>` : ""}</div>`;
+function scValue(item, cell) {
+  if (cell.status === "not_run") return '<span class="sc-gray">안 돌림</span>';
+  if (item.kind === "latency") {
+    const shown = `p50 <b class="num">${scSec(cell.p50)}</b> · p95 <b class="num">${scSec(cell.p95)}</b>`;
+    return `${cell.status === "too_few" ? '<span class="muted">표본 부족</span> ' : ""}<span class="${cell.status === "too_few" ? "muted" : ""}">${shown}</span> <span class="muted small">n=${num(cell.n)}</span>`;
+  }
+  if (item.kind === "f1") return `<b class="num">${Number(cell.value).toFixed(2)}</b> <span class="muted small">F1 (구간 없음)</span>`;
+  const frac = `<span class="muted small">${cell.numerator}/${cell.denominator}${cell.run_fraction ? ` 사례 · 회차 합 ${esc(cell.run_fraction)}` : ""}</span>`;
+  if (cell.status === "too_few") return `<span class="muted">표본 부족</span> ${frac}`;
+  const ci = cell.interval ? ` <span class="muted small">95% ${scPct(cell.interval[0])}~${scPct(cell.interval[1])}</span>` : ' <span class="muted small">구간 없음</span>';
+  return `<b class="num">${scPct(cell.value)}</b> ${frac}${ci}`;
+}
+
+function scDiff(item, cell) {
+  if (cell.baseline_diff == null) return "";
+  const d = cell.baseline_diff;
+  const good = Math.abs(d) < 1e-9 || (d < 0) === item.lower_better;
+  const shown = item.kind === "ratio" ? `${d > 0 ? "+" : ""}${(d * 100).toFixed(1)}%p` : item.kind === "latency" ? `${d > 0 ? "+" : ""}${d.toFixed(2)}초` : `${d > 0 ? "+" : ""}${d.toFixed(2)}`;
+  return `<span class="tag ${good ? "ok" : "warn"}" title="기준점 ${esc(cell.baseline_folder ?? "")}">기준점 대비 ${shown}</span>`;
+}
+
+function scSource(cell) {
+  if (cell.status === "not_run") return "";
+  return `<span class="sc-src muted small"><span class="mono">${esc(cell.folder ?? "-")}</span> · 커밋 <span class="mono">${esc(cell.commit ?? "-")}${cell.dirty ? "+수정" : ""}</span> · ${esc(time(cell.started_at))}${cell.note ? ` · ${esc(cell.note)}` : ""}${cell.recomputed ? " · cases 에서 다시 셈" : ""}</span>`;
+}
+
+function scPick(item) {
+  if (item.options.length < 2) return "";
+  return `<select class="sc-pick" data-eval-scpick="${esc(item.key)}" title="이 지표에 쓸 실행">
+    <option value="">가장 최근 실행</option>${item.options.map((o) => `<option value="${esc(o.folder)}" ${o.folder === item.picked ? "selected" : ""}>${esc(time(o.started_at))} · ${esc(o.commit ?? "-")}${o.baseline ? " · 기준점" : ""}</option>`).join("")}</select>`;
+}
+
+function scHead(item) {
+  const dir = item.lower_better ? "↓ 낮을수록 좋음" : "↑ 높을수록 좋음";
+  return `<div class="sc-item-head"><b>${esc(item.label)}</b> <span class="viz-dir">${dir}${item.target ? ` · 목표 ${esc(item.target)}` : ""}</span>
+    <span class="sc-id mono">${esc(item.metric)}${Object.entries(item.keys).map(([k, v]) => ` ${esc(k)}=${esc(v)}`).join("")}</span>${scPick(item)}</div>`;
+}
+
+function scCellRow(item, cell, systems) {
+  return `<div class="sc-row ${cell.status === "not_run" ? "sc-off" : ""}">
+    <span class="viz-sys"><i style="background:${vizColor(cell.system, systems)}"></i>${esc(sysName(cell.system))}</span>
+    <span>${scValue(item, cell)}</span>
+    <span class="sc-badges">${scBadge(item, cell)}${scDiff(item, cell)}</span>
+    ${scSource(cell)}</div>`;
+}
+
+function scItem(item) {
+  const systems = item.cells.map((c) => c.system);
+  if (item.optional && item.cells.every((c) => c.status === "not_run")) {
+    return `<div class="sc-item"><div class="sc-item-head"><b>${esc(item.label)}</b> <span class="muted small">${esc(item.note || "결과 없음")} — 사람 표본 없음</span> <span class="sc-id mono">${esc(item.metric)}</span></div></div>`;
+  }
+  return `<div class="sc-item">${scHead(item)}${item.cells.map((c) => scCellRow(item, c, systems)).join("")}</div>`;
+}
+
+// 강도 0~3 별 뜻 정확도: 시스템마다 선 하나 (끝에 이름), 점마다 95% 구간 세로줄
+function scNoiseLine(items) {
+  const systems = [...new Set(items.flatMap((it) => it.cells.map((c) => c.system)))];
+  const W = 640, H = 230, L = 46, R = 130, T = 14, B = 34;
+  const x = (level) => L + (level / 3) * (W - L - R);
+  const y = (v) => T + (1 - v) * (H - T - B);
+  const grid = [0, 0.25, 0.5, 0.75, 1].map((v) => `<line x1="${L}" y1="${y(v)}" x2="${W - R}" y2="${y(v)}" class="viz-gridline"/><text x="${L - 6}" y="${y(v) + 4}" text-anchor="end" class="viz-axis">${v * 100}%</text>`).join("");
+  const xs = [0, 1, 2, 3].map((l) => `<text x="${x(l)}" y="${H - 12}" text-anchor="middle" class="viz-axis">강도 ${l}</text>`).join("");
+  let drawn = 0;
+  const lines = systems.map((s) => {
+    const color = vizColor(s, systems);
+    const pts = items.map((it) => [it.keys.noise, it.cells.find((c) => c.system === s)]).filter(([, c]) => c && c.status !== "not_run" && c.value != null);
+    if (!pts.length) return "";
+    drawn += 1;
+    const path = pts.map(([l, c], k) => `${k ? "L" : "M"}${x(l).toFixed(1)},${y(c.value).toFixed(1)}`).join(" ");
+    const marks = pts.map(([l, c]) => `${c.interval ? `<line x1="${x(l)}" y1="${y(c.interval[0])}" x2="${x(l)}" y2="${y(c.interval[1])}" style="stroke:${color}" stroke-width="1.5" opacity="0.6"/>` : ""}
+      <circle cx="${x(l)}" cy="${y(c.value)}" r="4" style="fill:${c.status === "too_few" ? "var(--surface)" : color};stroke:${color}" stroke-width="2"><title>${esc(sysName(s))} 강도 ${l}: ${scPct(c.value)} (${c.numerator}/${c.denominator})${c.status === "too_few" ? " 표본 부족" : ""}</title></circle>`).join("");
+    const [lastL, last] = pts[pts.length - 1];
+    return `<path d="${path}" style="fill:none;stroke:${color}" stroke-width="2"/>${marks}<text x="${x(lastL) + 10}" y="${y(last.value) + 4}" class="viz-axis-ink" style="fill:${color}">${esc(sysName(s))} ${scPct(last.value)}</text>`;
+  }).join("");
+  if (!drawn) return '<div class="muted small sc-gray">안 돌림 — <span class="mono">python -m Harness.evals noise</span></div>';
+  const missing = systems.filter((s) => !items.some((it) => it.cells.some((c) => c.system === s && c.status !== "not_run")));
+  return `${missing.length ? `<div class="muted small sc-gray">안 돌림: ${missing.map((s) => esc(sysName(s))).join(", ")}</div>` : ""}<svg class="viz-svg sc-line" viewBox="0 0 ${W} ${H}" role="img" aria-label="모의 받아쓰기 오류 강도별 뜻 정확도">${grid}${xs}${lines}</svg>`;
+}
+
+// 시간 막대: 지표·시스템마다 p50(진한 막대)과 p95(옅은 막대), 목표선. 한 그림 안에서는 같은 축
+function scLatencyBars(items) {
+  const rows = items.flatMap((it) => it.cells.map((c) => ({ it, c, systems: it.cells.map((x) => x.system) })));
+  const measured = rows.filter((r) => r.c.status !== "not_run");
+  if (!measured.length) return "";
+  const max = Math.max(...measured.map((r) => r.c.p95 ?? 0), ...items.map((it) => it.target_value ?? 0), 1e-6) * 1.12;
+  const W = 760, L = 210, R = 150, barH = 9, rowH = 34, T = 6, H = T + rows.length * rowH + 22;
+  const x = (v) => L + (v / max) * (W - L - R);
+  const body = rows.map((r, i) => {
+    const top = T + i * rowH;
+    const color = vizColor(r.c.system, r.systems);
+    const label = `<text x="${L - 8}" y="${top + 15}" text-anchor="end" class="viz-axis-ink">${esc(r.it.label)} · ${esc(sysName(r.c.system))}</text>`;
+    if (r.c.status === "not_run") return `${label}<text x="${L + 4}" y="${top + 15}" class="viz-axis">안 돌림</text>`;
+    const p50 = r.c.p50 ?? 0, p95 = r.c.p95 ?? 0;
+    const target = r.it.target_value != null ? `<line x1="${x(r.it.target_value)}" y1="${top + 1}" x2="${x(r.it.target_value)}" y2="${top + rowH - 6}" class="viz-budget"/>
+      <text x="${x(r.it.target_value) + 3}" y="${top + rowH - 7}" class="viz-axis">목표 ${r.it.target_value}초</text>` : "";
+    return `${label}
+      <rect x="${L}" y="${top + 3}" width="${Math.max(1, x(p50) - L)}" height="${barH}" style="fill:${color}"><title>p50 ${scSec(p50)}</title></rect>
+      <rect x="${L}" y="${top + 3 + barH + 2}" width="${Math.max(1, x(p95) - L)}" height="${barH}" style="fill:${color}" opacity="0.4"><title>p95 ${scSec(p95)}</title></rect>
+      <text x="${x(p50) + 4}" y="${top + 11}" class="viz-axis">p50 ${scSec(p50)}</text>
+      <text x="${x(p95) + 4}" y="${top + 22}" class="viz-axis">p95 ${scSec(p95)}${r.c.status === "too_few" ? " · 표본 부족" : ""}</text>${target}`;
+  }).join("");
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => max * f).map((v) => `<line x1="${x(v)}" y1="${T}" x2="${x(v)}" y2="${H - 20}" class="viz-gridline"/><text x="${x(v)}" y="${H - 6}" text-anchor="middle" class="viz-axis">${scSec(v)}</text>`).join("");
+  return `<svg class="viz-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="응답 시간 p50·p95">${ticks}${body}</svg>`;
+}
+
+// 한 쌍 (질문 3·4): 시스템마다 두 지표를 나란히
+function scPair(items) {
+  const [a, b] = items;
+  const systems = [...new Set([...a.cells, ...b.cells].map((c) => c.system))];
+  const cellOf = (it, s) => it.cells.find((c) => c.system === s) ?? { system: s, status: "not_run" };
+  const rows = systems.map((s) => {
+    const ca = cellOf(a, s), cb = cellOf(b, s);
+    const off = ca.status === "not_run" && cb.status === "not_run";
+    const side = (it, c) => `<div class="sc-pair-cell"><div>${scValue(it, c)}</div><div class="sc-badges">${scBadge(it, c)}${scDiff(it, c)}</div>${scSource(c)}</div>`;
+    return `<div class="sc-pair-row ${off ? "sc-off" : ""}"><span class="viz-sys"><i style="background:${vizColor(s, systems)}"></i>${esc(sysName(s))}</span>${side(a, ca)}${side(b, cb)}</div>`;
+  }).join("");
+  return `<div class="sc-pair"><div class="sc-pair-row sc-pair-head"><span></span><div>${scHead(a)}</div><div>${scHead(b)}</div></div>${rows}</div>`;
+}
+
+function scSmallLine(items) {
+  if (!items.length) return "";
+  const systems = [...new Set(items.flatMap((it) => it.cells.map((c) => c.system)))];
+  return `<div class="sc-small muted small">${systems.map((s) => `<div>${esc(sysName(s))}: ${items.map((it) => {
+    const c = it.cells.find((x) => x.system === s);
+    const v = !c || c.status === "not_run" ? "안 돌림" : c.status === "too_few" ? `표본 부족 (${c.numerator}/${c.denominator})` : `${scPct(c.value)} (${c.numerator}/${c.denominator})`;
+    return `${esc(it.label)} ${v} <span class="mono">${esc(it.metric)}</span>`;
+  }).join(" · ")}</div>`).join("")}</div>`;
+}
+
+function scGroup(name, items, extra = "") {
+  const big = items.filter((it) => !it.small);
+  const small = items.filter((it) => it.small);
+  let drawn;
+  if (big.length && big.every((it) => it.chart === "line")) {
+    drawn = `<div class="muted small">점 = 정확도, 세로줄 = 95% 구간 · 빈 점 = 표본 부족</div>${scNoiseLine(big)}${vizDetails(big.map(scItem).join(""), "강도별 값 보기")}`;
+  } else if (big.length === 2 && big.every((it) => it.chart === "pair")) {
+    drawn = scPair(big);
+  } else {
+    const lat = big.filter((it) => it.kind === "latency");
+    const rest = big.filter((it) => it.kind !== "latency");
+    drawn = (lat.length ? scLatencyBars(lat) + lat.map(scItem).join("") : "") + rest.map(scItem).join("");
+  }
+  const note = [...new Set(items.filter((it) => !it.optional).map((it) => it.note).filter(Boolean))].join(" · ");
+  return `<div class="viz-block"><h3>${esc(name)}${note ? ` <span class="muted">${esc(note)}</span>` : ""}</h3>${drawn}${scSmallLine(small)}${extra}</div>`;
+}
+
+// 체감 시간: 브리핑 단계 서버 처리 p50 + TTS 첫 소리 p50 (둘 다 잰 시스템이 있을 때만)
+function scPerceived(items) {
+  const turn = items.find((it) => it.key === "q5.turn_briefing");
+  const tts = items.find((it) => it.key === "q5.tts_first");
+  const ttsCell = tts?.cells.find((c) => c.status !== "not_run");
+  const turnCells = (turn?.cells ?? []).filter((c) => c.status !== "not_run");
+  if (!ttsCell || !turnCells.length) return '<div class="muted small">체감 시간 = 서버 처리 시간 + TTS 첫 소리 (둘 다 잰 결과가 있을 때 더해 보여요)</div>';
+  return `<div class="sc-small small">${turnCells.map((c) => `<div>체감 시간 p50 ≈ <b>${scSec(c.p50 + ttsCell.p50)}</b>
+    <span class="muted">= 브리핑 단계 서버 처리 ${scSec(c.p50)} (${esc(sysName(c.system))}) + TTS 첫 소리 ${scSec(ttsCell.p50)} · 네트워크 제외</span></div>`).join("")}</div>`;
+}
+
+function evalScorecard(sc) {
+  if (!sc?.questions) return "";
+  return `<div class="sc-cards">${sc.questions.map((q) => {
+    const groups = [];
+    for (const it of q.items) {
+      let g = groups.find((x) => x.name === it.group);
+      if (!g) groups.push(g = { name: it.group, items: [] });
+      g.items.push(it);
+    }
+    return `<div class="card sc-card"><h2>${esc(q.title)}</h2>${groups.map((g) => scGroup(g.name, g.items, g.items.some((it) => it.key === "q5.tts_first") ? scPerceived(q.items) : "")).join("")}</div>`;
   }).join("")}</div>`;
 }
 
@@ -1422,6 +1576,18 @@ function vizStack(rows, order, { nameOf, colorOf, inkOf }) {
       <div class="viz-segbar">${blocks || '<span class="muted small">없음</span>'}</div><span class="muted small num">${total}건</span></div>`;
   }).join("");
   return legend + body;
+}
+
+function vizOutcomeMix(mix, source, systems) {
+  if (!mix) return vizSourceMix(source, systems);
+  const names = systems.filter((s) => mix.systems[s]);
+  const rows = names.map((s) => ({ label: sysName(s), swatch: vizColor(s, names), counts: mix.systems[s] }));
+  const order = mix.order.filter((o) => names.some((s) => mix.systems[s][o.key]));
+  const chart = vizStack(rows, order, { nameOf: (o) => OUTCOME_NAMES[o.key] ?? o.key, colorOf: (o) => `var(--viz-${o.status})`, inkOf: (o) => VIZ_STATUS_INK[o.status] ?? "#ffffff" });
+  const tableHtml = table(["시스템", ...order.map((o) => esc(OUTCOME_NAMES[o.key] ?? o.key))], names.map((s) => [esc(sysName(s)), ...order.map((o) => num(mix.systems[s][o.key] ?? 0))]))
+    + (source ? `<div class="small muted" style="margin-top:8px">누가 답을 냈나 (source)</div>` + table(["시스템", ...source.order.map((o) => esc(SOURCE_NAMES[o.key] ?? o.key)), "전체"],
+      systems.filter((s) => source.systems[s]).map((s) => [esc(sysName(s)), ...source.order.map((o) => num(source.systems[s].counts[o.key] ?? 0)), num(source.systems[s].total)])) : "");
+  return vizBlock("결과 구성", "생성 성공은 적합 여부로, 실패는 원인으로 나눔 · 시스템마다 전체 사례 100% · 검사 통과·거절 비율과는 따로 센다", chart + vizDetails(tableHtml));
 }
 
 function vizSourceMix(mix, systems) {
@@ -1606,7 +1772,7 @@ function evalQuestionCards(run) {
   const c = run.charts ?? {};
   const charts = {
     1: [vizRecallPrecision(c.q1?.recall_precision, systems), vizConfusion(c.q1?.confusion)],
-    2: [vizDumbbell(c.q2?.conditions, systems), vizSourceMix(c.q2?.source_mix, systems)],
+    2: [vizDumbbell(c.q2?.conditions, systems), vizOutcomeMix(c.q2?.outcome_mix, c.q2?.source_mix, systems)],
     3: [vizScatter(c.q3?.scatter, systems), vizByKind(c.q3?.by_kind, systems)],
     4: [vizPassDistribution(c.q4?.pass_distribution, systems), vizBatchGrid(c.q4?.batch_grid), vizReasons(c.q4?.reasons, systems)],
     5: [vizLatency(c.q5?.latency, systems), vizCost(c.q5?.cost, systems)],
@@ -1780,9 +1946,10 @@ function evalJudgeCard(check) {
 // ── 그리기 ──
 
 async function renderEval() {
-  const listing = await api(`${API}/evals`);
+  const picks = Object.entries(evalView.picks).map(([k, v]) => `${k}:${v}`).join(",");
+  const [listing, sc] = await Promise.all([api(`${API}/evals`), api(`${API}/evals/scorecard${picks ? `?picks=${encodeURIComponent(picks)}` : ""}`)]);
   const list = listing.runs;
-  const summary = evalSummaryCards(listing.summary);
+  const summary = evalScorecard(sc);
   if (!list.length) return `${summary}<div class="card"><div class="empty">평가 결과가 없어요. server 에서 <span class="mono">python -m Harness.evals &lt;스위트&gt;</span> 를 돌리면 ${esc("db/app_data/harness_eval/")} 에 남아요.</div></div>`;
   if (!list.some((r) => r.id === evalView.id)) evalView.id = (list.find((r) => !r.legacy) ?? list[0]).id;
   const params = new URLSearchParams({ id: evalView.id, limit: EVAL_PAGE, offset: evalView.offset, failed_only: evalView.failedOnly });
@@ -1812,7 +1979,7 @@ async function renderEval() {
     <div class="card"><h2>${esc(nm(SUITE_NAMES, run.suite))} · <span class="mono">${esc(run.id)}</span>
       <span class="muted">${esc(time(run.started_at))} · 커밋 ${esc(run.commit ?? "-")}${run.git?.dirty ? " (고친 파일 있음)" : ""}${run.baseline ? " · 기준점" : ""}</span></h2>
       ${vizLegend(run.systems)}
-      <div class="muted small">시스템 ${esc(run.systems.map(sysName).join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
+      <div class="muted small">시스템 ${esc(run.systems.map(sysName).join(", ") || "-")}${run.config?.judge_mode ? ` · 심판 ${esc(run.config.judge_mode)}` : ""}${run.config?.path ? ` · 경로 ${esc(run.config.path)}` : ""}${run.config?.check_kinds ? ` · 검사 종류 ${Object.entries(run.config.check_kinds).map(([k, v]) => `${esc(sysName(k))}: ${esc(v)}`).join(" / ")}` : ""}${run.config?.gold?.file ? ` · 정답지 ${esc(run.config.gold.file)} ${esc(String(run.config.gold.sha256 ?? "").slice(0, 12))}` : ""}</div>
     </div>
     ${trend ? `<div class="card" id="eval-trend-card"><h2>추세 · <span title="${esc(trend.metric)}">${esc(run.metrics.find((m) => m.key === trend.metric)?.name ? metricName(run.metrics.find((m) => m.key === trend.metric).name) : trend.metric)}</span> <span class="muted">${esc(nm(SUITE_NAMES, run.suite))} 실행별</span>
       <button class="btn-outline small" data-eval-metric="">닫기</button></h2>${evalTrendSvg(trend)}${vizDetails(table(["실행", "커밋", "시스템", "값"], trend.points.map((p) => [esc(p.id), esc(p.commit ?? "-"), esc(sysName(p.system ?? "-")), evalValue(p)])))}</div>` : ""}
@@ -1853,6 +2020,21 @@ content.addEventListener("click", async (e) => {
   e.stopPropagation();
   try {
     await onEvalClick(button);
+  } catch (error) {
+    toast(error.message);
+  }
+}, true);
+// 맨 위 카드의 실행 드롭다운
+content.addEventListener("change", async (e) => {
+  const select = e.target.closest("select[data-eval-scpick]");
+  if (!select) return;
+  e.stopPropagation();
+  if (select.value) evalView.picks[select.dataset.evalScpick] = select.value;
+  else delete evalView.picks[select.dataset.evalScpick];
+  const keep = window.scrollY;
+  try {
+    content.innerHTML = await renderEval();
+    window.scrollTo(0, keep);
   } catch (error) {
     toast(error.message);
   }

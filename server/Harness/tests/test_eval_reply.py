@@ -8,6 +8,7 @@ import pytest
 
 from app.core.config import settings
 from Harness.evals import cli, gold, judge, reply_checks, reply_eval, report
+from Harness.evals.guards_eval import load_store_facts
 from Harness.tests.fake_gold import write_gold
 from Harness.tests.test_eval_guards import RouterClova
 
@@ -74,7 +75,7 @@ def test_review_uses_gold_labels_and_jobs_follow_briefing(gold_rows):
     assert mixed["sentiment"] == "negative" and mixed["topic"] == "portion"  # 혼합은 아쉬운 리뷰
     pos = reply_eval.make_review(gold_rows[0], now, "gold")
     view = reply_eval.make_view(fixture, pos, now)
-    assert view.reviews() == [pos] and view.store["facts"] == [] and view.store["id"] == "s005"
+    assert view.reviews() == [pos] and view.store["facts"] == load_store_facts() and view.store["id"] == "s005"
     job = reply_eval.make_job(view, pos, now)
     assert job["kind"] == "SCHEDULED" and job["occasion"]["kind"] and isinstance(job["occasion"]["post_at"], str)
     assert reply_eval.make_job(view, neg, now) == {"review": neg, "kind": "AUTO", "occasion": None}
@@ -330,7 +331,7 @@ def test_eval_menus_replace_demo_menus(gold_rows):
     from Harness.evals import batch_eval
 
     body = _json.loads(reply_eval.EVAL_MENUS.read_text(encoding="utf-8"))
-    assert body["verified"] is False and body["status"] == "확인 전"
+    assert body["verified"] is True and body["verified_by"] == "태성" and body["status"] == "확인 완료"
     names = {m["name"] for m in reply_eval.eval_menus()}
     assert {"초계국수", "감자전", "초계비빔국수"} <= names  # 다른 표기(aliases)도 들어간다
     fixture = reply_eval.load_fixture()

@@ -76,7 +76,9 @@ def test_rule_system_never_calls_clova(cases, monkeypatch):
     result = intent_eval.evaluate(cases, ["rule"], runs=3, post=post)
     assert post.requests == [] and len(result["cases"]) == len(cases)  # rule 은 회차와 무관하게 한 번
     ids = {m["id"]: m for m in result["metrics"]}
-    assert set(ids) == {"intent_accuracy", "wrong_answer_rate", "missed_command_rate", "rule_coverage"}
+    assert set(ids) == {"intent_accuracy", "wrong_answer_rate", "missed_command_rate", "rule_coverage",
+                        "false_activation_rate", "window_false_answer_rate", "missed_command_rate_addressed",
+                        "wake_accept_rate", "wake_false_accept_rate"}
     assert ids["rule_coverage"]["denominator"] == len(cases)
 
 
@@ -134,3 +136,60 @@ def test_cli_intent_rule_only_runs_without_key(tmp_path, monkeypatch):
         cli.main(["intent", "--systems", "A"])
     with pytest.raises(SystemExit):
         cli.main(["intent"])  # rule+judge 는 키가 필요하다
+
+
+# ── 오발성 세분·호출어 세트 ──
+
+
+def test_wake_and_addressed_sets_are_unverified_and_balanced(cases):
+    body, _ = intent_eval.load_cases()
+    assert body["verified_by"] is None  # 사람 확인 전
+    wake = [c for c in cases if c["source"] == "wake"]
+    assert sum(c["expected_intent"] != "not_for_donna" for c in wake) == 16
+    assert sum(c["expected_intent"] == "not_for_donna" for c in wake) == 10
+    assert all(not c["addressed"] for c in wake)  # 앱이 호출어를 떼지 못하고 글자 그대로 보낸 말
+    addressed = [c for c in cases if c["addressed"]]
+    assert len(addressed) >= 10 and all(c["expected_intent"] != "not_for_donna" for c in addressed)
+    assert all(c["expected_intent"] != "not_for_donna" for c in cases if c["source"] == "addressed")
+
+
+def _row(expected, intent, *, addressed=False, source="kitchen", last_type="answer", step=1):
+    return {"expected_intent": expected, "intent": intent, "addressed": addressed, "source": source,
+            "context": {"briefing_step": step, "donna_was_speaking": False, "last_type": last_type}}
+
+
+def test_misfire_metrics_split_kitchen_window_addressed_and_wake():
+    rows = [
+        _row("not_for_donna", "briefing.next"),  # 8초 창 안 주방 대화에 반응
+        _row("not_for_donna", "unknown"),  # 못 알아들음은 반응이 아니다
+        _row("not_for_donna", "question", last_type=None, step=None),  # 창 밖 (직전 상황 없음)
+        _row("not_for_donna", "not_for_donna"),
+        _row("question", "not_for_donna", addressed=True, source="addressed"),  # 부른 말 무시
+        _row("unknown", "unknown", addressed=True, source="addressed"),
+        _row("briefing.next", "briefing.next", source="wake"),
+        _row("stop", "not_for_donna", source="wake"),  # 호출어 변형을 놓침
+        _row("not_for_donna", "briefing.start", source="wake"),  # 비슷한 말에 반응
+        _row("not_for_donna", "not_for_donna", source="wake"),
+    ]
+    m = {x["id"]: (x["numerator"], x["denominator"]) for x in intent_eval.misfire_metrics("rule", rows)}
+    assert m["false_activation_rate"] == (3, 6)
+    assert m["window_false_answer_rate"] == (2, 5)
+    assert m["missed_command_rate_addressed"] == (1, 2)
+    assert m["wake_accept_rate"] == (1, 2)
+    assert m["wake_false_accept_rate"] == (1, 2)
+
+
+def test_old_rows_without_context_use_last_type():
+    old = {"expected_intent": "not_for_donna", "intent": "stop", "addressed": False, "source": "kitchen", "last_type": None}
+    assert not intent_eval.in_window(old) and intent_eval.in_window({**old, "last_type": "answer"})
+
+
+def test_dry_run_counts_judge_calls_without_key(tmp_path, monkeypatch, cases):
+    monkeypatch.setattr(settings, "clova_studio_api_key", "")
+    monkeypatch.setattr(report, "OUT_ROOT", tmp_path / "harness_eval")
+    cli.main(["intent", "--dry-run", "--runs", "2"])
+    assert not (tmp_path / "harness_eval").exists()
+    needed = len(intent_eval.judge_needed(cases))
+    assert 0 < needed < len(cases)
+    assert intent_eval.planned_calls(cases, ["rule", "rule+judge"], 2) == {
+        "rule": {"typical": 0, "max": 0}, "rule+judge": {"typical": needed * 2, "max": needed * 4}}

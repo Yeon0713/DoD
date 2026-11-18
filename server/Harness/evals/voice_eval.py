@@ -9,7 +9,7 @@
 
 방법
   FastAPI TestClient 로 앱과 같은 요청을 보낸다 (네트워크·TTS 는 빠진 서버 처리 시간). 회차마다 저장소를 비우고 13장 기준 데이터
-  (s001, 11/17 09:00)를 넣고 브리핑을 준비한 뒤, TURNS 의 말 20개를 차례로 보낸다.
+  (s001, 11/17 09:00)를 넣고 브리핑을 준비한 뒤, TURNS 의 말 24개를 차례로 보낸다.
   브리핑 준비는 CLOVA 를 끄고 한다 (답글 에이전트를 부르지 않는다. 브리핑 단계 응답은 미리 만든 것을 꺼내기만 하므로 준비 방식과
   /v1/turn 시간은 상관없다). 저장소·기록은 결과 폴더(voice.db, clova_usage.db, harness_trace.db)에 둔다. TTS 는 끈다.
 
@@ -22,7 +22,9 @@
   turn_p50:<kind>, turn_p95:<kind>, turn_max:<kind>  잰 초 (p95 는 가장 가까운 순위 방식)
   turn_over_timeout_rate     5초를 넘기거나 오류로 끝난 말 / 모든 말
   turn_judge_within_budget   CLOVA 를 부른 말 중 3초 안 / CLOVA 를 부른 말
+  turn_judge_timeout_rate    CLOVA 를 부른 말 중 호출 제한 시간(엄격한 예산)에 걸려 어림짐작으로 넘어간 / CLOVA 를 부른 말
   turn_clova_calls           CLOVA 호출 수 합
+실패 응답(4xx·5xx, 429 제외)은 결과 폴더의 http_errors.jsonl 에 어느 말(turn:번호, 종류)인지와 함께 남긴다 (말 원문은 없음).
 --dry-run 이면 판정 에이전트를 부를 것 같은 말 수(규칙만 돌려 셈, 직전 상황은 '브리핑 중'으로 둔 어림)만 보여 준다.
 """
 
@@ -67,6 +69,10 @@ TURNS: tuple[tuple[str | None, str, bool], ...] = (
     ("요즘 국물 맛 괜찮다는 말 많아?", "question", False),
     ("이번 주 매출 어때", "question", False),
     ("뭐부터 하면 좋을까", "question", True),
+    ("오늘 바쁠까", "question", True),  # 예측·의견 질문 (규칙이 아직 못 가르는 유형)
+    ("이번 주말에 비 올까", "question", False),
+    ("뭐부터 할까", "question", True),
+    ("이 날씨에 손님 올까?", "question", False),
     ("그만", "briefing", False),
 )
 
@@ -121,8 +127,18 @@ def prepare(client) -> None:
         settings.clova_studio_api_key = saved_key
 
 
-def one_run(system: str, run: int, post) -> list[dict]:
-    """대본 한 번. 말마다 {run, step, text, kind, seconds, calls, status, type, intent, ...} 한 줄."""
+def progress_line(row: dict, runs: int) -> str:
+    """말 하나가 끝날 때 출력하는 한 줄. 예: [rule+judge 회차 2/3] 12/20 ✗ question "말" 5.30초 (목표 3초) 호출 2 not_understood"""
+    late = failed(row) or row["seconds"] > row["target"]
+    calls = f" 호출 {row['calls']}" if row["calls"] else ""
+    error = f" 오류 {row['error']}" if row["error"] else ""
+    return (f"[{row['system']} 회차 {row['run']}/{runs}] {row['step']}/{len(TURNS)} {'✗' if late else '✓'} {row['kind']} "
+            f"\"{row['text']}\" {row['seconds']:.2f}초 (목표 {row['target']:g}초){calls} {row['type'] or '-'}{error}")
+
+
+def one_run(system: str, run: int, post, progress=None, runs: int = 1) -> list[dict]:
+    """대본 한 번. 말마다 {run, step, text, kind, seconds, calls, status, type, intent, ...} 한 줄.
+    post 가 report.ErrorLogPost 면 말마다 context 를 바꿔 실패 응답 줄에 어느 말인지 붙인다."""
     from fastapi.testclient import TestClient
 
     from voice import clock, context
@@ -138,6 +154,9 @@ def one_run(system: str, run: int, post) -> list[dict]:
     rows = []
     try:
         for step, (text, kind, addressed) in enumerate(TURNS, 1):
+            timeouts_before = post.timeouts if isinstance(post, report.ErrorLogPost) else 0
+            if isinstance(post, report.ErrorLogPost):
+                post.context = {"case_id": f"turn:{step}", "system": system, "run": run, "kind": kind}
             counting = report.CountingPost(post)
             context.post = counting
             started = timer()
@@ -155,7 +174,10 @@ def one_run(system: str, run: int, post) -> list[dict]:
                          "text": text if text is not None else "(auto_next)", "kind": kind, "addressed": addressed,
                          "seconds": seconds, "target": TARGETS[kind], "calls": counting.calls, "status": status,
                          "error": error, "type": body.get("type"), "intent": body.get("intent"),
-                         "output": body.get("headline")})
+                         "output": body.get("headline"),
+                         "judge_timeout": isinstance(post, report.ErrorLogPost) and post.timeouts > timeouts_before})
+            if progress:
+                progress(progress_line(rows[-1], runs))
     finally:
         settings.clova_studio_api_key = saved_key
     return rows
@@ -186,12 +208,15 @@ def score(name: str, rows: list[dict]) -> list[dict]:
                               question=QUESTION, system=name,
                               numerator=sum(1 for row in judged if row["error"] is None and row["seconds"] <= JUDGE_BUDGET_SECONDS),
                               denominator=len(judged)))
+    out.append(metrics.metric("turn_judge_timeout_rate", "CLOVA 를 부른 말 중 호출 제한 시간을 넘겨 어림짐작으로 넘어간 비율",
+                              question=QUESTION, system=name, numerator=sum(bool(row.get("judge_timeout")) for row in judged),
+                              denominator=len(judged), higher_is_better=False))
     out.append(metrics.value_metric("turn_clova_calls", "CLOVA 호출 수 합", question=QUESTION, system=name,
                                     value=sum(row["calls"] for row in rows), unit="calls"))
     return out
 
 
-def evaluate(names: list[str], *, runs: int = 1, out=None, post=None) -> dict:
+def evaluate(names: list[str], *, runs: int = 1, out=None, post=None, progress=None, error_log=None) -> dict:
     """out 이 있으면 저장소·기록을 그 폴더에 둔다 (테스트는 tmp_path). post 는 판정 에이전트 쪽 CLOVA (테스트에서 가짜)."""
     from voice import clock, config, context, tts
 
@@ -203,10 +228,11 @@ def evaluate(names: list[str], *, runs: int = 1, out=None, post=None) -> dict:
     os.environ.update(SWITCHES)
     restore_cache = report.disable_cache()
     rows: list[dict] = []
+    logged = report.ErrorLogPost(post or httpx.post, error_log)
     try:
         for name in names:
             for run in range(1, runs + 1):
-                rows += one_run(name, run, post or httpx.post)
+                rows += one_run(name, run, logged, progress, runs)
     finally:
         restore_cache()
         clock.set_now(None)
@@ -217,7 +243,7 @@ def evaluate(names: list[str], *, runs: int = 1, out=None, post=None) -> dict:
             else:
                 os.environ[key] = value
     out_metrics = [metric for name in names for metric in score(name, [row for row in rows if row["system"] == name])]
-    return {"metrics": out_metrics, "cases": rows, "calls": sum(row["calls"] for row in rows)}
+    return {"metrics": out_metrics, "cases": rows, "calls": sum(row["calls"] for row in rows), "http_errors": logged.count}
 
 
 def run(args: argparse.Namespace):
@@ -237,9 +263,11 @@ def run(args: argparse.Namespace):
               "switches": dict(SWITCHES) if "rule+judge" in names else {}, "planned_calls": plan}
     eval_run = report.start("voice", config=config, systems=names)
     print(f"결과 폴더: {eval_run.out}", flush=True)
-    result = evaluate(names, runs=args.runs, out=eval_run.out)
+    result = evaluate(names, runs=args.runs, out=eval_run.out, progress=lambda line: print(line, flush=True),
+                      error_log=eval_run.out / "http_errors.jsonl")
     eval_run.metrics, eval_run.cases = result["metrics"], result["cases"]
     eval_run.config["agent_calls"] = result["calls"]
+    eval_run.config["http_errors"] = result["http_errors"]
     path = eval_run.finish()
     for metric in result["metrics"]:
         if metric["id"].startswith(("turn_within_target", "turn_over_timeout")):

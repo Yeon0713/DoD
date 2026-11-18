@@ -1,7 +1,7 @@
 {
  "version": "intents_v1",
  "verified_by": null,
- "note": "자동 생성, 사람 확인 필요. 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다. 2026-11-18: closed_loop 16줄(아쉬운 리뷰 처리를 물은 뒤 ask_action — 승인 4, 고치기 4, 취소 3, 주방 말 5)을 더했다. 2026-11-18: 호출어 세트 wake 26줄(앱이 호출어를 떼지 못하고 글자 그대로 보낸 말. 부른 것으로 봐야 할 변형 16, 부르지 않은 비슷한 말 10)을 더했다. 사람 확인 전이라 verified_by 는 비워 둔다. 같은 날: 부른 말 addressed 14줄(앱이 \"도나야\"를 떼고 addressed true 로 보낸 말. 손님·테이블 같은 가게 말이 섞여도 무시하면 안 된다)을 더했다.",
+ "note": "자동 생성, 사람 확인 필요. 문서(v0.2.0-voice-agent-handoff.md 7장·13장 시나리오 C)를 옮기고 말 바꾸기·오타·주방 대화·모르는 말을 더했다. 사람이 훑어 확인하면 verified_by 에 이름과 날짜를 적는다. 2026-11-18: closed_loop 16줄(아쉬운 리뷰 처리를 물은 뒤 ask_action — 승인 4, 고치기 4, 취소 3, 주방 말 5)을 더했다. 2026-11-18: 호출어 세트 wake 26줄(앱이 호출어를 떼지 못하고 글자 그대로 보낸 말. 부른 것으로 봐야 할 변형 16, 부르지 않은 비슷한 말 10)을 더했다. 사람 확인 전이라 verified_by 는 비워 둔다. 같은 날: 부른 말 addressed 14줄(앱이 \"도나야\"를 떼고 addressed true 로 보낸 말. 손님·테이블 같은 가게 말이 섞여도 무시하면 안 된다)을 더했다. 같은 날: 예측·의견·\"뭐부터 할까\" 질문 forecast 16줄(부른 말 8, 브리핑 중 7, 정답 question)을 더했다. 사람 확인 전. 같은 날: 질문 꼴 주방 대화 kitchen_question 7줄(손님·예약·리뷰·날씨·매출이 들어간 직원끼리 말, 정답 not_for_donna)을 더했다.",
  "cases": [
   {
    "id": "scenario_c:C1",
@@ -2931,6 +2931,282 @@
    },
    "expected_intent": "briefing.start",
    "source": "addressed"
+  },
+  {
+   "id": "forecast:1",
+   "text": "오늘 바쁠까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:2",
+   "text": "이번 주말에 비 올까",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:3",
+   "text": "점심에 단체 손님 올까",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:4",
+   "text": "오늘 국수 많이 팔릴까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:5",
+   "text": "뭐부터 할까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:6",
+   "text": "오늘은 뭐부터 하면 좋을까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:7",
+   "text": "리뷰 답글 지금 다는 게 나을까",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:8",
+   "text": "저녁에 예약 더 들어올까",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:9",
+   "text": "내일 매출 오늘보다 나을까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:10",
+   "text": "이 날씨에 손님 올까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:11",
+   "text": "오늘 재료 더 준비해야 할까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:12",
+   "text": "다음 주에 축제 있으면 바빠질까",
+   "addressed": true,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:13",
+   "text": "오늘 장사 잘될까",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:14",
+   "text": "도나 생각엔 오늘 몇 시가 제일 바쁠 것 같아?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:15",
+   "text": "비 오면 배달 많아질까",
+   "addressed": true,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "forecast:16",
+   "text": "어떤 리뷰부터 답하는 게 좋을까",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "question",
+   "source": "forecast"
+  },
+  {
+   "id": "kitchen_question:1",
+   "text": "손님 자리 안내할까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:2",
+   "text": "예약 손님 오셨니?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:3",
+   "text": "리뷰 이벤트 서비스 드릴까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:4",
+   "text": "날씨 추운데 문 닫을까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:5",
+   "text": "매출 장부 어디 뒀니?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:6",
+   "text": "포장 손님 몇 시에 오신대?",
+   "addressed": false,
+   "context": {
+    "briefing_step": null,
+    "donna_was_speaking": false,
+    "last_type": null
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
+  },
+  {
+   "id": "kitchen_question:7",
+   "text": "예약석 테이블 닦을까?",
+   "addressed": false,
+   "context": {
+    "briefing_step": 1,
+    "donna_was_speaking": false,
+    "last_type": "answer"
+   },
+   "expected_intent": "not_for_donna",
+   "source": "kitchen_question"
   }
  ]
 }

@@ -86,3 +86,18 @@ def test_briefing_turns_never_call_clova(donna: Donna):
     for text in ("오늘 일정 브리핑해 줘", "다음", "다시 말해 줘", "화면에 보여 줘", "돌아가기", "리뷰 어때", "다음", "응 그렇게 해", "다음", "다음"):
         donna.turn(text)
     assert context.post.calls == 0
+
+
+def test_read_negative_review_moves_and_reads_first(donna: Donna):
+    at_step_one(donna)
+    donna.turn("아쉬운 리뷰 어때")  # 허락 질문
+    donna.turn("아니 내가 볼게")  # 거절하면 3단계에 아쉬운 리뷰와 답글 초안이 생긴다
+    response = donna.turn("아쉬운 리뷰 읽어줘")
+    assert response["intent"] == "detail.read" and response["briefing"]["step_key"] == "negative"
+    assert response["say"][0]["text"] == "손님 리뷰예요."
+
+
+def test_read_negative_review_without_draft_only_moves(donna: Donna):
+    at_step_one(donna)  # 허락을 아직 묻지 않아 3단계가 허락 질문이다
+    response = donna.turn("아쉬운 리뷰 읽어줘")
+    assert response["briefing"]["step_key"] == "negative" and response["permission"] == {"key": "negative_review_auto_reply"}

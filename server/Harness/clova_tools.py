@@ -147,6 +147,7 @@ def chat_with_tools(
     model: str | None = None,
     thinking_effort: str | None = None,
     log_prefix: str = "agent:",
+    retry: bool = True,
 ) -> ToolReply | None:
     """대화와 도구 목록으로 한 번 묻는다. 키가 없거나, 연결이 실패하거나, 200 이 아니면(429 는 한 번 기다렸다 다시) None.
 
@@ -154,6 +155,7 @@ def chat_with_tools(
     실제 CLOVA 에서 같은 입력은 매번 같은 곳에서 실패했고(temperature 0), 그대로 다시 묻거나 temperature 를 올려도 소용없었다.
     잘 들은 것은 (1) "반드시 ○○ 도구로 내" 한 줄을 덧붙이기, (2) 결과 모양이 다른 도구(alt_tools, 이름은 같게)로 묻기였다.
     예전에는 auto 로 다시 물었는데, 그러면 모델이 글로 답해 쓸 수 없었다.
+    retry=False 면 429·강제 제출 400 에 다시 묻지 않고 None (시간 예산이 빠듯한 음성 뜻 판정, Budget.strict).
     """
     if not is_enabled():
         return None
@@ -187,11 +189,11 @@ def chat_with_tools(
         if response is None:
             _log(feature, model, store_id, started, "connection_error", None, None, request_text)
             return None
-        if response.status_code == 429 and attempt < limiter.RATE_LIMIT_RETRIES:
+        if response.status_code == 429 and retry and attempt < limiter.RATE_LIMIT_RETRIES:
             _log(feature, model, store_id, started, "http_error", 429, None, request_text)
             limiter.wait_after_429(response.headers)  # 헤더의 다시 부를 때를 따른다 (없으면 RATE_LIMIT_WAIT_SECONDS)
             continue
-        if response.status_code == 400 and body.get("toolChoice", "auto") != "auto":
+        if response.status_code == 400 and retry and body.get("toolChoice", "auto") != "auto":
             name = body["toolChoice"]["function"]["name"]
             nudge = {"role": "user", "content": f"답은 반드시 {name} 도구로 내."}
             retries = [{**body, "messages": [*messages, nudge]}]

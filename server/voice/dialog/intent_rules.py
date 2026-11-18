@@ -52,6 +52,10 @@ HOME_RE = re.compile(r"^홈(으로|화면)?(가|가줘|으로가|보여줘)?$")
 QUESTION_TAIL_RE = re.compile(r"(있어|있나|있니|와|오나|와요|어때|해|하나|몇팀|몇명|언제)$")
 # 예측·의견을 묻는 질문 꼴 ("오늘 바쁠까", "뭐부터 할까", "손님 많니"). "도나야"로 부른 말일 때만 질문으로 본다
 QUESTION_FORM_RE = re.compile(r"(까|니|야)$")
+# 실행 동사가 든 질문 ("인스타 올릴 수 있어?", "인스타에 올려도 돼?")은 묻는 말로 확정하지 않는다 (판정 에이전트)
+ACT_ASK_RE = re.compile(r"인스타|스토리|올리|올려|올릴")
+# 앱이 호출어를 떼지 못하고 글자 그대로 보낸 말 ("도나야 오늘 손님 많을까")
+WAKE_RE = re.compile(r"^(도나|또나|돈아|토나)야")
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
 )
@@ -185,7 +189,10 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
 
     if STOP_RE.search(n) or HOME_RE.search(n):
         return found("stop")
+    called = addressed or bool(WAKE_RE.match(n))  # 앱이 떼지 못한 "도나야"도 부른 말이다
     if not addressed and NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
+        if called and asks_donna(n, text, called):
+            return found("question")  # "도나야 오늘 손님 많을까"는 손님에게 한 말이 아니다
         return found("not_for_donna")
     if last_type == "ask_action":
         action = match_action(n, said, addressed)
@@ -229,10 +236,12 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("briefing.jump", target)
     if START_RE.search(n):
         return found("briefing.start")
-    if asks_donna(n, text, addressed):
+    if asks_donna(n, text, called):
         return found("question")  # 예측·의견 질문은 탭을 열지 않는다 (아래 NAVIGATE 보다 먼저)
     if QUESTION_TOPIC_RE.search(n) and (QUESTION_TAIL_RE.search(n) or text.strip().endswith("?")):
         return found("question")  # "이번 주 비 와?"는 묻는 말이다. 탭을 열지 않는다
+    if not called and n.endswith("까"):
+        return None  # 부르지 않은 "~(ㄹ)까" 질문은 탭을 열지 않고 판정 에이전트에 맡긴다 ("오늘 장사 잘될까")
     for pattern, tab in NAVIGATE:
         if pattern.search(n):
             return found(f"navigate.{tab}")
@@ -242,7 +251,9 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
 def asks_donna(n: str, text: str, addressed: bool) -> bool:
     """"도나야"로 불러서 한 질문 꼴. 부르지 않은 질문은 직원끼리 한 말일 수 있어 판정 에이전트에 맡긴다
     ("리뷰 이벤트 서비스 드릴까?", "날씨 추운데 문 닫을까?")."""
-    return addressed and (bool(QUESTION_FORM_RE.search(n)) or text.strip().endswith("?"))
+    if not addressed or ACT_ASK_RE.search(n):
+        return False
+    return bool(QUESTION_FORM_RE.search(n)) or text.strip().endswith("?")
 
 
 def edits_in(n: str) -> dict:

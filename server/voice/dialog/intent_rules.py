@@ -33,7 +33,9 @@ BACK_RE = re.compile(r"돌아가|뒤로|닫아|^됐어")
 READ_RE = re.compile(r"읽어")
 RESTART_RE = re.compile(r"처음부터")
 REPEAT_RE = re.compile(r"다시말해|뭐라고|못들었|다시한번|한번더|다시들려|다시얘기|잘못들었")
-SHOW_RE = re.compile(r"화면에|자세히")
+# 아쉬운 리뷰의 내용을 묻는 말 ("아쉬운 리뷰 읽어 줘", "아쉬운 리뷰 뭐라고 썼어?"). 아쉬운 리뷰로 옮겨 첫 리뷰를 읽는다
+CONTENT_RE = re.compile(r"내용|읽어|뭐라고")
+SHOW_RE = re.compile(r"화면에?(보여|띄워|좀|봐)|화면에|자세히")  # "화면 보여 줘"처럼 조사가 빠져도
 NEXT_RE = re.compile(r"^(응|어|오케이|그래)?(다음|넘어가|계속|그다음|다음거|다음꺼|다음으로|넘겨)(줘|요|해|해줘|가자|하자)?$")
 START_RE = re.compile(r"브리핑|오늘뭐있|오늘뭐해|오늘일정")
 JUMP_TAIL_RE = re.compile(r"(어때|어떄|보여줘|보여|알려줘|알려|은|는|좀|얘기해줘|말해줘)$")
@@ -52,6 +54,12 @@ NAVIGATE = [
 ]
 HOME_RE = re.compile(r"^홈(으로|화면)?(가|가줘|으로가|보여줘)?$")
 QUESTION_TAIL_RE = re.compile(r"(있어|있나|있니|와|오나|와요|어때|해|하나|몇팀|몇명|언제)$")
+# 예측·의견을 묻는 질문 꼴 ("오늘 바쁠까", "뭐부터 할까", "손님 많니"). "도나야"로 부른 말일 때만 질문으로 본다
+QUESTION_FORM_RE = re.compile(r"(까|니|야)$")
+# 실행 동사가 든 질문 ("인스타 올릴 수 있어?", "인스타에 올려도 돼?")은 묻는 말로 확정하지 않는다 (판정 에이전트)
+ACT_ASK_RE = re.compile(r"인스타|스토리|올리|올려|올릴")
+# 앱이 호출어를 떼지 못하고 글자 그대로 보낸 말 ("도나야 오늘 손님 많을까")
+WAKE_RE = re.compile(r"^(도나|또나|돈아|토나)야")
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
 )
@@ -108,11 +116,73 @@ class Intent:
     slots: dict | None = None  # staff.* 를 LLM 이 가른 때: {"staff_name", "task_title", "task_repeat", "task_kind"}
 
 
+# 받아쓰기에서 자모 한두 개가 바뀐 명령 낱말을 되돌린다 ("따음" → "다음", "릐뷰" → "리뷰", "첨부터" → "처음부터").
+# 낱말과 길이가 같거나 한 글자 다른 구간 중 자모 거리가 가장 가까운 곳 하나만 바꾼다 (낱말이 이미 있으면 그대로).
+# 자모 9개 이상인 낱말은 거리 2까지, 나머지는 1까지. 흔한 말이 명령으로 바뀌지 않게 NEAR_PROTECT 는 바꾸지 않는다.
+NEAR_WORDS = ("처음부터", "브리핑", "넘어가", "자세히", "뭐라고", "돌아가", "다음", "넘겨", "계속", "다시", "리뷰", "읽어", "뒤로",
+              "그만", "멈춰", "매출", "설정", "얘기", "들었")
+NEAR_PROTECT = {"하면", "위로", "다리", "그냥", "계산", "이번", "다른", "다섯", "그럼", "그래", "매일", "예약"}
+_CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+_JUNG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅗㅏ", "ㅗㅐ", "ㅗㅣ", "ㅛ", "ㅜ", "ㅜㅓ", "ㅜㅔ", "ㅜㅣ", "ㅠ", "ㅡ",
+         "ㅡㅣ", "ㅣ"]
+_JONG = ["", "ㄱ", "ㄲ", "ㄱㅅ", "ㄴ", "ㄴㅈ", "ㄴㅎ", "ㄷ", "ㄹ", "ㄹㄱ", "ㄹㅁ", "ㄹㅂ", "ㄹㅅ", "ㄹㅌ", "ㄹㅍ", "ㄹㅎ", "ㅁ", "ㅂ",
+         "ㅂㅅ", "ㅅ", "ㅆ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"]
+
+
+def jamo(text: str) -> str:
+    """한글을 자모로 푼다. 겹받침·겹모음도 낱자로 ("읽" → ㅇㅣㄹㄱ). 한글이 아닌 글자는 그대로."""
+    out = []
+    for ch in text:
+        code = ord(ch) - 0xAC00
+        if 0 <= code < 11172:
+            out.append(_CHO[code // 588] + _JUNG[(code % 588) // 28] + _JONG[code % 28])
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """편집 거리. limit 를 넘으면 limit + 1."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    row = list(range(len(b) + 1))
+    for i, x in enumerate(a, 1):
+        prev, row[0] = row[0], i
+        best = row[0]
+        for j, y in enumerate(b, 1):
+            prev, row[j] = row[j], min(row[j] + 1, row[j - 1] + 1, prev + (x != y))
+            best = min(best, row[j])
+        if best > limit:
+            return limit + 1
+    return row[-1]
+
+
+def near_words(squashed: str) -> str:
+    for word in NEAR_WORDS:
+        if word in squashed:
+            continue
+        target = jamo(word)
+        limit = 2 if len(target) >= 9 else 1
+        best = None
+        for size in (len(word) - 1, len(word), len(word) + 1):
+            for start in range(0, len(squashed) - size + 1):
+                piece = squashed[start:start + size]
+                if size < 2 or piece in NEAR_PROTECT or not all("가" <= ch <= "힣" for ch in piece):
+                    continue
+                gap = _distance(jamo(piece), target, limit)
+                if gap <= limit and (best is None or gap < best[0]):
+                    best = (gap, start, size)
+        if best:
+            _, start, size = best
+            squashed = squashed[:start] + word + squashed[start + size:]
+    return squashed
+
+
 def normalize(text: str) -> str:
     squashed = PUNCT_RE.sub("", text)
     for wrong, right in TYPOS.items():
         squashed = squashed.replace(wrong, right)
-    return squashed
+    return near_words(squashed)
 
 
 def tidy(text: str) -> str:
@@ -144,7 +214,10 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
 
     if STOP_RE.search(n) or HOME_RE.search(n):
         return found("stop")
+    called = addressed or bool(WAKE_RE.match(n))  # 앱이 떼지 못한 "도나야"도 부른 말이다
     if not addressed and NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
+        if called and asks_donna(n, text, called):
+            return found("question")  # "도나야 오늘 손님 많을까"는 손님에게 한 말이 아니다
         return found("not_for_donna")
     if last_type == "ask_action":
         action = match_action(n, said, addressed)
@@ -166,6 +239,12 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
             return found("permission.no")
         if YES_RE.search(n) and "아니" not in n:
             return found("permission.yes")
+    target = jump_target(n)
+    if target == "negative" and CONTENT_RE.search(n):
+        return found("detail.read", "negative")
+    on_screen = last_type == "show_detail" and target == "reviews"  # 띄운 리뷰를 "손님 리뷰 읽어 줘"라고 부를 때
+    if target and not on_screen and (REPEAT_RE.search(n) or READ_RE.search(n)):
+        return None  # 대상(리뷰 등)을 말했으면 다시 말하기·지금 화면 읽기로 정하지 않는다 ("리뷰 뭐라고 했어?")
     if last_type == "show_detail":
         if READ_RE.search(n):
             return found("detail.read")
@@ -195,13 +274,16 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("detail.back")
     if NEXT_RE.search(n):
         return found("briefing.next")
-    target = jump_target(n)
     if target and (JUMP_TAIL_RE.search(n) or n in ("리뷰", "답글", "좋은리뷰", "아쉬운리뷰", "예약답글")):
         return found("briefing.jump", target)
     if START_RE.search(n):
         return found("briefing.start")
+    if asks_donna(n, text, called):
+        return found("question")  # 예측·의견 질문은 탭을 열지 않는다 (아래 NAVIGATE 보다 먼저)
     if QUESTION_TOPIC_RE.search(n) and (QUESTION_TAIL_RE.search(n) or text.strip().endswith("?")):
         return found("question")  # "이번 주 비 와?"는 묻는 말이다. 탭을 열지 않는다
+    if not called and n.endswith("까"):
+        return None  # 부르지 않은 "~(ㄹ)까" 질문은 탭을 열지 않고 판정 에이전트에 맡긴다 ("오늘 장사 잘될까")
     for pattern, tab in NAVIGATE:
         if pattern.search(n):
             return found(f"navigate.{tab}")
@@ -216,6 +298,12 @@ def match_staff(n: str) -> str | None:
         if pattern.search(n):
             return name
     return None
+def asks_donna(n: str, text: str, addressed: bool) -> bool:
+    """"도나야"로 불러서 한 질문 꼴. 부르지 않은 질문은 직원끼리 한 말일 수 있어 판정 에이전트에 맡긴다
+    ("리뷰 이벤트 서비스 드릴까?", "날씨 추운데 문 닫을까?")."""
+    if not addressed or ACT_ASK_RE.search(n):
+        return False
+    return bool(QUESTION_FORM_RE.search(n)) or text.strip().endswith("?")
 
 
 def edits_in(n: str) -> dict:

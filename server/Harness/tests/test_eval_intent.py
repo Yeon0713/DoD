@@ -193,3 +193,39 @@ def test_dry_run_counts_judge_calls_without_key(tmp_path, monkeypatch, cases):
     assert 0 < needed < len(cases)
     assert intent_eval.planned_calls(cases, ["rule", "rule+judge"], 2) == {
         "rule": {"typical": 0, "max": 0}, "rule+judge": {"typical": needed * 2, "max": needed * 4}}
+
+
+def test_progress_prints_one_line_per_case_with_calls(monkeypatch):
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    ctx = {"briefing_step": 1, "donna_was_speaking": False, "last_type": "answer"}
+    data = [{"id": "a", "text": "다음", "addressed": False, "context": ctx, "expected_intent": "briefing.next"},
+            {"id": "b", "text": "예약 몇 팀이야", "addressed": False, "context": ctx, "expected_intent": "question"}]
+    lines = []
+    result = intent_eval.evaluate(data, ["rule+judge"], runs=2, post=IntentClova({"예약 몇 팀이야": "not_for_donna"}),
+                                  progress=lines.append, prefix="[강도 0] ")
+    assert len(lines) == 4 and all(line.startswith("[강도 0] [rule+judge 회차 ") for line in lines)
+    assert "1/2 ✓ a \"다음\" → briefing.next rule" in lines[0]
+    assert "2/2 ✗ b" in lines[1] and "(정답 question)" in lines[1] and lines[1].endswith("호출 1")
+    assert [row["calls"] for row in result["cases"]] == [0, 1, 0, 1]
+
+
+def test_http_errors_jsonl_keeps_request_shape_not_words(tmp_path, monkeypatch):
+    """강제 도구 호출 400 (엄격한 예산이라 다시 묻지 않음): 한 줄. 말 원문·프롬프트는 남기지 않는다."""
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    ctx = {"briefing_step": 1, "donna_was_speaking": False, "last_type": "answer"}
+    case = {"id": "q:1", "text": "그거 저번에 말한 거 있잖아", "addressed": False, "context": ctx, "expected_intent": "unknown"}
+    log = tmp_path / "http_errors.jsonl"
+    result = intent_eval.evaluate([case], ["rule+judge"], post=IntentClova({}, status=400), error_log=log, log_context={"noise": 2})
+    (first,) = [json.loads(line) for line in log.read_text(encoding="utf-8").splitlines()]
+    assert result["http_errors"] == 1 and result["cases"][0]["calls"] == 1
+    assert (first["case_id"], first["system"], first["run"], first["noise"], first["status"]) == ("q:1", "rule+judge", 1, 2, 400)
+    assert first["tool_choice"] == {"type": "function", "function": {"name": "submit_intent"}}
+    assert first["tools"] == ["submit_intent"] and first["roles"] == ["system", "user"]
+    assert first["body_keys"] == ["maxTokens", "messages", "temperature", "toolChoice", "tools", "topP"]
+    shape = first["tool_shapes"]["submit_intent"]
+    assert shape["required"] == ["intent", "owner_said"] and shape["params"]["jump_to"] == {"type": "string", "enum": 5}
+    assert first["other"]["temperature"] == 0 and '"400"' in first["response"]
+    text = log.read_text(encoding="utf-8")
+    assert "저번에" not in text and "직전 상황" not in text  # 말 원문·사용자 메시지·프롬프트는 없다
+    ok = intent_eval.evaluate([case], ["rule+judge"], post=IntentClova({}), error_log=tmp_path / "none.jsonl")
+    assert ok["http_errors"] == 0 and not (tmp_path / "none.jsonl").exists()  # 실패가 없으면 파일을 만들지 않는다

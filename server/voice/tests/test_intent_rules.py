@@ -88,3 +88,36 @@ def test_ask_action(text, addressed, intent, edits):
     assert (found.name if found else None) == intent
     if edits is not None:
         assert (found.edits["drop_compensation"], found.edits["no_card"]) == edits
+
+
+# 부른 말의 질문 꼴은 가게 말 규칙보다 먼저 본다. 부르지 않은 "~(ㄹ)까" 질문은 탭을 열지 않고 판정 에이전트에 맡긴다
+@pytest.mark.parametrize("text, addressed, intent", [
+    ("도나야 오늘 손님 많을까", False, "question"),  # 앱이 떼지 못한 호출어
+    ("도나 와", False, None),  # 호출어가 아니다 (어림짐작이 not_for_donna)
+    ("오늘 손님 많을까", False, "not_for_donna"),
+    ("오늘 장사 잘될까", False, None),
+    ("이번 주말에 비 올까", False, None),
+    ("오늘 장사 잘될까", True, "question"),
+    ("이번 주 매출 어때", False, "navigate.sales"),
+])
+def test_called_question_and_unaddressed_guess(text, addressed, intent):
+    found = match(text, None, addressed)
+    assert (found.name if found else None) == intent
+
+
+# 대상(리뷰 등)을 같이 말하면 다시 말하기·지금 화면 읽기로 정하지 않는다. 아쉬운 리뷰 내용을 물으면 그리로 옮겨 첫 리뷰를 읽는다
+@pytest.mark.parametrize("text, last_type, intent, jump_to", [
+    ("아쉬운 리뷰 읽어줘", None, "detail.read", "negative"),
+    ("아쉬운 리뷰 읽어줘", "show_detail", "detail.read", "negative"),
+    ("아쉬운 리뷰 뭐라고 썼어?", "answer", "detail.read", "negative"),
+    ("아쉬운 리뷰 내용 좀 알려줘", None, "detail.read", "negative"),
+    ("리뷰 뭐라고 했어?", "answer", None, None),  # 판정 에이전트에 맡긴다
+    ("다시 말해 줘", "answer", "briefing.repeat", None),
+    ("읽어 줘", "show_detail", "detail.read", None),
+    ("손님 리뷰 읽어 줘", "show_detail", "detail.read", None),  # 띄운 리뷰를 읽는 말
+    ("리뷰 읽어 줘", "answer", None, None),
+])
+def test_target_with_repeat_or_read(text, last_type, intent, jump_to):
+    found = match(text, last_type, addressed=True)
+    assert (found.name if found else None) == intent
+    assert (found.jump_to if found else None) == jump_to

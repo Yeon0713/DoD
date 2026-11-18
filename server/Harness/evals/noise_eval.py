@@ -13,7 +13,8 @@
   sound      비슷한 소리 낱말로 바꿈 (브리핑→부리핑, 다음→다은, 도나→또나 같은 호출어 변형 포함)
 
 시스템은 intent 스위트와 같다 (rule, rule+judge). 지표 줄마다 noise(강도)를 붙인다.
---levels 0,1,2,3 (기본), --dry-run 이면 강도마다 판정 에이전트를 부를 말 수(예상 CLOVA 호출 수)만 보여 준다.
+실패 응답은 결과 폴더의 http_errors.jsonl 에 강도(noise)와 함께 남긴다 (intent 스위트와 같은 모양).
+--seed A(기본, 튜닝용) | B(확인용) | 정수. --levels 0,1,2,3 (기본), --dry-run 이면 강도마다 판정 에이전트를 부를 말 수(예상 CLOVA 호출 수)만 보여 준다.
 """
 
 import argparse
@@ -23,7 +24,8 @@ import random
 from app.core.config import settings
 from Harness.evals import intent_eval, report
 
-SEED = 14
+SEED = 14  # seed A (튜닝용)
+SEEDS = {"A": SEED, "B": 2026}  # seed B 는 확인용. 규칙을 고치는 동안에는 B 로 돌리지 않는다 (B 에 맞춰 고치지 않게)
 LEVELS = (0, 1, 2, 3)
 
 CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
@@ -146,6 +148,21 @@ def noisy_cases(cases: list[dict], level: int, seed: int = SEED) -> list[dict]:
     return out
 
 
+def parse_seed(text: str | None) -> int:
+    """--seed: A, B 또는 정수. 비우면 A."""
+    text = (text or "A").strip()
+    if text.upper() in SEEDS:
+        return SEEDS[text.upper()]
+    try:
+        return int(text)
+    except ValueError:
+        raise SystemExit(f"--seed 는 A, B 또는 정수예요 (받은 값: {text!r})") from None
+
+
+def seed_name(seed: int) -> str:
+    return next((name for name, value in SEEDS.items() if value == seed), str(seed))
+
+
 def parse_levels(text: str) -> list[int]:
     try:
         levels = sorted({int(part) for part in text.split(",") if part.strip()})
@@ -156,20 +173,23 @@ def parse_levels(text: str) -> list[int]:
     return levels
 
 
-def evaluate(cases: list[dict], names: list[str], levels: list[int], *, runs: int = 1, seed: int = SEED, post=None) -> dict:
-    """강도마다 intent_eval.evaluate 를 돌리고 지표·줄에 noise 를 붙인다."""
-    rows, out, calls = [], [], 0
+def evaluate(cases: list[dict], names: list[str], levels: list[int], *, runs: int = 1, seed: int = SEED, post=None,
+             progress=None, error_log=None) -> dict:
+    """강도마다 intent_eval.evaluate 를 돌리고 지표·줄에 noise 를 붙인다. progress 는 사례마다 한 줄 (앞에 강도)."""
+    rows, out, calls, errors = [], [], 0, 0
     for level in levels:
         noisy = noisy_cases(cases, level, seed)
         by_id = {case["id"]: case for case in noisy}
-        result = intent_eval.evaluate(noisy, names, runs=runs, post=post)
+        result = intent_eval.evaluate(noisy, names, runs=runs, post=post, progress=progress, prefix=f"[강도 {level}] ",
+                                      error_log=error_log, log_context={"noise": level})
         calls += result["calls"]
+        errors += result["http_errors"]
         for row in result["cases"]:
             case = by_id[row["case_id"]]
             rows.append({**row, "noise": level, "clean_text": case["clean_text"], "noise_kinds": case["noise_kinds"]})
         out += [{**metric, "noise": level, "name": f"{metric['name']} (모의 받아쓰기 오류 강도 {level})"}
                 for metric in result["metrics"]]
-    return {"metrics": out, "cases": rows, "calls": calls}
+    return {"metrics": out, "cases": rows, "calls": calls, "http_errors": errors}
 
 
 def planned_calls(cases: list[dict], names: list[str], levels: list[int], runs: int, seed: int = SEED) -> dict:
@@ -181,12 +201,14 @@ def run(args: argparse.Namespace):
     """python -m Harness.evals noise [--systems rule,rule+judge] [--levels 0,1,2,3] [--runs 1] [--dry-run]"""
     names = args.system_names
     levels = parse_levels(getattr(args, "levels", None) or ",".join(map(str, LEVELS)))
+    seed = parse_seed(getattr(args, "seed", None))
     body, cases = intent_eval.load_cases()
     if args.ids:
         wanted = {part for part in args.ids.split(",") if part}
         cases = [case for case in cases if case["id"] in wanted]
-    print(f"모의 받아쓰기 오류: 뜻 판정 {len(cases)}건 × 강도 {levels}, 시스템 {', '.join(names)}, 회차 {args.runs}", flush=True)
-    plan = planned_calls(cases, names, levels, args.runs)
+    print(f"모의 받아쓰기 오류: 뜻 판정 {len(cases)}건 × 강도 {levels}, seed {seed_name(seed)}({seed}), 시스템 {', '.join(names)}, "
+          f"회차 {args.runs}", flush=True)
+    plan = planned_calls(cases, names, levels, args.runs, seed)
     for level, per_system in plan.items():
         print(f"  강도 {level}: " + ", ".join(f"{name} 예상 호출 {calls['typical']}회 (최대 {calls['max']})"
                                             for name, calls in per_system.items()), flush=True)
@@ -196,16 +218,18 @@ def run(args: argparse.Namespace):
         print("--dry-run: CLOVA 를 부르지 않고 끝냅니다", flush=True)
         return plan
     config = {"model": settings.clova_studio_model if "rule+judge" in names else None, "runs": args.runs,
-              "levels": levels, "seed": SEED, "kinds": list(KINDS), "label": "모의 받아쓰기 오류 (오디오·STT 아님)",
+              "levels": levels, "seed": seed, "seed_name": seed_name(seed), "kinds": list(KINDS), "label": "모의 받아쓰기 오류 (오디오·STT 아님)",
               "data": {"file": intent_eval.DATA.name, "version": body.get("version"),
                        "sha256": report.file_sha256(intent_eval.DATA), "verified_by": body.get("verified_by")},
               "switches": dict(intent_eval.SWITCHES) if "rule+judge" in names else {},
               "judge_budget_seconds": intent_eval.JUDGE_BUDGET_SECONDS, "planned_calls": plan}
     eval_run = report.start("noise", config=config, systems=names)
     print(f"결과 폴더: {eval_run.out}", flush=True)
-    result = evaluate(cases, names, levels, runs=args.runs)
+    result = evaluate(cases, names, levels, runs=args.runs, seed=seed, progress=lambda line: print(line, flush=True),
+                      error_log=eval_run.out / "http_errors.jsonl")
     eval_run.metrics, eval_run.cases = result["metrics"], result["cases"]
     eval_run.config["agent_calls"] = result["calls"]
+    eval_run.config["http_errors"] = result["http_errors"]
     out = eval_run.finish()
     print(f"result.json: {out}")
     return out

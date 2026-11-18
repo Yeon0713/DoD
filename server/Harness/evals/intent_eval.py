@@ -16,7 +16,10 @@
   wrong_answer_rate    정답이 not_for_donna·unknown 인데 그 둘이 아닌 intent 로 답한 / 정답이 그 둘인 것 (낮을수록 좋다. 가장 중요)
   missed_command_rate  정답이 명령(그 둘이 아닌 것)인데 not_for_donna 로 무시한 / 정답이 명령인 것 (낮을수록 좋다)
   judge_latency        판정 에이전트를 부른 말의 응답 초 중앙값 (note 에 최댓값). judge_within_budget 은 3초 안 비율
+  judge_fallback_rate  판정 에이전트를 부른 말 중 어림짐작(heuristic)으로 넘어간 비율.
+                       judge_timeout_fallback_rate 는 그중 호출 제한 시간(엄격한 예산)을 넘겨 넘어간 것
   rule_coverage        규칙만으로 가른 / 전체
+  http_errors.jsonl    판정 에이전트 쪽 실패 응답(4xx·5xx, 429 제외)마다 요청 모양과 응답 본문 (report.http_error_row, 말 원문은 없음)
 
 오발성 세분. '반응'은 not_for_donna·unknown 이 아닌 뜻으로 답한 것, '무시'는 not_for_donna.
   false_activation_rate          정답이 not_for_donna 인 말 중 반응한 / 정답이 not_for_donna 인 말 (wrong_answer_rate 의 부분 집합)
@@ -130,6 +133,14 @@ def score(name: str, rows: list[dict]) -> list[dict]:
                                         note=f"최댓값 {latency['max']}초, 판정 {len(judged)}건"))
         out.append(metrics.metric("judge_within_budget", f"판정 {JUDGE_BUDGET_SECONDS}초 안 비율", question=QUESTION,
                                   system=name, numerator=latency["within_budget"] or 0, denominator=latency["total"]))
+        asked = [row for row in rows if row["judge_seconds"] is not None]
+        out.append(metrics.metric("judge_fallback_rate", "판정 에이전트를 불렀지만 어림짐작(heuristic)으로 넘어간 비율",
+                                  question=QUESTION, system=name, numerator=sum(row["by"] == "heuristic" for row in asked),
+                                  denominator=len(asked), higher_is_better=False,
+                                  note="실패(시간 초과·400 등)와 부른 말에 not_for_donna 를 낸 것을 함께 센다"))
+        out.append(metrics.metric("judge_timeout_fallback_rate", "판정 에이전트가 예산(호출 제한 시간)을 넘겨 어림짐작으로 넘어간 비율",
+                                  question=QUESTION, system=name, numerator=sum(bool(row.get("judge_timeout")) for row in asked),
+                                  denominator=len(asked), higher_is_better=False))
     return out + misfire_metrics(name, rows)
 
 
@@ -169,12 +180,26 @@ def misfire_metrics(name: str, rows: list[dict]) -> list[dict]:
     ]
 
 
-def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -> dict:
-    """post 는 판정 에이전트 쪽 CLOVA (테스트에서 가짜). rule 은 결정적이라 한 번만 돈다."""
+def progress_line(row: dict, index: int, total: int, runs: int, prefix: str = "") -> str:
+    """사례 하나가 끝날 때 출력하는 한 줄. 예: [rule+judge 회차 1/3] 12/243 ✗ doc:3 "말" → unknown (정답 question) llm 2.61초 호출 2"""
+    mark = "✓" if row["correct"] else "✗"
+    expected = "" if row["correct"] else f" (정답 {row['expected_intent']})"
+    seconds = f" {row['judge_seconds']:.2f}초" if row.get("judge_seconds") is not None else ""
+    calls = f" 호출 {row['calls']}" if row.get("calls") else ""
+    return (f"{prefix}[{row['system']} 회차 {row['run']}/{runs}] {index}/{total} {mark} {row['case_id']} "
+            f"\"{row['text']}\" → {row['intent']}{expected} {row['by']}{seconds}{calls}")
+
+
+def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None, progress=None, prefix: str = "",
+             error_log: Path | None = None, log_context: dict | None = None) -> dict:
+    """post 는 판정 에이전트 쪽 CLOVA (테스트에서 가짜). rule 은 결정적이라 한 번만 돈다.
+    progress 를 주면(예: print) 사례 하나가 끝날 때마다 progress_line 한 줄을 넘긴다. prefix 는 그 줄 앞에 붙는다.
+    error_log 를 주면 실패 응답마다 요청 모양을 남긴다 (report.ErrorLogPost). log_context 는 그 줄에 더 붙일 값 (noise 의 강도)."""
     from voice import context
 
     view = make_view()
-    counting = report.CountingPost(post or httpx.post)
+    logged = report.ErrorLogPost(post or httpx.post, error_log)
+    counting = report.CountingPost(logged)
     saved_post, saved_env = context.post, {key: os.environ.get(key) for key in SWITCHES}
     context.post = counting
     os.environ.update(SWITCHES)
@@ -182,15 +207,21 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -
     rows: list[dict] = []
     try:
         for name in names:
-            for run in range(1, (runs if name == "rule+judge" else 1) + 1):
-                for case in cases:
+            name_runs = runs if name == "rule+judge" else 1
+            for run in range(1, name_runs + 1):
+                for index, case in enumerate(cases, 1):
+                    before, timeouts_before = counting.calls, logged.timeouts
+                    logged.context = {"case_id": case["id"], "system": name, "run": run, **(log_context or {})}
                     got = classify(name, case, view)
                     rows.append({"case_id": case["id"], "system": name, "run": run, "source": case.get("source"),
                                  "text": case["text"], "addressed": bool(case.get("addressed")),
                                  "last_type": (case.get("context") or {}).get("last_type"),
                                  "context": dict(case.get("context") or {}),
                                  "expected_intent": case["expected_intent"], "expected_jump_to": case.get("expected_jump_to"),
-                                 **got, "correct": is_correct(case, got)})
+                                 **got, "correct": is_correct(case, got), "calls": counting.calls - before,
+                                 "judge_timeout": logged.timeouts > timeouts_before})
+                    if progress:
+                        progress(progress_line(rows[-1], index, len(cases), name_runs, prefix))
     finally:
         restore_cache()
         context.post = saved_post
@@ -202,7 +233,7 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -
     out = [metric for name in names for metric in score(name, [row for row in rows if row["system"] == name])]
     confusion = {name: dict(Counter(f"{row['expected_intent']} → {row['intent']}" for row in rows
                                     if row["system"] == name and not row["correct"])) for name in names}
-    return {"metrics": out, "cases": rows, "confusion": confusion, "calls": counting.calls}
+    return {"metrics": out, "cases": rows, "confusion": confusion, "calls": counting.calls, "http_errors": logged.count}
 
 
 def judge_needed(cases: list[dict]) -> list[dict]:
@@ -244,10 +275,12 @@ def run(args: argparse.Namespace):
               "switches": dict(SWITCHES) if "rule+judge" in names else {}, "judge_budget_seconds": JUDGE_BUDGET_SECONDS}
     eval_run = report.start("intent", config=config, systems=names)
     print(f"결과 폴더: {eval_run.out}", flush=True)
-    result = evaluate(cases, names, runs=args.runs)
+    result = evaluate(cases, names, runs=args.runs, progress=lambda line: print(line, flush=True),
+                      error_log=eval_run.out / "http_errors.jsonl")
     eval_run.metrics, eval_run.cases = result["metrics"], result["cases"]
     eval_run.tables["wrong"] = result["confusion"]
     eval_run.config["agent_calls"] = result["calls"]
+    eval_run.config["http_errors"] = result["http_errors"]  # 실패 응답 줄 수 (있으면 결과 폴더의 http_errors.jsonl)
     out = eval_run.finish()
     print(f"result.json: {out}")
     return out

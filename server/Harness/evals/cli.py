@@ -23,7 +23,7 @@ from dataclasses import dataclass
 
 from app.core.config import settings
 from Harness import limiter
-from Harness.evals import gold, judge, systems
+from Harness.evals import gold, judge, report, systems
 
 
 @dataclass(frozen=True)
@@ -182,7 +182,7 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
                    "오발성·명령 무시 (--levels 0,1,2,3, --systems 기본 rule,rule+judge. rule 은 CLOVA 없이 돈다)",
           _run_noise, uses_systems=True, parse_systems=_intent_systems, default_systems="rule,rule+judge",
           needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
-    Suite("voice", "응답 시간: POST /v1/turn 을 말 20개 대본으로 보내 종류별(브리핑 1초, 질문 3초, 주방 대화 3초) 목표 안 비율·"
+    Suite("voice", "응답 시간: POST /v1/turn 을 말 24개 대본으로 보내 종류별(브리핑 1초, 질문 3초, 주방 대화 3초) 목표 안 비율·"
                    "p50·p95·최댓값, 5초 초과율 (--systems 기본 rule+judge, rule 은 CLOVA 없이)",
           _run_voice, uses_systems=True, parse_systems=_voice_systems, default_systems="rule+judge",
           needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
@@ -228,6 +228,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true",
                         help="guards·intent·noise·voice: 세트와 예상 호출 수만 보여 주고 CLOVA 를 부르지 않는다")
     parser.add_argument("--levels", default="0,1,2,3", help="noise: 모의 받아쓰기 오류 강도 (쉼표로, 0~3)")
+    parser.add_argument("--seed", default="A", help="noise: 오류를 넣는 seed. A(튜닝용, 기본), B(확인용), 또는 정수")
     parser.add_argument("--resume", default=None, metavar="결과폴더",
                         help="guards·reply: 끊긴 결과 폴더를 이어 돌린다 (cases.jsonl 에 있는 판정은 건너뜀)")
     parser.add_argument("--split", choices=("tune", "holdout", "injection"), default="tune",
@@ -243,7 +244,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--system-runs", default="",
                         help="guards: 판정기마다 회차 (예: judge_tools=1,judge_thinking=1). 적지 않은 판정기는 --runs")
     parser.add_argument("--baseline", action="store_true",
-                        help="all: 결과에 기준점 표시(config.baseline). report: 기준점 결과만 모은다")
+                        help="all·한 스위트: 결과에 기준점 표시(config.baseline). report: 기준점 결과만 모은다")
     parser.add_argument("--results", default="", help="report·summary: 쉼표로 구분한 결과 폴더 (비우면 스위트마다 최근)")
     parser.add_argument("--out", default=None,
                         help="report·summary: 파일 경로 (기본 지금 폴더의 report-<날짜>.md, 평가지표-요약-<날짜>.md)")
@@ -267,7 +268,12 @@ def main(argv: list[str] | None = None) -> None:
     if suite.needs_clova(args) and not settings.clova_studio_api_key:
         raise SystemExit("server/.env 에 CLOVA_STUDIO_API_KEY 가 없어요")
     limiter.set_max_concurrent(args.concurrency)
+    saved_baseline = report.BASELINE
+    if args.baseline and suite.name not in ("all", "report", "summary"):  # all 은 스스로, report 는 기준점만 모으는 뜻
+        report.BASELINE = True
     try:
         suite.run(args)
     except (judge.JudgeModelError, gold.GoldError) as error:
         raise SystemExit(f"멈춤: {error}") from None
+    finally:
+        report.BASELINE = saved_baseline

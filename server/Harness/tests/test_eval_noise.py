@@ -105,3 +105,36 @@ def test_cli_noise_rule_runs_without_key_and_dry_run_writes_nothing(tmp_path, mo
     assert "모의" in body["config"]["label"] and {m["noise"] for m in body["metrics"]} == {0, 2}
     with pytest.raises(SystemExit):
         cli.main(["noise", "--systems", "rule+judge"])  # 실제로 돌릴 때는 키가 필요하다
+
+
+def test_progress_lines_carry_level():
+    cases = [{"id": "a", "text": "다음", "addressed": False, "context": CTX, "expected_intent": "briefing.next"}]
+    lines = []
+    noise_eval.evaluate(cases, ["rule"], [0, 3], post=no_clova, progress=lines.append)
+    assert [line.split("]")[0] for line in lines] == ["[강도 0", "[강도 3"] and all("1/1" in line for line in lines)
+
+
+def test_error_log_tags_level(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    cases = [{"id": "b", "text": "면 삶아", "addressed": False, "context": CTX, "expected_intent": "not_for_donna"}]
+    log = tmp_path / "http_errors.jsonl"
+    result = noise_eval.evaluate(cases, ["rule+judge"], [0, 3], post=IntentClova({}, status=400), error_log=log)
+    levels = [json.loads(line)["noise"] for line in log.read_text(encoding="utf-8").splitlines()]
+    assert result["http_errors"] == len(levels) and set(levels) == {0, 3}
+
+
+def test_seed_names_and_cli_records_seed_and_baseline(tmp_path, monkeypatch):
+    assert noise_eval.parse_seed("a") == noise_eval.SEED and noise_eval.parse_seed("B") == noise_eval.SEEDS["B"]
+    assert noise_eval.parse_seed("7") == 7 and noise_eval.seed_name(noise_eval.SEEDS["B"]) == "B"
+    with pytest.raises(SystemExit):
+        noise_eval.parse_seed("C")
+    texts = lambda seed: [t for t, _ in noise_eval.corrupt_levels("오늘 일정 브리핑해 줘", "doc:1", seed=seed)]
+    assert texts(noise_eval.SEEDS["A"]) != texts(noise_eval.SEEDS["B"])
+    monkeypatch.setattr(settings, "clova_studio_api_key", "")
+    monkeypatch.setattr(report, "OUT_ROOT", tmp_path / "harness_eval")
+    monkeypatch.setattr(intent_eval.httpx, "post", no_clova)
+    cli.main(["noise", "--systems", "rule", "--levels", "1", "--seed", "B", "--baseline"])
+    (out,) = (tmp_path / "harness_eval").glob("noise-*/result.json")
+    config = json.loads(out.read_text(encoding="utf-8"))["config"]
+    assert (config["seed"], config["seed_name"], config["baseline"]) == (noise_eval.SEEDS["B"], "B", True)
+    assert report.BASELINE is False  # 실행이 끝나면 되돌린다

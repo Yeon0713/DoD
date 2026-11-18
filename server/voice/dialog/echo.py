@@ -6,7 +6,7 @@
 
 그래서 가게마다 도나가 최근(RECENT_S 초) 한 말을 기억해 두고, 들어온 말의 글자 두 개씩 묶음(바이그램) 대부분이
 그 안에 있으면 도나 자신의 말로 보고 흘려듣는다. 숫자 표기("열두 분" ↔ "12분")나 받아쓰기 오타가 조금 달라도 걸린다.
-짧은 대답("응", "보내 줘")과 대답 모양의 말("카카오톡으로 보내 줘", "오늘만", "쿠폰 빼고 사과만 올려")은 거르지 않는다.
+짧은 대답("응", "보내 줘")과 대답 모양의 말("카카오톡으로 보내 줘", "오늘만", "쿠폰 빼고 사과만 올려", "인스타에 올리지 마")은 거르지 않는다.
 """
 
 import re
@@ -49,7 +49,8 @@ def _answer_shaped(text: str) -> bool:
     n = r.normalize(text)
     return bool(r.YES_RE.search(n) or r.NO_RE.search(n) or r.STAFF_SHARE_RE.search(n) or r.STAFF_SEND_RE.search(n)
                 or r.STAFF_TODAY_RE.search(n) or r.STAFF_DAILY_RE.search(n) or r.APPROVE_RE.fullmatch(n)
-                or r.DROP_COMP_RE.search(n) or r.NO_CARD_RE.search(n))
+                or r.DROP_COMP_RE.search(n) or r.NO_CARD_RE.search(n)
+                or r.INSTA_LATER_RE.search(n) or r.FEED_POST_RE.search(n) or r.STORY_POST_RE.search(n))
 
 
 def is_echo(store_id: str, heard: str) -> bool:

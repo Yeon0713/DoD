@@ -192,6 +192,16 @@ def save_review(data: dict) -> dict:
     return put("review", data["id"], data["store_id"], data)
 
 
+def save_review_if(data: dict, reply_status: str) -> dict | None:
+    """저장된 리뷰의 답글 상태가 아직 reply_status 일 때만 저장한다. 아니면 저장하지 않고 None.
+    오래 걸리는 일(답글 쓰기, LLM)이 리뷰를 읽은 뒤 다른 작업(아쉬운 리뷰 알림, 사장님 대답)이 상태를 바꿨으면 덮지 않는다."""
+    with _lock:
+        current = get("review", data["id"])
+        if current is not None and current.get("reply_status", "none") != reply_status:
+            return None
+        return save_review(data)
+
+
 def settings(store_id: str) -> dict:
     return get("settings", store_id) or {"negative_review_auto_reply": None}
 

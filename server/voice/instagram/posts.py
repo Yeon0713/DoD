@@ -29,7 +29,7 @@ LIVE = ("queued", "publishing", "published")
 
 def kick() -> None:
     """지금 올릴 게시 작업을 30초 tick 을 기다리지 않고 바로 돌린다 (뒤에서). 테스트에서는 끈다."""
-    threading.Thread(target=queue.run_due, daemon=True, name="instagram-publish").start()
+    threading.Thread(target=queue.run_due, kwargs={"lane": "slow"}, daemon=True, name="instagram-publish").start()
 
 
 # ── 연결 ──

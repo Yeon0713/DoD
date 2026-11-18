@@ -121,3 +121,34 @@ def test_target_with_repeat_or_read(text, last_type, intent, jump_to):
     found = match(text, last_type, addressed=True)
     assert (found.name if found else None) == intent
     assert (found.jump_to if found else None) == jump_to
+
+
+# 부르지 않은 "~까" 질문은 묻는 말로도 정하지 않는다. 물건 자리를 묻는 말은 탭보다 가게 말이 먼저다
+@pytest.mark.parametrize("text, addressed, intent", [
+    ("날씨 추운데 문 닫을까?", False, None),
+    ("이번 주 비 와?", False, "question"),
+    ("매출 장부 어디 뒀니?", False, "not_for_donna"),
+    ("설정 어디 있어", False, "not_for_donna"),
+    ("매출 장부 어디 뒀니?", True, "question"),  # 부른 말은 무시하지 않는다
+])
+def test_unaddressed_guess_and_where(text, addressed, intent):
+    found = match(text, None, addressed)
+    assert (found.name if found else None) == intent
+
+
+@pytest.mark.parametrize("name, text, addressed, expected", [
+    ("unknown", "그거 뭐였지 그 저기", False, "unknown"),  # 도나에게 묻는 말 (문서 13장 C5: not_understood)
+    ("unknown", "두 분이세요", False, "not_for_donna"),  # 부르지 않았고 도나에게 묻는 말도 아니면 가만히
+    ("unknown", "도나야 그 뭐냐", False, "unknown"),  # 글자에 남은 호출어
+    ("unknown", "그 뭐냐", True, "unknown"),
+    ("question", "오늘 바쁠까", False, "question"),
+])
+def test_judge_unknown_on_unaddressed_is_silent(name, text, addressed, expected):
+    from voice.dialog.intent_rules import unknown_to_silent
+
+    assert unknown_to_silent(name, text, addressed) == expected
+
+
+def test_near_words_keep_honorific_hasi():
+    # "주문하시겠어요"의 "하시"를 "다시"로 고치면 가게 말 규칙(주문하시)을 놓친다
+    assert match("주문하시겠어요?", "answer").name == "not_for_donna"

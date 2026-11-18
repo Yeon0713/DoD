@@ -58,6 +58,8 @@ QUESTION_FORM_RE = re.compile(r"(까|니|야)$")
 ACT_ASK_RE = re.compile(r"인스타|스토리|올리|올려|올릴")
 # 앱이 호출어를 떼지 못하고 글자 그대로 보낸 말 ("도나야 오늘 손님 많을까")
 WAKE_RE = re.compile(r"^(도나|또나|돈아|토나)야")
+# 물건 자리를 묻는 말은 직원끼리 한 말이다 ("매출 장부 어디 뒀니?"). 탭을 열지 않는다
+WHERE_RE = re.compile(r"어디(뒀|있|놨)")
 NOT_FOR_DONNA_RE = re.compile(
     r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
 )
@@ -98,7 +100,7 @@ class Intent:
 # 자모 9개 이상인 낱말은 거리 2까지, 나머지는 1까지. 흔한 말이 명령으로 바뀌지 않게 NEAR_PROTECT 는 바꾸지 않는다.
 NEAR_WORDS = ("처음부터", "브리핑", "넘어가", "자세히", "뭐라고", "돌아가", "다음", "넘겨", "계속", "다시", "리뷰", "읽어", "뒤로",
               "그만", "멈춰", "매출", "설정", "얘기", "들었")
-NEAR_PROTECT = {"하면", "위로", "다리", "그냥", "계산", "이번", "다른", "다섯", "그럼", "그래", "매일", "예약"}
+NEAR_PROTECT = {"하면", "위로", "다리", "그냥", "계산", "이번", "다른", "다섯", "그럼", "그래", "매일", "예약", "하시"}
 _CHO = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
 _JUNG = ["ㅏ", "ㅐ", "ㅑ", "ㅒ", "ㅓ", "ㅔ", "ㅕ", "ㅖ", "ㅗ", "ㅗㅏ", "ㅗㅐ", "ㅗㅣ", "ㅛ", "ㅜ", "ㅜㅓ", "ㅜㅔ", "ㅜㅣ", "ㅠ", "ㅡ",
          "ㅡㅣ", "ㅣ"]
@@ -191,7 +193,7 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
 
     if STOP_RE.search(n) or HOME_RE.search(n):
         return found("stop")
-    called = addressed or bool(WAKE_RE.match(n))  # 앱이 떼지 못한 "도나야"도 부른 말이다
+    called = is_called(n, addressed)
     if not addressed and NOT_FOR_DONNA_RE.search(n) and not START_RE.search(n):  # "네 손님", "어서 오세요" 가 허락 대답으로 잡히지 않게 먼저 본다
         if called and asks_donna(n, text, called):
             return found("question")  # "도나야 오늘 손님 많을까"는 손님에게 한 말이 아니다
@@ -245,14 +247,27 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("briefing.start")
     if asks_donna(n, text, called):
         return found("question")  # 예측·의견 질문은 탭을 열지 않는다 (아래 NAVIGATE 보다 먼저)
+    if not called and n.endswith("까"):
+        return None  # 부르지 않은 "~(ㄹ)까" 질문은 묻는 말로도 탭으로도 정하지 않고 판정 에이전트에 맡긴다 ("날씨 추운데 문 닫을까?")
     if QUESTION_TOPIC_RE.search(n) and (QUESTION_TAIL_RE.search(n) or text.strip().endswith("?")):
         return found("question")  # "이번 주 비 와?"는 묻는 말이다. 탭을 열지 않는다
-    if not called and n.endswith("까"):
-        return None  # 부르지 않은 "~(ㄹ)까" 질문은 탭을 열지 않고 판정 에이전트에 맡긴다 ("오늘 장사 잘될까")
+    if not called and WHERE_RE.search(n):
+        return found("not_for_donna")
     for pattern, tab in NAVIGATE:
         if pattern.search(n):
             return found(f"navigate.{tab}")
     return None
+
+
+def is_called(n: str, addressed: bool) -> bool:
+    """도나를 부른 말: 앱이 호출어를 뗐거나(addressed) 글자 맨 앞에 "도나야"가 남은 말. n 은 normalize 한 글자."""
+    return addressed or bool(WAKE_RE.match(n))
+
+
+def unknown_to_silent(name: str, text: str, addressed: bool) -> str:
+    """판정 에이전트가 unknown 을 내면 heuristic 으로 다시 가른다. 부른 말·도나에게 묻는 말("그거 뭐였지 그 저기", 물음표)은
+    unknown(못 알아들음, 문서 13장 C5) 그대로, 아니면 not_for_donna (가만히)."""
+    return heuristic(text, addressed).name if name == "unknown" else name
 
 
 def asks_donna(n: str, text: str, addressed: bool) -> bool:

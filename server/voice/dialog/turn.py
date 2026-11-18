@@ -76,8 +76,9 @@ def understand(text: str, session: dict, view, addressed: bool = False) -> Inten
         return found
     judged = intent_judge.judge(view, text, situation(session))
     if judged and not (addressed and judged["intent"] == "not_for_donna"):
-        edits = intent_rules.edits_in(intent_rules.normalize(text)) if judged["intent"].startswith("action.") else None
-        return Intent(judged["intent"], judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm", edits=edits)
+        name = intent_rules.unknown_to_silent(judged["intent"], text, addressed)  # 부르지 않은 알 수 없는 말은 가만히
+        edits = intent_rules.edits_in(intent_rules.normalize(text)) if name.startswith("action.") else None
+        return Intent(name, judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm", edits=edits)
     return intent_rules.heuristic(text, addressed)
 
 

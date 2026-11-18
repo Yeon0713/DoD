@@ -98,7 +98,8 @@ def classify(system: str, case: dict, view) -> dict:
         judged = intent_judge.judge(view, text, SITUATIONS.get(last_type or "", "도나는 듣고만 있어요"))
         seconds = round(time.perf_counter() - started, 3)
         if judged and not (addressed and judged["intent"] == "not_for_donna"):
-            return {"intent": judged["intent"], "jump_to": judged.get("jump_to"), "by": "llm", "judge_seconds": seconds}
+            name = intent_rules.unknown_to_silent(judged["intent"], text, addressed)
+            return {"intent": name, "jump_to": judged.get("jump_to"), "by": "llm", "judge_seconds": seconds}
     fallback = intent_rules.heuristic(text, addressed)
     return {"intent": fallback.name, "jump_to": fallback.jump_to, "by": "heuristic", "judge_seconds": seconds}
 

@@ -108,7 +108,7 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert created[4]["media_type"] == "CAROUSEL" and created[4]["children"] == "child_1,child_2,child_3,child_4"
     assert created[4]["caption"].startswith("이번 달 가장 많이 나간 메뉴예요.\n1등 들깨옹심이메밀칼국수")
     assert "손님 한마디 “들깨 국물이 정말 고소해요”" in created[4]["caption"]
-    assert created[4]["caption"].endswith("\n\n초옹장 · 경기 화성시 만세구 남양읍 역골중앙로41번길 39 1층 101호\n#초옹장")
+    assert created[4]["caption"].endswith("\n\n초옹장 · 경기 화성시 남양읍\n#초옹장")
     assert posts.hashtag("새뱅이 국수 (본점)") == "#새뱅이국수본점"
     assert ("POST", "17841400000000000/media_publish", {"creation_id": "carousel_1"}) in fake.calls
 

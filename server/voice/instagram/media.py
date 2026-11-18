@@ -18,7 +18,7 @@ from app.core.config import settings
 from voice.instagram.graph import InstagramError
 
 STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
-MEDIA_DIR = Path(__file__).resolve().parents[2] / "media"  # server/media: 인스타에 올릴 피드·스토리·AI 포스터 (git 에 올리지 않는다)
+MEDIA_DIR = Path(__file__).resolve().parents[2] / "db" / "app_data" / "voice_media"
 SIZES = {"feed": (1080, 1350), "story": (1080, 1920)}  # 피드 4:5, 스토리 9:16
 BACKGROUND = (246, 241, 232)
 QUALITY = 90

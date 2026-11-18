@@ -12,14 +12,15 @@
 
 서버 경로 가게 (사례마다 새로)
   Harness/tests/fakes.make_snapshot 의 t001 가게·주문에 정답 리뷰 하나만 넣는다 (반복 불만·단골 주기는 비운다).
-  메뉴는 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json, 확인 전, 가격 모름 → 0)로 바꾼다.
+  메뉴는 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json, 2026-11-18 확인, 가격 모름 → 0)로 바꾼다.
+  가게 사실은 evals/data/store_facts_choongjang.json (확인함). 에이전트(get_store_facts)·심판이 같은 목록을 본다.
   할 일은 REVISIT_REPLY 하나. 손님 키가 없어 revisit_class 는 불만이 있으면 QUICK, 아니면 BASIC. 시각은 fakes.NOW, 리뷰는 12시간 전.
   리뷰 분류는 정답(--labels gold), --labels rule 이면 app/analysis/review/keyword_rules 를 거친다.
 
 음성 경로 가게 보기 (사례마다 새로, 실제 voice.db 는 건드리지 않는다)
   voice/fixtures/s005_choongjang.json 의 가게·날씨·행사·경기에 정답 세트의 리뷰 하나만 넣는다.
-  메뉴는 시연 메뉴 4개 대신 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json: 정답 리뷰·답변에 나온 이름, 확인 전). 시각은 시연 시각(demo.now),
-  리뷰는 그 12시간 전에 쓰인 것으로 둔다. 가게 사실(facts)은 사람 확인 전이라 비어 있다.
+  메뉴는 시연 메뉴 4개 대신 평가용 초옹장 메뉴(evals/data/store_menu_choongjang.json: 정답 리뷰·답변에 나온 이름, 2026-11-18 확인). 시각은 시연 시각(demo.now),
+  리뷰는 그 12시간 전에 쓰인 것으로 둔다. 가게 사실(facts)은 evals/data/store_facts_choongjang.json (확인한 목록).
   리뷰 분류는 정답(--labels gold, 기본)을 음성 체계로 바꿔 넣는다: POSITIVE → positive, NEGATIVE·MIXED → negative,
   주제는 첫 불만 유형(배달 지연 → delivery …, 없으면 other). --labels rule 이면 voice/jobs/label.classify 를 거친다(끝까지 실행).
 
@@ -77,7 +78,7 @@ import httpx
 from app.core.config import settings
 from Harness import limiter
 from Harness.evals import derive, fail_cause, gold, judge, metrics, reply_checks, report, systems
-from Harness.evals.guards_eval import CaseAborted, GuardedPost
+from Harness.evals.guards_eval import CaseAborted, GuardedPost, load_store_facts
 
 QUESTION_FIT, QUESTION_TASK, QUESTION_COST = 2, 4, 5
 SPLITS = ("tune", "holdout", "injection")
@@ -86,7 +87,7 @@ PATHS = ("server", "voice")
 SERVER_DIR = Path(__file__).resolve().parents[2]
 FIXTURE = SERVER_DIR / "voice" / "fixtures" / "s005_choongjang.json"
 OTHER_FIXTURES = [SERVER_DIR / "voice" / "fixtures" / "s001_baseline.json"]  # 다른 가게 메뉴 검사용
-EVAL_MENUS = Path(__file__).resolve().parent / "data" / "store_menu_choongjang.json"  # 정답 리뷰 가게의 메뉴 후보 (확인 전)
+EVAL_MENUS = Path(__file__).resolve().parent / "data" / "store_menu_choongjang.json"  # 정답 리뷰 가게의 메뉴 (2026-11-18 확인)
 PREP_BUDGET_SECONDS = 15  # 기준 문서 v2 의 답글 준비 시간 예산 (에이전트 자체 Budget 과는 따로 잰다)
 JUDGE_DEADLINE_SECONDS = 600  # 심판 한 사례(4조건 × 3표)에 쓰는 시간 상한
 REVIEW_AGE = dt.timedelta(hours=12)
@@ -155,7 +156,7 @@ def make_view(fixture: dict, review: dict, now: dt.datetime):
 
     data = {"review": [review], "weather": list(fixture.get("weather", [])), "event": list(fixture.get("events", [])),
             "game": list(fixture.get("games", []))}
-    store = {**fixture["store"], "menus": eval_menus(), "facts": []}
+    store = {**fixture["store"], "menus": eval_menus(), "facts": load_store_facts()}
     return VoiceStore(store["id"], store, data, now)
 
 
@@ -343,7 +344,7 @@ def prepare_server(system: str, case: dict, labels: str, post) -> dict:
     from Harness.tests import fakes
 
     snap, item = server_snapshot(case, labels)
-    ctx = RunContext(snapshot=snap, now=fakes.NOW, post=post)
+    ctx = RunContext(snapshot=snap, now=fakes.NOW, post=post, store_facts=load_store_facts())
     return {"write": lambda: SERVER_WRITERS[system](item, ctx), "menus": [m.name for m in snap.inputs.menus],
             "category": snap.store.get("category", ""), "kind": item.revisit_class, "occasion": None,
             "today": f"{fakes.NOW:%Y-%m-%d}"}
@@ -366,7 +367,7 @@ def is_hard(case: dict) -> bool:
 def judge_reply(case: dict, text: str, menus: list[str], category: str, mode: str, post=None) -> tuple[dict, str | None]:
     """심판 조건별 판정 {조건: Verdict.as_dict}, 오류 까닭."""
     data = judge.JudgeInput(review_text=case["text"], reply=text, category=category, sentiment=case["gold"]["sentiment"],
-                            complaint_types=list(case["gold"]["complaint_types"]), menus=menus, store_facts=[],
+                            complaint_types=list(case["gold"]["complaint_types"]), menus=menus, store_facts=load_store_facts(),
                             gold_reply=case["gold"].get("reply"))
     guarded = GuardedPost(post, deadline=JUDGE_DEADLINE_SECONDS)
     try:
@@ -709,7 +710,9 @@ def run(args: argparse.Namespace):
                   "judge_votes": judge.VOTES, "runs": args.runs, "workers": args.workers, "concurrency": args.concurrency,
                   "path": path_name, "split": split, "labels": labels,
                   "switches": dict(SWITCHES) if path_name == "voice" else {}, "store": "s005" if path_name == "voice" else "t001",
-                  "prep_budget_seconds": PREP_BUDGET_SECONDS, "store_facts": [], "store_facts_verified": False,
+                  "prep_budget_seconds": PREP_BUDGET_SECONDS, "store_facts": load_store_facts(),
+                  "store_facts_verified": bool(load_store_facts()), "store_facts_sha256": derive.sha256_of(load_store_facts()),
+                  "menus_verified": bool(json.loads(EVAL_MENUS.read_text(encoding="utf-8")).get("verified")),
                   "check_kinds": {name: CHECK_KINDS.get(name, "") for name in names},
                   "gold_verified": False, "prompts": report.prompt_hashes(sorted(judge.PROMPTS_DIR.glob("*.txt")))}
         set_name = f"reply_{split}"

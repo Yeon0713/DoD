@@ -12,7 +12,7 @@
   critic_cases  Harness/critic_cases.json 41건 (정상 19, 위반 22). 가게는 가상 가게 t001, 사례별 사장님 지시·가게 사실을 그대로 쓴다
   normal        정답지의 정책에 맞는 사장님 답변 40건 (derive.normal_set). 사람 확인 전에는 verified=False (정상이라고 가정한 것)
   violation     normal 의 답변마다 위반 하나 (derive.violation_set, 종류마다 8건: 보상·지어낸 사정·남 탓·아는 척·다른 리뷰 답변)
-  normal·violation 의 가게는 초옹장 s005 (voice/fixtures 의 이름·업종·메뉴). 가게 사실은 사람 확인 전이라 비워 둔다.
+  normal·violation 의 가게는 초옹장 s005 (voice/fixtures 의 이름·업종·메뉴). 가게 사실은 data/store_facts_choongjang.json.
   심판에게 정답 답변(참고 답변)을 주지 않는다. normal 은 참고 답변이 곧 판정할 답글이라 core 조건이 저절로 통과하기 때문이다.
 
 종류 (kind): normal, compensation(보상 약속), fabricated(지어낸 사정), blame(변명·남 탓), memory(아는 척),
@@ -187,9 +187,9 @@ def critic_store() -> Store:
 
 
 def gold_store() -> Store:
+    """정답지 가게(s005). 메뉴는 시연 메뉴 대신 확인한 평가용 메뉴 목록 (에이전트·심판과 같은 목록)."""
     store = json.loads(S005_FIXTURE.read_text(encoding="utf-8"))["store"]
-    return Store(store["id"], {"name": store["name"], "category": store["category"]},
-                 tuple(menu["name"] for menu in store.get("menus", [])))
+    return Store(store["id"], {"name": store["name"], "category": store["category"]}, tuple(eval_menu_names()))
 
 
 def critic_cases(path: Path = CRITIC_CASES_PATH) -> list[dict]:
@@ -208,13 +208,13 @@ def critic_cases(path: Path = CRITIC_CASES_PATH) -> list[dict]:
     return rows
 
 
-def _gold_row(row: dict, set_name: str) -> dict:
+def _gold_row(row: dict, set_name: str, facts: list[str] | None = None) -> dict:
     types = row["gold"]["complaint_types"]
     return {
         "case_id": row["case_id"], "set": set_name, "kind": row["kind"], "kinds": [] if row["expected_ok"] else [row["kind"]],
         "expected_ok": row["expected_ok"], "verified": row.get("verified", True), "store": "s005",
         "text": row["text"], "reply": row["reply"], "has_complaint": bool(types), "regular": False,
-        "owner_instruction": None, "store_facts": [], "sentiment": SENTIMENT_KO.get(row["gold"]["sentiment"]),
+        "owner_instruction": None, "store_facts": list(facts or []), "sentiment": SENTIMENT_KO.get(row["gold"]["sentiment"]),
         "complaint_types": [COMPLAINT_KO.get(t, t) for t in types], "source_case_id": row["source_case_id"],
         "good_reply": row.get("good_reply"), "inserted": row.get("inserted"), "swapped_from": row.get("swapped_from"),
     }
@@ -225,17 +225,18 @@ def gold_cases(cases: list[dict], *, seed: int = derive.SEED, facts: list[str] |
     """정답지 사례 → normal, violation 판정 세트 (+ 가게 사실이 있으면 normal_needs_context).
 
     가게 사실(facts)이 비어 있으면 세트는 예전 그대로다 (정상 답글마다 표시만 case_row 의 context 에 남는다).
-    사실이 있으면 정상 세트 v2: 주문 정보·사실로만 설명되는 답글을 normal_needs_context 로 옮긴다 (버리지 않는다)."""
+    사실이 있으면 정상 세트 v2: 주문 정보·사실로만 설명되는 답글을 normal_needs_context 로 옮긴다 (버리지 않는다).
+    같은 사실을 사례의 store_facts 로 넣어 critic(ctx.store_facts)·심판(store_facts 입력)이 같은 근거를 본다."""
     templates = derive.load_templates()
-    normal = [_gold_row(row, "normal") for row in derive.normal_set(cases, seed=seed)]
-    out = {"normal": normal, "violation": [_gold_row(row, "violation") for row in derive.violation_set(cases, templates, seed=seed)]}
+    normal = [_gold_row(row, "normal", facts) for row in derive.normal_set(cases, seed=seed)]
+    out = {"normal": normal,
+           "violation": [_gold_row(row, "violation", facts) for row in derive.violation_set(cases, templates, seed=seed)]}
     if facts:
         menus = eval_menu_names() if menus is None else menus
         flagged = [row for row in normal if needs_context(context_flags(row["reply"], row["text"], menus, facts))]
         out["normal"] = [row for row in normal if row not in flagged]
         out[CONTEXT_SET] = [{**row, "set": CONTEXT_SET} for row in flagged]
     return out
-
 
 # ── 정상 답글이 무엇을 근거로 썼나 (주문 정보, 가게 사실) ──
 
@@ -256,11 +257,13 @@ def load_store_facts(path: Path = STORE_FACTS_PATH) -> list[str]:
 
 def context_flags(reply: str, review_text: str, menus: list[str], facts: list[str]) -> dict:
     """needs_order_info: 답글에 메뉴 이름이 있는데 리뷰 글에는 없다 (주문 내역을 보고 쓴 것. 정답지에는 주문 메뉴가 없다).
+                      확정 사실이 '무료'라고 한 메뉴(셀프바 초당순두부 등)는 주문과 무관해 빼고 본다.
     needs_store_fact: 가게 사정 문장(정규식 MADE_UP_FACT_RE)이 약속만이 아니고 확정 사실로 설명되지 않는다
                       (reply_critic.only_promises·backed_by_facts 와 같은 규칙. 사실이 비어 있으면 가게 사정 문장은 모두 표시)."""
     from Harness.agents import quote_judge, reply_critic
 
-    order = sorted({name for name in menus if len(name) >= 2 and name in reply and name not in review_text})
+    free = {name for name in menus if any(name in fact and "무료" in fact for fact in facts)}  # 모든 손님에게 주는 것 (주문과 무관)
+    order = sorted({name for name in menus if len(name) >= 2 and name in reply and name not in review_text and name not in free})
     claims = [part for part in quote_judge.sentences(reply) if guards.MADE_UP_FACT_RE.search(part)]
     unbacked = [claim for claim in claims if not reply_critic.only_promises(claim) and not reply_critic.backed_by_facts(claim, facts)]
     return {"needs_order_info": bool(order), "order_menus": order, "needs_store_fact": bool(unbacked), "unbacked": unbacked}

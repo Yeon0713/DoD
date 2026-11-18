@@ -38,7 +38,7 @@ import httpx
 from app.core.config import settings
 from Harness import grounding, trace
 from Harness.evals import fail_cause, gold, judge, metrics, reply_checks, report, scenarios, systems
-from Harness.evals.guards_eval import CaseAborted, GuardedPost
+from Harness.evals.guards_eval import CaseAborted, GuardedPost, load_store_facts
 
 QUESTION_FIT, QUESTION_TASK = 2, 4
 JUDGE_DEADLINE_SECONDS = 600
@@ -188,7 +188,7 @@ def voice_view(gold_rows: list[dict]):
     now = fixture_now(fixture)
     reviews, topic = scenarios.voice_reviews(gold_rows, now)
     data = {"review": reviews, "weather": list(fixture.get("weather", [])), "event": [], "game": []}
-    store = {**fixture["store"], "menus": eval_menus(), "facts": []}  # 시연 메뉴 대신 평가용 초옹장 메뉴 (확인 전)
+    store = {**fixture["store"], "menus": eval_menus(), "facts": load_store_facts()}  # 평가용 초옹장 메뉴·가게 사실 (확인함)
     return VoiceStore(store["id"], store, data, now), now, topic
 
 
@@ -482,7 +482,7 @@ def run(args: argparse.Namespace):
     try:
         config = {"model": settings.clova_studio_model, "judge_model": settings.eval_judge_model, "judge_mode": mode,
                   "judge_mode_note": "guards 결과로 기본 방식을 정하기 전 임시 값" if mode == "tools" else "",
-                  "judge_votes": judge.VOTES, "runs": args.runs, "switches": dict(SWITCHES), "store_facts": [],
+                  "judge_votes": judge.VOTES, "runs": args.runs, "switches": dict(SWITCHES), "store_facts": load_store_facts(),
                   "a_skips": ["b_menu (포스터는 단일 에이전트가 맡지 않음)"]}
         eval_run = report.start("batch", config=config, systems=names)
         if path:

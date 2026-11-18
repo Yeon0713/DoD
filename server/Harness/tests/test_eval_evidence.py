@@ -231,3 +231,30 @@ def test_evaluate_counts_real_429_waits_per_case(gold_rows, monkeypatch):
     assert row["waited_429"] == {"count": 1, "seconds": 3.0, "estimated": False} and 429 in row["transport_events"]
     assert row["fail_cause"] == "none" and "429" not in row["fail_detail"]  # 성공 사례에는 붙이지 않는다
     assert limiter.wait_after_429.__name__ == "wait_after_429" and limiter.wait_after_429.__module__ == "Harness.limiter"  # 되돌림
+
+
+# ── 확정한 가게 사실을 모든 쪽에 ──
+
+
+def test_confirmed_facts_reach_agent_critic_judge_and_normal_set(gold_rows):
+    facts = guards_eval.load_store_facts()
+    assert "셀프바 강릉 초당순두부 무료" in facts and "새뱅이 장칼국수" in facts
+    sets = guards_eval.gold_cases(gold_rows, facts=facts)
+    assert all(row["store_facts"] == facts for row in sets["normal"] + sets["violation"])  # critic·심판 입력
+    assert set(guards_eval.gold_store().menus) == set(guards_eval.eval_menu_names())
+    menus = {m["name"] for m in reply_eval.eval_menus()}
+    assert "새뱅이 장칼국수" in menus  # 장칼국수의 다른 이름
+    fixture = reply_eval.load_fixture()
+    now = reply_eval.fixture_now(fixture)
+    view = reply_eval.make_view(fixture, reply_eval.make_review(gold_rows[1], now, "gold"), now)
+    assert view.store["facts"] == facts  # 음성 에이전트
+    assert batch_eval.voice_view(gold_rows)[0].store["facts"] == facts
+
+
+def test_free_items_in_facts_do_not_need_order_info():
+    menus = ["초당순두부", "감자전"]
+    facts = ["셀프바 강릉 초당순두부 무료"]
+    flags = guards_eval.context_flags("초당순두부도 맛있게 드셨다니 기뻐요.", "국수 맛있어요", menus, facts)
+    assert not flags["needs_order_info"]  # 무료로 모두에게 주는 것
+    flags = guards_eval.context_flags("감자전도 맛있게 드셨다니 기뻐요.", "국수 맛있어요", menus, facts)
+    assert flags["order_menus"] == ["감자전"]

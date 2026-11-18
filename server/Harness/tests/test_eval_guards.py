@@ -307,7 +307,8 @@ def test_regex_suite_writes_result_without_key(fake_gold, tmp_path, monkeypatch)
     assert body["suite"] == "guards" and body["systems"] == ["regex"]
     assert body["config"]["sets"] == {"critic_cases": 41, "normal": 2, "violation": 2}
     assert body["config"]["judge_gold_reply"] is False and body["config"]["normal_verified"] is False
-    assert set(body["config"]["gold"]["sets"]) == {"critic_cases", "normal", "violation"}
+    assert set(body["config"]["gold"]["sets"]) >= {"critic_cases", "normal", "violation"}  # 가게 사실이 있으면 normal_needs_context 도
+    assert body["config"]["store_facts_verified"] is True and body["config"]["normal_set_version"] == "v2"
     assert len(body["cases"]) == 45 * 2 and body["tables"]["flaky"]["regex"] == []  # 정규식은 흔들리지 않는다
     assert (out.parent / "sets" / "guards_violation.json").exists()
 

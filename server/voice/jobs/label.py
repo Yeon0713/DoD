@@ -1,7 +1,7 @@
 """F2 리뷰 나누고 줄이기 (규칙, LLM 없음).
 
 기존 키워드 규칙(app/analysis/review/keyword_rules.classify_by_keywords)을 쓰고, 이름을 문서 모양으로 바꾼다.
-  sentiment: POSITIVE → positive, NEGATIVE·MIXED → negative. 별점 2 이하는 글과 상관없이 negative
+  sentiment: POSITIVE → positive, NEGATIVE·MIXED → negative. 별점 2 이하는 글과 상관없이 negative (별점이 없으면 글만 본다)
   topic:     DELIVERY_DELAY → delivery, TASTE → taste, PORTION → portion, SERVICE → service, HYGIENE → hygiene,
              PHOTO_MISMATCH·없음 → other. 좋은 리뷰는 좋아한 점(strengths)으로 정한다
   summary:   주제별 한 줄 (화면 폭 17 안)
@@ -30,9 +30,10 @@ POSITIVE_SUMMARIES = {
 STRENGTH_TOPICS = {"soup": "taste", "kind": "service", "portion": "portion", "fast": "delivery"}
 
 
-def classify(text: str, rating: int) -> tuple[str, str]:
+def classify(text: str, rating: float | None) -> tuple[str, str]:
+    """rating 이 없으면(네이버 플레이스 리뷰에 흔하다) 별점으로 판단하지 않고 글만 본다."""
     sentiment, types = classify_by_keywords(text)
-    negative = sentiment != "POSITIVE" or rating <= 2
+    negative = sentiment != "POSITIVE" or (rating is not None and rating <= 2)
     if negative:
         topic = next((TOPICS[t] for t in types if t in TOPICS), "other")
         return "negative", topic
@@ -71,5 +72,5 @@ def summarize(text: str, sentiment: str, topic: str) -> str:
 
 def label(review: dict) -> dict:
     """리뷰 한 건에 sentiment, topic, summary 를 붙여 돌려준다 (저장은 부르는 쪽이)."""
-    sentiment, topic = classify(review["text"], int(review.get("rating") or 0))
+    sentiment, topic = classify(review["text"], review.get("rating"))
     return {**review, "sentiment": sentiment, "topic": topic, "summary": summarize(review["text"], sentiment, topic)}

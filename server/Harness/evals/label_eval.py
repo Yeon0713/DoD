@@ -89,7 +89,7 @@ def predict_rule(case: dict) -> Prediction:
 
 
 def predict_voice(case: dict) -> Prediction:
-    sentiment, topic = voice_label.classify(case["text"], int(case["rating"] or 0))
+    sentiment, topic = voice_label.classify(case["text"], case["rating"])  # 운영(voice/jobs/label.label)과 같이 별점이 없으면 None
     negative = sentiment == "negative"
     types = [VOICE_TOPIC_TYPES[topic]] if negative and topic in VOICE_TOPIC_TYPES else []
     return Prediction(sentiment, types, negative)

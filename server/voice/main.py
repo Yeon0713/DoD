@@ -16,9 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from voice import config, tts
+from voice import config
 from voice.api import account, dev, home, instagram, staff, tabs, turn
-from voice.api import tts as tts_api
+from voice.api import stt as stt_api, tts as tts_api
 from voice.instagram import media
 from voice.jobs import queue
 
@@ -39,7 +39,6 @@ def seed_demo() -> None:
         return
     try:
         dev.seed(config.DEMO_FIXTURE, fresh=False)
-        tts.prewarm(tts.FIXED)
     except Exception:
         logger.exception("시연 가게를 준비하지 못했어요")
 
@@ -66,7 +65,7 @@ def create_app() -> FastAPI:
     def health():
         return {"status": "ok"}
 
-    for module in (home, turn, tabs, tts_api, instagram, dev, account, staff):
+    for module in (home, turn, tabs, stt_api, tts_api, instagram, dev, account, staff):
         app.include_router(module.router, prefix="/v1")
     account.mount(app)  # 가입·로그인: 메인 서버의 /api/auth, /api/naver, /api/stores, /api/owner_check
     app.mount("/static", StaticFiles(directory=Path(__file__).resolve().parent / "static"), name="static")

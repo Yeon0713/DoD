@@ -98,9 +98,6 @@ def alert(store_id: str, review_id: str) -> dict | None:
     repo.save_review(review)
     platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
     notices.push(store_id, "negative_review", f"{platform}에 아쉬운 리뷰가 올라왔어요", opens_turn=True, alert_id=record["id"])
-    from voice import tts
-
-    tts.prewarm([s["text"] for s in ask(view, record)["say"]])
     return record
 
 

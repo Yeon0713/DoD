@@ -10,7 +10,7 @@ import { voice } from './voice';
 // 화면 맨 아래 듣기 알약이 보여 주는 상태.
 //   standby: "도나야" 하고 부르기를 기다린다 (가게에서 오가는 말은 흘려보낸다)
 //   listening: 부른 뒤이거나 대화 중이라, 부르지 않아도 듣는다
-export type VoiceState = 'standby' | 'listening' | 'hearing' | 'waiting' | 'speaking' | 'not_understood' | 'error' | 'mic_off';
+export type VoiceState = 'standby' | 'listening' | 'hearing' | 'waiting' | 'preparing' | 'retry_audio' | 'speaking' | 'not_understood' | 'error' | 'mic_off';
 
 type Convo = {
   home: Home | null;
@@ -26,6 +26,7 @@ type Convo = {
   voiceState: VoiceState;
   /** 받아쓴 말 (듣기 알약에 보인다) */
   heard: string;
+  retryAudio: () => void;
   /** 도나 알림 (D-05, D-23). 소리 한 번. 알바생 확인·대답 없음 처리는 한 줄을 읽는다 (아쉬운 리뷰는 turn 으로 연다) */
   notice: Notice | null;
   /** 사장님이 말했을 때 (v0.2.1부터 칩이 없다) */
@@ -69,6 +70,13 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   const justCalled = useRef(false);
 
   const token = useRef(0);
+  const pendingRetry = useRef<((retry: boolean) => void) | null>(null);
+  const retryAudio = useCallback(() => pendingRetry.current?.(true), []);
+  const cancelPlayback = useCallback(() => {
+    pendingRetry.current?.(false);
+    pendingRetry.current = null;
+    voice.cancelSpeech();
+  }, []);
   const autoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTurnId = useRef<string | null>(null);
   const soundRef = useRef(session.sound);
@@ -120,19 +128,38 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
   /** 한 문장씩 읽는다. 읽는 동안 그 문장의 짧은 글과 가리키는 줄을 화면에 보인다. */
   const speakAll = useCallback(async (say: Turn['say'], my: number) => {
+    cancelPlayback();
     voice.pause();
-    setBusy('speaking');
-    if (soundRef.current) voice.prefetch(say.map((s) => s.text));
+    let ready: Promise<Blob | null> | undefined;
     for (let i = 0; i < say.length; i++) {
-      const seg = say[i];
       if (token.current !== my) return false;
+      const seg = say[i];
       if (seg.caption !== null) setCaption(seg.caption);
       setFocus(seg.focus ?? []);
       setProgress(say.length > 1 ? i / (say.length - 1) : 0);
-      const s = voice.speak(seg.text, { sound: soundRef.current });
-      const watch = setInterval(() => token.current !== my && s.cancel(), 100);
-      await s.done;
-      clearInterval(watch);
+      let next: Promise<Blob | null> | undefined;
+      while (token.current === my) {
+        setBusy(soundRef.current && voice.ttsSupported() ? 'preparing' : 'speaking');
+        const playback = voice.speak(seg.text, {
+          sound: soundRef.current, ready,
+          onStart: () => {
+            if (token.current !== my) return;
+            setBusy('speaking');
+            if (say[i + 1]) next ??= voice.prepare(say[i + 1].text);
+          },
+        });
+        if (await playback.done) break;
+        if (token.current !== my) return false;
+        setCaption(seg.text);
+        setBusy('retry_audio');
+        voice.resume();
+        const retry = await new Promise<boolean>((resolve) => { pendingRetry.current = resolve; });
+        if (!retry || token.current !== my) return false;
+        pendingRetry.current = null;
+        voice.pause();
+        ready = undefined;
+      }
+      ready = next;
     }
     if (token.current !== my) return false;
     setFocus([]);
@@ -140,12 +167,12 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     setBusy(null);
     voice.resume();
     return true;
-  }, []);
+  }, [cancelPlayback]);
 
   const handle = useCallback(
     async (t: Turn) => {
       const my = ++token.current;
-      voice.cancelSpeech();
+      cancelPlayback();
       lastTurnId.current = t.turn_id;
       // 개발자 모드 탭에 도나가 한 답을 알린다 (그 탭에서는 사장님 화면이 안 보이므로)
       sendDev({ type: 'turn', said: t.owner_said, headline: t.headline, kind: t.type, intent: t.intent, say: t.say.map((x) => x.text) });
@@ -204,7 +231,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
         }, AUTO_NEXT_MS);
       }
     },
-    [reloadHome, router, speakAll, openFollow, closeFollow],
+    [reloadHome, router, speakAll, openFollow, closeFollow, cancelPlayback],
   );
 
   const send = useCallback(
@@ -214,7 +241,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       clearAuto();
       setNotice(null);
       const my = ++token.current;
-      voice.cancelSpeech();
+      cancelPlayback();
       setHeard(clean);
       setBusy('waiting');
       api
@@ -233,13 +260,13 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
           }
         });
     },
-    [handle],
+    [handle, cancelPlayback],
   );
 
   const reset = useCallback(() => {
     clearAuto();
     token.current++;
-    voice.cancelSpeech();
+    cancelPlayback();
     voice.resume();
     closeFollow();
     setTurn(null);
@@ -248,7 +275,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     setHeard('');
     setBusy(null);
     reloadHome();
-  }, [reloadHome, closeFollow]);
+  }, [reloadHome, closeFollow, cancelPlayback]);
 
   /** "도나야"만 불렀을 때. 짧게 대답하고, 이어지는 말을 부르지 않아도 듣는다. */
   const answerCall = useCallback(async () => {
@@ -305,9 +332,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       clearAuto();
       if (followTimer.current) clearTimeout(followTimer.current);
       token.current++;
-      voice.cancelSpeech();
+      cancelPlayback();
     };
-  }, [reloadHome]);
+  }, [reloadHome, cancelPlayback]);
 
   // 마이크를 허용했으면 앱이 켜져 있는 동안 계속 듣는다.
   const hearRef = useRef(hear);
@@ -323,7 +350,9 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
         setBusy((b) => (b === null || b === 'hearing' ? 'hearing' : b));
       },
       onFinal: (text, confidence) => hearRef.current(text, confidence),
-      onError: (reason) => reason === 'denied' && session.setMic('denied'),
+      onError: (reason) => {
+        if (reason === 'denied' || reason === 'unsupported') session.setMic(reason);
+      },
     });
     return () => voice.stop();
   }, [listenHere]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -387,8 +416,8 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo<Convo>(
-    () => ({ home, homeFailed, turn, caption, focus, progress, voiceState, heard, notice, send, announce, reloadHome, reset }),
-    [home, homeFailed, turn, caption, focus, progress, voiceState, heard, notice, send, announce, reloadHome, reset],
+    () => ({ home, homeFailed, turn, caption, focus, progress, voiceState, heard, retryAudio, notice, send, announce, reloadHome, reset }),
+    [home, homeFailed, turn, caption, focus, progress, voiceState, heard, retryAudio, notice, send, announce, reloadHome, reset],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

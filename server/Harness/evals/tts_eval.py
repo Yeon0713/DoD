@@ -1,16 +1,4 @@
-"""tts 스위트: 도나 목소리(voice/tts.py) 첫 소리 시간과 전체 합성 시간. CLOVA 를 부르지 않는다.
-
-대표 문장 SENTENCES 20개(브리핑·질문 답에서 도나가 하는 말)를 voice/tts.py 와 같은 모델·목소리·설계(INSTRUCT)로 만든다.
-  first_seconds  generate 를 부른 뒤 첫 오디오 조각이 나올 때까지 (mlx-audio 가 조각으로 나누어 내놓지 않으면 전체 시간과 같다)
-  total_seconds  문장 하나를 다 만들 때까지
-디스크 캐시(db/app_data/voice_tts/)를 쓰지도 채우지도 않는다 (늘 새로 만든다). 모델 올리는 시간은 빼려고 첫 문장을 한 번
-먼저 만들고 버린다. 문장 하나가 실패해도 나머지는 잰다 (error 에 까닭).
-
-TTS 를 쓸 수 없으면(VOICE_TTS=false, mlx-audio 없음, GPU 를 못 써 모델을 못 올림) 결과 폴더를 만들지 않고 "안 돌림"으로 끝낸다.
-요약·대시보드는 이 시간을 /v1/turn 서버 처리 시간과 나란히 보이고 "더하면 체감 시간(네트워크 제외)"이라고 적는다.
-
-지표 tts_first_p50, tts_first_p95, tts_total_p50, tts_total_p95 (초), tts_error_rate (실패 / 전체).
-"""
+"""CLOVA Voice 실시간 합성 시간을 측정한다. 실행하면 API 호출 비용이 발생한다."""
 
 import argparse
 import statistics
@@ -54,20 +42,15 @@ def unavailable_reason() -> str | None:
     if not tts.ENABLED:
         return "VOICE_TTS=false 로 꺼져 있음"
     if not tts.available():
-        return tts.status().get("error") or "mlx-audio 가 없음 (도나 목소리는 Apple Silicon Mac 에서만 만든다)"
+        return "CLOVA Voice 인증 정보가 없음"
     return None
 
 
 def synthesizer() -> Synth:
-    """voice/tts.py 와 같은 모델·목소리로 문장 → 오디오 조각들. 디스크 캐시는 쓰지 않는다."""
-    from mlx_audio.tts.utils import load_model
-
     from voice import tts
 
-    model = load_model(tts.MODEL)
-
     def synth(text: str) -> Iterable:
-        return model.generate(text=tts.spoken(text), voice=tts.SPEAKER, instruct=tts.INSTRUCT, lang_code="korean")
+        yield tts.synthesize(tts.spoken(text))
 
     return synth
 
@@ -131,7 +114,7 @@ def run(args: argparse.Namespace, synth: Synth | None = None):
             return None
     print(f"TTS 합성 시간: 문장 {len(SENTENCES)}개 × 회차 {args.runs}", flush=True)
     config = {"runs": args.runs, "sentences": len(SENTENCES), "model": tts.MODEL, "speaker": tts.SPEAKER,
-              "cache": "쓰지 않음 (늘 새로 만듦)", "warm_up": "첫 문장을 한 번 먼저 만들고 버림 (모델 올리는 시간 제외)"}
+              "cache": "쓰지 않음 (늘 새로 만듦)", "warm_up": "첫 문장을 한 번 먼저 만들고 버림 (첫 요청 제외)"}
     eval_run = report.start("tts", config=config, systems=["tts"])
     print(f"결과 폴더: {eval_run.out}", flush=True)
     rows = measure(synth, runs=args.runs)

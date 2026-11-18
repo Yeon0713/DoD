@@ -24,6 +24,20 @@ const OWNER_LINES = [
   '도나야, 응, 올려',
   '도나야, 안 해',
 ];
+// 알바생 일 (server/voice/staff_orders.py). 순서대로 누르면 초대 → 가입 → 시키기 → 확인 → 취소를 시연할 수 있다
+const STAFF_LINES = [
+  '도나야, 하린이 초대해 줘',
+  '카카오톡으로 보내 줘',
+  '도나야, 하린이한테 오늘 들어온 감자가 물이 많으니까 감자전 반죽에 전분 한 숟갈 더 넣으라고 해',
+  '도나야, 새뱅이 다 떨어졌으니까 오늘은 장칼국수 주문 받지 말라고 해',
+  '오늘만',
+  '매일',
+  '응, 보내 줘',
+  '도나야, 시킨 거 다 했대?',
+  '도나야, 그거 취소해',
+  '도나야, 알바생 누구 있어?',
+  '도나야, 알바생 매뉴얼 보여 줘',
+];
 const REVIEWS = [
   ['leak', '국물 샘'],
   ['missing', '누락'],
@@ -100,6 +114,12 @@ export default function DevScreen() {
       const current = new Date((await api.dev.platform()).now);
       await api.dev.clock(new Date(current.getTime() + minutes * 60000).toISOString());
     });
+  const joinHarin = () =>
+    run('하린 바로 가입 (연습용)', async () => {
+      const r = await api.dev.staffJoin('하린');
+      sendDev({ type: 'staff_session', token: r.token, staffId: r.staff_id, name: r.name });
+      add('하린이 가입한 상태로 시연 화면의 알바생 휴대폰을 열었어요', 'me');
+    });
   const say = (text: string) => {
     const clean = text.trim();
     if (!clean) return;
@@ -166,6 +186,13 @@ export default function DevScreen() {
           />
           <Btn label="말하기" onPress={() => say(said)} busy={null} />
         </View>
+      </Group>
+
+      <Group label="알바생 (사장님 말, 2026-11-18)">
+        {STAFF_LINES.map((line) => (
+          <Btn key={line} label={line} onPress={() => say(line)} busy={null} quiet />
+        ))}
+        <Btn label="연습용: 하린 바로 가입 (초대 건너뛰기)" onPress={joinHarin} busy={busy} />
       </Group>
 
       <View style={styles.log}>

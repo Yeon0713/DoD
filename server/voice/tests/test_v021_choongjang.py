@@ -35,8 +35,10 @@ def test_briefing_follows_figma(chj: Choongjang):
     d08 = chj.turn("오늘 일정 브리핑해 줘")
     assert d08["headline"] == "낮 12시에 단체 12명이 와요"
     assert [r["value"] for r in d08["cards"][0]["rows"]] == ["오후 2시부터 비", "저녁 예약 2팀", "낮 12시 단체 12명"]
-    assert [s["text"] for s in d08["say"]] == ["오늘 일정이에요.", "낮 12시에 단체 손님 열두 분이 오세요.", "저녁 예약은 두 팀이고,",
-                                              "오후 2시부터 비 소식이 있어요."]
+    # 도나는 화면 카드를 위에서 아래로 읽는다 (2026-11-18)
+    assert [s["text"] for s in d08["say"]] == ["오늘 일정이에요.", "오후 2시부터 비 소식이 있어요.", "저녁 예약은 두 팀이고,",
+                                              "낮 12시에 단체 손님 열두 분이 오세요."]
+    assert [s["focus"] for s in d08["say"][1:]] == [[r["id"]] for r in d08["cards"][0]["rows"]]
 
     d09 = chj.turn(event="auto_next")
     assert d09["headline"] == "답글 기다리는 리뷰 5개"

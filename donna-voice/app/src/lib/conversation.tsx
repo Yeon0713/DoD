@@ -184,6 +184,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       }
       if (t.type === 'not_understood') {
         setBusy('not_understood');
+        voice.pause(); // 도나의 말이 마이크로 다시 들어오지 않게
         await voice.speak('잘 못 들었어요. 한 번 더 말씀해 주세요.', { sound: soundRef.current }).done;
         if (token.current === my) {
           setHeard('');
@@ -252,6 +253,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
         .catch(async () => {
           if (token.current !== my) return;
           setBusy('error');
+          voice.pause(); // 도나의 말이 마이크로 다시 들어오지 않게
           await voice.speak('지금은 답하기 어려워요. 조금 뒤에 다시 말씀해 주세요.', { sound: soundRef.current }).done;
           if (token.current === my) {
             setHeard('');

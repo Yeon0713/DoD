@@ -19,10 +19,10 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 import copy
 import datetime as dt
 
-from voice import activity, clock, repo, speech, width
+from voice import activity, clock, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
-from voice.dialog import intent_rules
+from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
@@ -39,6 +39,7 @@ SITUATIONS = {
     "answer": "도나가 브리핑 중이에요",
     "end": "브리핑이 끝났어요",
     "ask_action": "도나가 '아쉬운 리뷰에 사과 답글을 올리고, 알바생 할 일에 고칠 것을 넣을까요?' 하고 물었어요",
+    "ask_staff": "도나가 알바생 일로 '보낼까요?', '초대할까요?', '카카오톡으로 보낼까요?' 하고 물었어요",
     "ask_story": "도나가 비 오는 날 이벤트 포스터를 보여 주며 '스토리에 올리고, 알바생 할 일 맨 위에 이벤트 안내를 넣을까요?' 하고 물었어요",
     "ask_story_event": "도나가 '비 오는 날 이벤트 포스터를 만들어 스토리에 올릴까요?' 하고 물었어요",
 }
@@ -78,7 +79,9 @@ def understand(text: str, session: dict, view, addressed: bool = False) -> Inten
     if judged and not (addressed and judged["intent"] == "not_for_donna"):
         name = intent_rules.unknown_to_silent(judged["intent"], text, addressed)  # 부르지 않은 알 수 없는 말은 가만히
         edits = intent_rules.edits_in(intent_rules.normalize(text)) if name.startswith("action.") else None
-        return Intent(name, judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm", edits=edits)
+        slots = {k: judged[k] for k in intent_judge.STAFF_SLOTS if judged.get(k)} if name.startswith("staff.") else None
+        return Intent(name, judged.get("owner_said") or intent_rules.tidy(text), judged.get("jump_to"), by="llm",
+                      edits=edits, slots=slots or None)
     return intent_rules.heuristic(text, addressed)
 
 
@@ -176,7 +179,7 @@ def story_reply(name: str, session: dict, brief: dict, view) -> dict:
 
 def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
     name = intent.name
-    if name == "not_for_donna":
+    if name in ("not_for_donna", "echo"):  # echo: 도나가 한 말이 마이크로 다시 들어온 것 (dialog/echo.py)
         return empty("ignore")
     if name == "unknown":
         return empty("not_understood")
@@ -193,6 +196,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if name == "action.repeat":
             name = "notice.open"
         return {**review_loop.decide(view, name, intent.edits, session.get("alert_id")), "keep_context": "ask_action"}
+    if name.startswith("staff."):  # 알바생 일 (voice/staff_orders.py). 브리핑과 상관없이
+        return staff_orders.handle(view, intent, session)
     if name in ("instagram.feed", "instagram.story"):
         return post_now(view, name.split(".", 1)[1])
     if brief is None:
@@ -316,6 +321,10 @@ def handle(request: dict) -> dict:
                 session.pop("story_id", None)
         if session.get("last_type") != "ask_action":
             session.pop("alert_id", None)
+        if echo.is_echo(store_id, utterance["text"]):
+            intent = Intent("echo", intent_rules.tidy(utterance["text"]))
+        else:
+            intent = understand(utterance["text"], session, view, addressed)
             session.pop("story_id", None)
         intent = understand(utterance["text"], session, view, addressed)
 
@@ -333,7 +342,9 @@ def handle(request: dict) -> dict:
         **({"action": response["action"]} if response.get("action") else {}),
         **({"ask": response["ask"]} if response.get("ask") else {}),
         **({"tab": response["tab"]} if response.get("tab") else {}),
+        **({"open": response["open"]} if response.get("open") else {}),
     }
+    echo.remember(store_id, [item["text"] for item in response["say"]])  # 이 말이 마이크로 다시 들어오면 흘려듣는다
     session["last_turn_id"] = response["turn_id"]
     repo.put("session", session_id, store_id, session)
     repo.put("turn", turn_key, store_id, {"request": request, "response": response})

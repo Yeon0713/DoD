@@ -19,6 +19,9 @@ OPEN_STATES = {"alerted", "reminded"}
 
 def push(store_id: str, kind: str, text: str, *, say: list[str] | None = None, opens_turn: bool = False,
          alert_id: str | None = None) -> dict:
+    from voice.dialog import echo
+
+    echo.remember(store_id, [*(say or []), text])  # 앱이 소리 내어 읽는다. 마이크로 다시 들어오면 흘려듣게
     notice_id = f"nt_{repo.next_number(f'notice:{store_id}'):04d}"
     return repo.put("notice", notice_id, store_id, {
         "id": notice_id, "kind": kind, "text": text, "say": say or [], "opens_turn": opens_turn,

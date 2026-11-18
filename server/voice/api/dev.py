@@ -11,8 +11,10 @@ import json
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
-from voice import clock, config, repo, speech, staff
+from voice import clock, config, repo, speech, staff, staff_db
 from voice.api.errors import store_not_found
+from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn
+from voice import prepared_snapshot, staff_orders
 from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn, StoryEventIn
 from voice.jobs import auto_reply, briefing, label, queue, review_loop
 
@@ -24,6 +26,7 @@ def load_fixtures(payload: dict) -> dict:
     store = payload["store"]
     store_id = store["id"]
     repo.delete_store(store_id)
+    staff_orders.forget_recent()
     repo.put("store", store_id, store_id, store)
     for item in payload.get("reservations", []):
         kind = "group" if item["party_size"] >= config.GROUP_MIN_PEOPLE else "general"
@@ -84,10 +87,16 @@ def seed(name: str, *, fresh: bool) -> dict:
         clock.set_now(clock.parse(payload["demo"]["now"]))
     store_id = payload["store"]["id"]
     result = {"store_id": store_id, "loaded": False}
+    if (fresh or repo.store(store_id) is None) and prepared_snapshot.restore(name, payload):
+        # 밤사이 준비 결과 저장본 (voice/prepared_snapshot.py): CLOVA 를 기다리지 않고 바로 브리핑할 수 있다
+        queue.run_due()
+        return {"store_id": store_id, "loaded": True, "prepared": "snapshot", "now": clock.iso(clock.now())}
     if fresh or repo.store(store_id) is None:
         result = {**load_fixtures(payload), "loaded": True}
     else:  # 가게가 이미 있으면 사장님 기록은 두고, 매출과 다시 온 손님만 fixtures 의 새 것으로
         _put_pos_data(store_id, payload)
+        if not staff_db.members(store_id):  # 알바생 표가 생기기 전의 voice.db: 알바생과 매뉴얼만 넣는다
+            staff.seed(store_id, payload)
     queue.run_due()
     if briefing.current(store_id) is None:
         briefing.prepare(store_id)
@@ -148,6 +157,44 @@ def get_platform(store_id: str, limit: int = 8):
                       "text": r["text"], "menus": r.get("menus") or [], "written_label": _when_label(clock.parse(r["written_at"]), now),
                       "reply": reply})
     return {"now": clock.iso(now), "now_label": speech.clock_label(now), "items": items}
+
+
+@router.get("/messenger")
+def get_messenger(store_id: str, to: str | None = None):
+    """시연 화면의 알바생 휴대폰에 띄우는 '사장님이 보낸 글' (Figma F-01, 카카오톡 모양 예시 화면).
+    사장님이 "카카오톡으로 보내 줘"라고 한 초대 글만 보인다. to 를 주면 그 사람에게 간 것만 (예: to=하린).
+    link 를 누르면 알바생 입장 화면(/staff)에 코드가 채워진다. 실제 카카오톡을 대신하는 개발용 화면이다."""
+    store = repo.store(store_id)
+    if store is None:
+        return store_not_found()
+    now = clock.now()
+    person = staff.find_by_name(store_id, to) if to else None
+    items = []
+    for invite in reversed(staff_db.store_invites(store_id)):  # 오래된 것부터 (대화처럼)
+        if not invite["shared_at"] or clock.parse(invite["shared_at"]) > now or (person and invite["staff_id"] != person["id"]):
+            continue
+        at = clock.parse(invite["shared_at"])
+        items.append({
+            "id": invite["code"], "text": f"{store['name']} 알바생 할 일 페이지예요. 아래 주소로 들어와서 초대 코드를 넣어 주세요.",
+            "url": staff_orders.invite_url(store), "code": f"{invite['code'][:3]} {invite['code'][3:]}",
+            "link": f"/staff?code={invite['code']}", "time_label": speech.clock_label(at),
+            "date_label": f"{at.month}월 {at.day}일 {speech.weekday(at.date())}요일", "usable": not invite["revoked_at"],
+        })
+    return {"from": "사장님", "to": person["call"] if person else to, "store": {"name": store["name"], "logo_url": store.get("logo_url")},
+            "items": items}
+
+
+@router.post("/staff_join")
+def post_staff_join(body: dict = Body(...)):
+    """연습용: 초대·가입을 건너뛰고 알바생을 가입한 상태로 만들어 로그인 표시를 준다 (개발자 모드 '하린 바로 가입')."""
+    store_id = body.get("store_id", "")
+    if repo.store(store_id) is None:
+        return store_not_found()
+    person = staff.ensure_person(store_id, body.get("name") or "하린")
+    if not person["joined"]:
+        now = clock.iso(clock.now())
+        staff_db.update_member(person["id"], status="joined", signed_up_at=now, started_at=now)
+    return {"token": staff.issue_token(person["id"]), "staff_id": person["id"], "name": person["call"]}
 
 
 @router.post("/clock")

@@ -34,6 +34,10 @@ type Listener = {
 let recognition: Recognition | null = null;
 let wantListening = false;
 let paused = false;
+// 도나 목소리는 '다 읽었다' 뒤에도 스피커에 조금 남아 있다. 그 꼬리가 마이크로 들어가 사장님 말로 받아 적히지 않게
+// RESUME_TAIL_MS 뒤에 다시 듣는다 (2026-11-18 무한 브리핑 반복. 그래도 들어온 말은 서버가 흘려듣는다: server/voice/dialog/echo.py)
+const RESUME_TAIL_MS = 700;
+let resumeTimer: ReturnType<typeof setTimeout> | undefined;
 
 // ---------- 도나 목소리 (서버에서 만든 소리) ----------
 const canPlay = !!win?.fetch && !!win?.Audio && !!win?.URL?.createObjectURL;
@@ -290,13 +294,17 @@ export const voice = {
 
   /** 도나가 읽는 동안에는 듣지 않는다. 스피커 소리가 마이크로 다시 들어오기 때문이다. */
   pause() {
+    clearTimeout(resumeTimer);
     paused = true;
     captureGeneration++;
     if (serverStt?.ws.readyState === 1) serverStt.ws.send(JSON.stringify({ type: 'pause', generation: captureGeneration }));
   },
   resume() {
-    paused = false;
-    if (serverStt?.ws.readyState === 1) serverStt.ws.send(JSON.stringify({ type: 'resume', generation: captureGeneration }));
+    clearTimeout(resumeTimer);
+    resumeTimer = setTimeout(() => {
+      paused = false;
+      if (serverStt?.ws.readyState === 1) serverStt.ws.send(JSON.stringify({ type: 'resume', generation: captureGeneration }));
+    }, RESUME_TAIL_MS);
   },
 
   prepare,

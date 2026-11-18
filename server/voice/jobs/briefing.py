@@ -172,17 +172,18 @@ def step_schedule(view: VoiceStore, today: dt.date) -> dict:
         value = width.fit("rows.value", f"{speech.clock_label(start)} 단체 {group['party_size']}명", f"단체 {group['party_size']}명")
         rows.append({"id": "s_group" if number == 1 else f"s_group{number}", "kind": "group_reservation", "value": value})
 
+    # 말하는 순서는 화면 카드 위에서 아래로 (행사·경기 → 비 → 예약 → 단체, 2026-11-18)
+    if rain:
+        when = f"{speech.clock_label(dt.datetime(today.year, today.month, today.day, rain['rain_from']))}부터" if rain.get("rain_from") else "하루 종일"
+        says.append(say(f"{when} 비 소식이 있어요.", None, ["s_rain"]))
+    if general:
+        lead = "저녁 예약은" if evening else "예약은"
+        tail = "이고," if groups else "이에요."
+        says.append(say(f"{lead} {speech.count(len(general), '팀')}{tail}", None, ["s_resv"]))
     for number, group in enumerate(groups[:2], 1):
         start = parse(group["starts_at"])
         says.append(say(f"{speech.clock_label(start)}에 단체 손님 {speech.count(group['party_size'], '분')}이 오세요.", None,
                          ["s_group" if number == 1 else f"s_group{number}"]))
-    if general:
-        lead = "저녁 예약은" if evening else "예약은"
-        tail = "이고," if rain else "이에요."
-        says.append(say(f"{lead} {speech.count(len(general), '팀')}{tail}", None, ["s_resv"]))
-    if rain:
-        when = f"{speech.clock_label(dt.datetime(today.year, today.month, today.day, rain['rain_from']))}부터" if rain.get("rain_from") else "하루 종일"
-        says.append(say(f"{when} 비 소식이 있어요.", None, ["s_rain"]))
 
     if groups:
         start = parse(groups[0]["starts_at"])

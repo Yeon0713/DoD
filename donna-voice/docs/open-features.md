@@ -103,7 +103,7 @@ Figma `v0.2.1 : 디자인개선`의 G-04 ~ G-08대로 만들면서 남은 것입
 
 ## 8. 닫힌 고리: 아쉬운 리뷰 → 답글 → 알바생 할 일 (2026-11-18)
 
-팀 개선안대로 만들었습니다 (인수인계 문서 21장, 시험은 [test-scenarios-closed-loop.md](test-scenarios-closed-loop.md)). 남은 것:
+팀 개선안대로 만들었습니다 (인수인계 문서 21장, 시험은 [test-scenarios-closed-loop.md](test-scenarios-closed-loop.md)). 개선안 기준으로 남은 것과 이어서 할 순서는 [proposal-remaining.md](proposal-remaining.md)에 따로 정리했습니다. 남은 것:
 
 | 무엇 | 지금 | 필요한 것 |
 |---|---|---|

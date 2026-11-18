@@ -21,6 +21,8 @@ export const colors = {
   done: '#2f6b3f',
   doneSoft: '#e1efe3',
   naver: '#03c75a',
+  /** 불러오는 동안 자리 (Bone). Figma DoNA 03 · 토큰/skeleton */
+  skeleton: '#e7dacb',
 } as const;
 
 export type ColorName = keyof typeof colors;

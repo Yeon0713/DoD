@@ -17,7 +17,8 @@ import { colors, radius, space } from '@/theme/tokens';
 //   처음에는 도나가 준비해 둔 것을 보여 준다 (D-07).
 //   사장님이 물으면 사장님 말(오른쪽) → 도나 말(왼쪽) → 카드 순서로 쌓인다.
 //   추천 답변(칩)은 없다. 사장님은 그냥 말한다. 도나는 듣기 알약 바로 위에 선다.
-//   도나 알림(D-05, D-23)은 소리 한 번과 알림 카드로만 온다. 도나는 묻기 전에는 말하지 않는다.
+//   도나 알림(D-05, D-23)은 소리 한 번과 알림 카드로 온다. 영업 중 아쉬운 리뷰는 도나가 먼저 묻고(2026-11-18),
+//   알바생이 교정 카드를 확인했다는 알림은 한 줄을 읽는다.
 export default function HomeScreen() {
   const { home, homeFailed, turn, caption, focus, notice, reloadHome, announce } = useConversation();
   const router = useRouter();

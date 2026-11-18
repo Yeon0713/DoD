@@ -8,29 +8,9 @@ import json
 import pytest
 
 from voice import config, tts, width
-from voice.tests.conftest import Donna
+from voice.tests.conftest import Choongjang
 
 FIXTURE = config.FIXTURES / "s005_choongjang.json"
-
-
-class Choongjang(Donna):
-    def __init__(self):
-        super().__init__()
-        self.session_id = "sess_20261117_s005"
-
-    def get(self, path: str) -> dict:
-        response = self.client.get(path, params={"store_id": "s005"})
-        assert response.status_code == 200, response.text
-        return response.json()
-
-    def turn(self, text: str | None = None, **kw) -> dict:
-        self.number += 1
-        body = {"request_id": f"req_{self.number:04d}", "store_id": "s005", "session_id": self.session_id,
-                "utterance": None if text is None else {"text": text, "source": "voice", "addressed": kw.get("addressed", False)},
-                "event": kw.get("event")}
-        response = self.client.post("/v1/turn", json=body)
-        assert response.status_code == 200, response.text
-        return response.json()
 
 
 @pytest.fixture
@@ -75,12 +55,16 @@ def test_briefing_follows_figma(chj: Choongjang):
 
     d13 = chj.turn("다음")
     items = d13["cards"][0]["items"]
+    # P10: 일요일 리뷰 둘은 화요일 점심 한 시간 전(11시)에, 월요일 리뷰는 토요일 오전 11시에. 화요일 비는 글에만 들어간다
     assert [(i["day_label"], i["time_label"], i["reason"]["kind"], i["text"]) for i in items] == [
-        ("목", "아침 8시", "weather", "비 오는 날 옹심이 권하기"),
-        ("금", "오전 10시 반", "lunch", "점심 메뉴 고를 때 보시게"),
-        ("토", "오전 11시", "weekend", "주말에 리뷰를 많이 봐요")]
-    # 비 오는 날 또 오겠다는 리뷰는 비 오는 날에, 점심 리뷰는 점심 때에
-    assert [i["review_ids"] for i in items] == [["rv_0401"], ["rv_0405"], ["rv_0409"]]
+        ("화", "오전 11시", "weekend_next_peak", "비 오는 날 옹심이 권하기"),
+        ("토", "오전 11시", "weekday_to_weekend", "주말에 리뷰를 많이 봐요")]
+    assert [i["review_ids"] for i in items] == [["rv_0405", "rv_0401"], ["rv_0409"]]
+    assert [s["text"] for s in d13["say"]] == [
+        "좋은 리뷰 답글은 손님이 외식을 고민할 때 올리려고 예약해 뒀어요.",
+        "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요.",
+        "그날 비 소식이 있어서 옹심이를 권하는 답글로 썼어요.",
+        "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요."]
 
     d16 = chj.turn("다음")
     assert d16["type"] == "end" and d16["cards"][0]["title"] == "오늘 아침에 한 것"
@@ -97,7 +81,7 @@ def test_week_tab_shows_facts_and_what_was_done(chj: Choongjang):
     today = next(d for d in week["days"] if d["is_today"])
     assert today["title"] == "단체 예약이 있어요" and [p["kind"] for p in today["plans"]] == ["group_reservation", "weather"]
     assert "오늘 일정 브리핑을 들었어요" in [d["text"] for d in today["done"]]
-    assert len(week["days"]) == 42 and [s["day_label"] for s in week["scheduled"]] == ["목", "금", "토"]
+    assert len(week["days"]) == 42 and [s["day_label"] for s in week["scheduled"]] == ["화", "토"]  # P11
     assert week["past"][0]["label"] == "어제" and week["past"][1]["label"] == "지난주"
 
 

@@ -2,6 +2,7 @@
 
 기본은 CLOVA 키가 없는 상태라 에이전트가 꺼지고 템플릿·규칙으로만 돈다 (시나리오 테스트).
 에이전트를 시험할 때는 clova_on 으로 키를 넣고 가짜 CLOVA(Harness.tests.fakes.FakeClova)를 context.post 에 넣는다.
+인스타도 기본은 꺼져 있다 (토큰 없음, Graph API 를 부르면 실패). ig_on 으로 켜고 가짜 Graph(FakeGraph)를 넣는다.
 """
 
 import json
@@ -14,8 +15,59 @@ from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
 from voice import clock, config, context, tts
+from voice.instagram import graph, media, posts
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
+
+
+class NoGraph:
+    def __call__(self, *args, **kwargs):
+        raise AssertionError("인스타 Graph API 를 부르면 안 되는 곳에서 불렀어요")
+
+
+class FakeGraph:
+    """graph.post / graph.get 자리에 넣는 가짜 Instagram Graph API. 부른 것을 calls 에 (method, path, params) 로 남긴다.
+    fail: {"media_publish": (190, "토큰 만료")} 처럼 주면 그 경로에서 오류를 돌려준다. status: 컨테이너 상태 차례."""
+
+    def __init__(self, fail: dict | None = None, status: list[str] | None = None):
+        self.calls: list[tuple[str, str, dict]] = []
+        self.fail = fail or {}
+        self.status = list(status or [])
+        self.children = 0
+
+    def _reply(self, method: str, url: str, params: dict):
+        import httpx
+
+        path = url.split("/v23.0/", 1)[1] if "/v23.0/" in url else url
+        params = {k: v for k, v in params.items() if k != "access_token"}
+        self.calls.append((method, path, params))
+        for key, (code, message) in self.fail.items():
+            if path.endswith(key):
+                return httpx.Response(400, json={"error": {"message": message, "code": code}})
+        if method == "POST" and path.endswith("/media"):
+            if params.get("is_carousel_item"):
+                self.children += 1
+                return httpx.Response(200, json={"id": f"child_{self.children}"})
+            return httpx.Response(200, json={"id": {"CAROUSEL": "carousel_1", "STORIES": "story_1"}.get(params.get("media_type"), "single_1")})
+        if method == "POST" and path.endswith("/media_publish"):
+            return httpx.Response(200, json={"id": "media_1"})
+        if path.endswith("content_publishing_limit"):
+            return httpx.Response(200, json={"data": [{"quota_usage": 1, "config": {"quota_total": 100, "quota_duration": 86400}}]})
+        fields = params.get("fields", "")
+        if fields == "status_code":
+            return httpx.Response(200, json={"status_code": self.status.pop(0) if self.status else "FINISHED", "id": path})
+        if fields == "permalink":
+            return httpx.Response(200, json={"permalink": "https://www.instagram.com/p/TEST/", "id": path})
+        return httpx.Response(200, json={"id": "17841400000000000", "username": "choongjang_namyang", "profile_picture_url": None})
+
+    def post(self, url, data=None, timeout=None):
+        return self._reply("POST", url, data or {})
+
+    def get(self, url, params=None, timeout=None):
+        return self._reply("GET", url, params or {})
+
+    def paths(self, method: str | None = None) -> list[str]:
+        return [path for m, path, _ in self.calls if method in (None, m)]
 
 
 class NoClova:
@@ -40,6 +92,16 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(context, "post", NoClova())
     monkeypatch.setattr(config, "DEMO_FIXTURE", "")  # 켤 때 시연 가게를 넣지 않는다
     monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
+    monkeypatch.setattr(settings, "instagram_access_token", "")
+    monkeypatch.setattr(settings, "instagram_user_id", "")
+    monkeypatch.setattr(settings, "instagram_graph_version", "v23.0")
+    monkeypatch.setattr(settings, "media_host", "base_url")
+    monkeypatch.setattr(settings, "public_media_base_url", "https://media.example.test")
+    monkeypatch.setattr(graph, "post", NoGraph())
+    monkeypatch.setattr(graph, "get", NoGraph())
+    monkeypatch.setattr(graph, "sleep", lambda seconds: None)
+    monkeypatch.setattr(media, "MEDIA_DIR", tmp_path / "voice_media")
+    monkeypatch.setattr(posts, "kick", lambda: None)  # 게시 작업은 시험에서 /v1/dev/run 으로 돌린다
     cache.clear()
     clock.set_now(None)
     yield
@@ -54,6 +116,20 @@ def clova_on(monkeypatch):
 
     def use(fake):
         monkeypatch.setattr(context, "post", fake)
+        return fake
+
+    return use
+
+
+@pytest.fixture
+def ig_on(monkeypatch):
+    """인스타를 켠다 (토큰과 IG 사용자 id). 돌려준 함수에 FakeGraph 를 넣으면 graph.post / graph.get 으로 쓴다."""
+    monkeypatch.setattr(settings, "instagram_access_token", "test-token")
+    monkeypatch.setattr(settings, "instagram_user_id", "17841400000000000")
+
+    def use(fake: FakeGraph) -> FakeGraph:
+        monkeypatch.setattr(graph, "post", fake.post)
+        monkeypatch.setattr(graph, "get", fake.get)
         return fake
 
     return use
@@ -122,3 +198,66 @@ def prepared(payload: dict | None = None, *, permission=None) -> Donna:
 @pytest.fixture
 def donna() -> Donna:
     return prepared()
+
+
+class Choongjang(Donna):
+    """초옹장(s005) 시연 데이터로 /v1 을 부르는 도우미. 알바생 화면·알림·시연 리뷰도 부른다."""
+
+    def __init__(self):
+        super().__init__()
+        self.session_id = "sess_20261117_s005"
+
+    def get(self, path: str, **params) -> dict:
+        response = self.client.get(path, params={"store_id": "s005", **params})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def turn(self, text: str | None = None, **kw) -> dict:
+        self.number += 1
+        body = {"request_id": kw.get("request_id") or f"req_{self.number:04d}", "store_id": "s005", "session_id": self.session_id,
+                "utterance": None if text is None else {"text": text, "source": "voice", "addressed": kw.get("addressed", False)},
+                "event": kw.get("event"), "notice_id": kw.get("notice_id")}
+        response = self.client.post("/v1/turn", json=body)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def settings(self, value) -> dict:
+        return self.client.patch("/v1/settings", json={"store_id": "s005", "negative_review_auto_reply": value}).json()
+
+    def state(self) -> dict:
+        return self.get("/v1/dev/state")
+
+    def notices(self) -> list[dict]:
+        return self.get("/v1/notices")["notices"]
+
+    def demo_review(self, name: str) -> str:
+        response = self.client.post("/v1/dev/demo_review", json={"store_id": "s005", "name": name})
+        assert response.status_code == 200, response.text
+        return response.json()["review_id"]
+
+    def staff_today(self, staff_id: str = "st_harin") -> dict:
+        response = self.client.get("/v1/staff/today", params={"staff_id": staff_id})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def staff_post(self, path: str, **body):
+        return self.client.post(f"/v1/staff{path}", json=body)
+
+    def open_notice(self) -> dict:
+        """앱처럼: 알림을 읽고, 묻는 알림이면 turn(event: notice)로 연다."""
+        found = [n for n in self.notices() if n["opens_turn"]]
+        assert found, "열 알림이 없어요"
+        return self.turn(event="notice", notice_id=found[-1]["id"])
+
+
+def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00") -> Choongjang:
+    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 할 일 화면을 연다 (출근)."""
+    donna = Choongjang()
+    assert donna.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang"}).json()["store_id"] == "s005"
+    if permission is not None:
+        donna.settings(permission)
+    if at:
+        donna.clock(at)
+        donna.staff_today("st_harin")
+        donna.notices()  # 그때까지 쌓인 알림은 비운다
+    return donna

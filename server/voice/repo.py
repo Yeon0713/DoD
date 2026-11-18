@@ -1,12 +1,15 @@
 """음성 백엔드 저장소 (sqlite, db/app_data/voice.db).
 
 종류(kind)마다 문서 8장 모양의 JSON 을 한 줄씩 둔다. 목업 단계라 표를 잘게 나누지 않았다.
-  store        가게 (menus, facts, open_time, close_time, closed_weekdays, location 포함)
+  store        가게 (menus, facts, open_time, close_time, closed_weekdays, location 포함.
+               사장님이 요일마다 고치면 weekly_hours, 그 전 네이버 시간은 naver_hours. voice/hours.py)
   review       리뷰 + 덧붙인 칸 (sentiment, topic, summary, reply_*)
   reservation  예약 (kind 는 party_size 로 정한다)
   event, game  행사, 경기
   weather      날씨 (id = 가게:날짜)
-  settings     허락 설정 (id = 가게)
+  settings     허락 설정, 브리핑 알림 (id = 가게)
+  sales        포스 매출 (id = 가게, 매출 탭)
+  revisit      도나 답글을 받고 다시 온 손님 (매출 탭 G-04 ③)
   job          작업 큐
   briefing     미리 만든 브리핑 묶음 (id = 가게:날짜)
   session      브리핑 진행 상태 (id = session_id)

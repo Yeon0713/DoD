@@ -167,8 +167,8 @@ def make_job(view, review: dict, now: dt.datetime) -> dict:
 
     if review["sentiment"] == "negative":
         return {"review": review, "kind": "AUTO", "occasion": None}
-    pairs = schedule.assign([review], schedule.occasions(view.data, now.date(), [review], view.store))
-    occasion = {**pairs[0][1], "post_at": iso(pairs[0][1]["post_at"])} if pairs else None
+    slot = schedule.occasion_for(review, view.data, view.store, now)
+    occasion = {**slot, "post_at": iso(slot["post_at"])}
     return {"review": review, "kind": "SCHEDULED", "occasion": occasion}
 
 

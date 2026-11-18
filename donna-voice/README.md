@@ -10,7 +10,7 @@
 
 기존 앱이 쓰는 3000, 8000, 8082와 겹치지 않습니다. 실제 백엔드와 목업은 같은 8100을 쓰므로 하나만 켭니다.
 
-**사장님 앱은 실제 백엔드(`server/voice`)에 붙어 있습니다.** 답글은 하네스 에이전트가 CLOVA로 쓰고, 도나는 Qwen3-TTS의 Sohee 목소리에 도나 목소리 설계(`docs/donna-voice-design.md`)를 얹어 말합니다. 인스타와 알바생 기능은 아직 실제 백엔드에 연결하지 않았습니다. 그 화면을 보려면 실제 백엔드 대신 목업을 켜야 합니다.
+**사장님 앱은 실제 백엔드(`server/voice`)에 붙어 있습니다.** 답글은 하네스 에이전트가 CLOVA로 쓰고, 도나는 Qwen3-TTS의 Sohee 목소리에 도나 목소리 설계(`docs/donna-voice-design.md`)를 얹어 말합니다. 인스타 피드·스토리 올리기는 실제 백엔드에 연결했습니다 (아래 '인스타 연결'). 알바생 기능과 인스타 상태 묻기("인스타 어때?")는 아직 목업에만 있습니다.
 
 ## 켜는 법
 
@@ -48,6 +48,19 @@ cd donna-voice/app && npm run web
 
 브라우저에서 http://localhost:8090 을 엽니다. 휴대폰 비율(375 × 812)과 태블릿 비율(768 × 1024, 1024 × 768)에서 모두 쓸 수 있습니다.
 
+## 인스타 연결
+
+실제 OAuth 전이라 `server/.env` 의 토큰으로 시연 가게 하나만 잇습니다 (Instagram API with Facebook Login).
+
+1. Meta 쪽 준비: IG **비즈니스** 계정을 Facebook 페이지에 연결하고, Meta 앱(Business 유형)에 Facebook Login 과 Instagram 을 더한 뒤, Graph API Explorer 에서 `instagram_basic`, `instagram_content_publish`, `pages_read_engagement` 권한으로 페이지 토큰을 받아 장기 토큰으로 바꿉니다. IG 계정 id 는 `GET /me/accounts?fields=instagram_business_account` 로 봅니다.
+2. `server/.env` 에 `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID` 를 넣습니다.
+3. 인스타 서버가 사진(JPEG)을 공개 주소에서 직접 가져가므로 둘 중 하나를 고릅니다.
+   - `MEDIA_HOST=base_url` (기본): `ngrok http 8100` 으로 연 주소를 `PUBLIC_MEDIA_BASE_URL` 에 넣습니다. 사진은 `/media/...` 로 나갑니다. **이 방법은 백엔드 전체(`/v1/dev/*` 포함)가 인터넷에 열리므로 시험할 때만 씁니다.**
+   - `MEDIA_HOST=object_storage`: `NCP_OBJECT_STORAGE_BUCKET` 에 버킷 이름을 넣습니다 (키는 `NCLOUD_ACCESS_KEY` / `NCLOUD_SECRET_KEY`, `pip install boto3`).
+4. 백엔드를 켜고 앱의 인스타 허용 화면에서 "허용"을 누르거나 `curl -X POST localhost:8100/v1/instagram/connect -H 'Content-Type: application/json' -d '{}'` 를 부릅니다.
+
+API: `GET /v1/instagram?store_id=s005` (연결, 남은 게시 한도, 최근 게시물), `POST /v1/instagram/posts` (`{"store_id":"s005","kind":"feed"|"story","post_at":null}`), `GET /v1/instagram/posts/{id}`. 올리는 건 작업 큐가 뒤에서 하고, 끝나면 도나 알림(`/v1/notices`)이 옵니다. 사진은 지금 메뉴 사진을 비율(피드 4:5, 스토리 9:16)에 맞춰 여백을 채운 것뿐입니다 (디자인은 `server/voice/instagram/media.py` 의 `prepare`).
+
 ## 써 보는 법
 
 화면에는 추천 답변(칩)이 없습니다 (v0.2.1 확정 포맷). 말로만 씁니다. 마이크가 없는 환경에서는 브라우저 콘솔에서 말을 대신 넣습니다.
@@ -57,7 +70,7 @@ __donna.say('도나야, 오늘 일정 브리핑해 줘')
 ```
 
 1. 시작 → 로그인(아무 버튼이나) → 마이크 켜기.
-2. 홈(D-07)에서 "도나야, 오늘 일정 브리핑해 줘". 일정 → 리뷰 → 바로 답해도 될지 → 좋은 리뷰 → 답글 예약 → 끝. (인스타에 올릴까요는 목업에서만)
+2. 홈(D-07)에서 "도나야, 오늘 일정 브리핑해 줘". 일정 → 리뷰 → 바로 답해도 될지 → 좋은 리뷰 → 답글 예약 → 인스타에 올릴까요(인스타를 연결했을 때만. "화면에 보여 줘", "다음 사진", "올려", "나중에") → 끝. 브리핑 밖에서는 "도나야, 인스타 스토리 올려 줘".
 3. "매출 어때", "이번 주 보여 줘", "내일 예약 있어?", "이번 주 비 와?"도 실제 백엔드에서 됩니다.
 4. 목업에서만: 영업 중에는 "도나야, 감자전 반죽에 전분 한 숟갈 더 넣으라고 해 줘", "토요일 저녁 7시에 여덟 분 박 사장님 이름으로 예약 적어 줘", "시킨 거 다 했대?", "오늘 정리해 줘", "인스타 어때?", "내일 뭐 있어?", "방금 보낸 거 취소해 줘".
 5. 목업에서만: 알바생 앱은 http://localhost:8090/staff 에서 엽니다. 초대 코드 `482017`(문하린) → 가입 → 할 일. 사장님이 말로 보낸 일이 5초 안에 올라옵니다.

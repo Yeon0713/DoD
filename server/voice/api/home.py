@@ -7,7 +7,7 @@ import datetime as dt
 
 from fastapi import APIRouter
 
-from voice import clock, repo, speech
+from voice import clock, hours, repo, speech
 from voice.api.errors import store_not_found
 from voice.jobs import briefing
 
@@ -30,13 +30,17 @@ def store_clock(text: str) -> str:
 
 
 def store_status(store: dict, now: dt.datetime) -> dict:
-    """가게 상태 줄. 영업시간에서 바로 나온다. 시각이 바뀌면 앱이 다시 부른다."""
+    """가게 상태 줄. 그날의 영업시간(설정에서 요일마다 고칠 수 있다)에서 바로 나온다. 시각이 바뀌면 앱이 다시 부른다."""
     t = now.time().replace(tzinfo=None)
-    if t < time_of(store["open_time"]):
-        return {"state": "before_open", "label": "영업 전", "detail": f"{store_clock(store['open_time'])}에 열어요"}
-    if t < time_of(store["close_time"]):
-        return {"state": "open", "label": "영업 중", "detail": f"{store_clock(store['close_time'])}에 닫아요"}
-    return {"state": "closed", "label": "영업 끝", "detail": f"내일 {store_clock(store['open_time'])}에 열어요"}
+    today = hours.on(store, now.date())
+    tomorrow = hours.on(store, now.date() + dt.timedelta(days=1))
+    if today is None:
+        return {"state": "closed", "label": "쉬는 날", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "오늘은 쉬어요"}
+    if t < time_of(today["open"]):
+        return {"state": "before_open", "label": "영업 전", "detail": f"{store_clock(today['open'])}에 열어요"}
+    if t < time_of(today["close"]):
+        return {"state": "open", "label": "영업 중", "detail": f"{store_clock(today['close'])}에 닫아요"}
+    return {"state": "closed", "label": "영업 끝", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "내일은 쉬어요"}
 
 
 def store_block(store: dict) -> dict:

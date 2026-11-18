@@ -1,7 +1,7 @@
 import { Redirect, Slot, usePathname } from 'expo-router';
 import { View } from 'react-native';
 
-import { Donna, Header, ListeningPill, TabBar } from '@/components/dock';
+import { Donna, donnaMoves, Header, ListeningPill, TabBar } from '@/components/dock';
 import { ConversationProvider, useConversation } from '@/lib/conversation';
 import { useLayout } from '@/lib/layout';
 import { useSession } from '@/lib/session';
@@ -17,7 +17,7 @@ function Shell() {
   const { wide, margin, donna, width } = useLayout();
   const { voiceState } = useConversation();
   const home = usePathname() === '/';
-  const moving = voiceState === 'hearing' || voiceState === 'waiting' || voiceState === 'speaking';
+  const moving = donnaMoves(voiceState);
 
   if (wide && home) {
     // 태블릿 가로의 홈: 왼쪽 칸 가운데에 도나와 듣기 알약, 오른쪽에 대화.

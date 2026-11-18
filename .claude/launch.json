@@ -34,7 +34,7 @@
     {
       "name": "donna-voice-app",
       "runtimeExecutable": "sh",
-      "runtimeArgs": ["-c", "cd donna-voice/app && npx expo start --web --port 8090"],
+      "runtimeArgs": ["donna-voice/dev-web.sh"],
       "port": 8090
     }
   ]

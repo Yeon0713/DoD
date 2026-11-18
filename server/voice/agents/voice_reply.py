@@ -42,6 +42,7 @@ POSITIVE_TEMPLATES = {
     "season": "좋게 봐 주셔서 감사해요! 날이 추워졌는데 따뜻한 {soup}로 몸 녹이고 가세요.",
     "weekend": "좋은 리뷰 남겨 주셔서 감사해요! 주말에도 맛있게 준비해 둘게요.",
     "lunch": "맛있게 드셔 주셔서 감사해요! 점심 한 그릇 든든하게 드시러 또 들러 주세요.",
+    "dinner": "맛있게 드셔 주셔서 감사해요! 저녁 한 끼 든든하게 드시러 또 들러 주세요.",
 }
 
 
@@ -54,11 +55,17 @@ def _soup(view: VoiceStore) -> str:
     return view.store.get("rain_menu") or next((m["name"] for m in view.menus if SOUP_RE.search(m["name"])), "국물 요리")
 
 
-def template(view: VoiceStore, review: dict, occasion: dict | None) -> str:
+def template(view: VoiceStore, review: dict, occasion: dict | None, fix: dict | None = None) -> str:
     if review.get("sentiment") == "negative":
+        if fix and fix.get("reply"):  # 원인을 안 아쉬운 리뷰: 원인과 실제로 할 조치를 적은 사과 (jobs/cause.py)
+            return fix["reply"]
         return NEGATIVE_TEMPLATES[review.get("topic") or "other"]
-    kind = (occasion or {}).get("kind", "weekend")
-    return POSITIVE_TEMPLATES[kind].format(soup=_soup(view), label=(occasion or {}).get("label", ""))
+    occasion = occasion or {}
+    kind = occasion.get("template") or occasion.get("kind", "weekend")
+    if kind not in POSITIVE_TEMPLATES:
+        kind = "weekend"
+    label = (occasion.get("context") or {}).get("event") or occasion.get("label", "")
+    return POSITIVE_TEMPLATES[kind].format(soup=_soup(view), label=label)
 
 
 # ── 도구 ──
@@ -83,13 +90,20 @@ def reply_occasion(ctx: RunContext, task: dict, args: dict) -> dict:
     if not occasion:
         return {"note": "바로 올리는 답글이에요. 정해진 상황은 없어요."}
     post_at = parse(occasion["post_at"])
+    context = occasion.get("context") or {}
+    that_day = [line for line in (
+        "그날 비 소식이 있어요" if context.get("rain") else None,
+        "그날 날이 추워요" if context.get("cold") else None,
+        f"그날 {context['event']}가 열려요" if context.get("event") else None,
+        f"그날 {context['game']} 경기가 있어요" if context.get("game") else None,
+    ) if line]
     return {"kind": occasion["kind"], "label": occasion["label"], "why": occasion["explanation"],
-            "post_day": f"{speech.weekday(post_at.date())}요일"}
+            "post_day": f"{speech.weekday(post_at.date())}요일", "that_day": that_day or ["그날 특별한 일은 없어요"]}
 
 
 MENU_LIST = Tool("get_menu_list", "우리 가게 메뉴 이름과 가격", NO_ARGS, menu_list)
 STORE_FACTS = Tool("get_store_facts", "가게가 직접 등록한 사실 메모. 여기 있는 사실만 글에 쓸 수 있다", NO_ARGS, store_facts)
-REPLY_OCCASION = Tool("get_reply_occasion", "이 답글을 언제, 왜 올리는지 (비 소식, 경기, 행사, 주말, 추위)", NO_ARGS, reply_occasion)
+REPLY_OCCASION = Tool("get_reply_occasion", "이 답글을 언제, 왜 올리는지와 올리는 날의 날씨·행사·경기", NO_ARGS, reply_occasion)
 
 
 # ── 프롬프트 ──
@@ -113,6 +127,9 @@ def user_message(task: dict, ctx: RunContext) -> str:
     ]
     if task.get("occasion"):
         rows.append(f"\n이 답글은 정해진 때에 올려요: {task['occasion']['explanation']}. get_reply_occasion 으로 확인할 수 있어요.")
+    if task.get("fix"):
+        rows.append(f"\n원인: {task['fix']['cause']}. 가게가 오늘부터 할 조치: {task['fix']['action']}. "
+                    "사과와 함께 이 조치를 한 문장으로 적어. 보상은 쓰지 마 (보상 문장은 사장님이 정한 것을 따로 붙여).")
     return "\n".join(rows)
 
 
@@ -162,7 +179,7 @@ def finalize(args: dict, task: dict, ctx: RunContext) -> dict:
 
 def fallback(task: dict, ctx: RunContext) -> dict:
     view = _view(ctx)
-    return {"text": template(view, view.review(task["review_id"]) or {}, task.get("occasion"))}
+    return {"text": template(view, view.review(task["review_id"]) or {}, task.get("occasion"), task.get("fix"))}
 
 
 SPEC = AgentSpec(
@@ -180,12 +197,32 @@ SPEC = AgentSpec(
 )
 
 
-def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None) -> dict:
-    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes}. 언제나 글이 나온다."""
+def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:
+    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes}. 언제나 글이 나온다.
+    fix: 원인을 안 아쉬운 리뷰 {cause, action, reply} (jobs/cause.py). 에이전트에게 조치를 알려 주고, 템플릿은 reply 를 쓴다."""
     if not config.agent_on("reply"):
-        return {"text": template(view, review, occasion), "source": "TEMPLATE", "notes": []}
-    task = {"kind": kind, "review_id": review["id"], "occasion": occasion}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
+    task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix}
     proposal = runner.run(SPEC, task, run_context(view))
     if proposal is None:
-        return {"text": template(view, review, occasion), "source": "TEMPLATE", "notes": []}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
     return {"text": proposal.content["text"], "source": proposal.source, "notes": proposal.notes}
+
+
+# ── 사장님이 정한 보상 문장 (2026-11-18) ──
+# 보상 문장은 LLM 에 주지 않고 코드가 붙인다. reply_critic.owner_gives() 는 지시문에 보상 말투가 있으면 답글의 보상 문장을
+# 모두 허락하므로(Harness/agents/reply_critic.py), 프리셋을 owner_instruction 으로 넘기면 LLM 이 지어낸 "환불"까지 통과한다.
+
+
+def compose(base: str, preset: str | None) -> str:
+    """사과 글 뒤에 사장님이 정한 보상 문장을 그대로 붙인다."""
+    return f"{base.rstrip()} {preset.strip()}" if preset else base.strip()
+
+
+def safe_reply(text: str, allowed: str | None, fallback: str) -> tuple[str, list[str]]:
+    """올리기 직전 검사: 사장님이 정한 문장(allowed)을 뺀 나머지에 보상·가격 말이 있으면 fallback(템플릿 사과)으로 바꾼다.
+    → (올릴 글, 남길 메모)"""
+    rest = text.replace(allowed, " ") if allowed else text
+    if guards.promise_hit(rest) or guards.PRICE_RE.search(rest):
+        return compose(fallback, allowed), ["보상 문장 걸러냄"]
+    return text, []

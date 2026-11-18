@@ -9,6 +9,7 @@ import { useEffect } from 'react';
 import { View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { LaunchLoading } from '@/components/motion';
 import { LayoutProvider } from '@/lib/layout';
 import { SessionProvider, useSession } from '@/lib/session';
 import { colors } from '@/theme/tokens';
@@ -19,10 +20,15 @@ function Screens({ fontsReady }: { fontsReady: boolean }) {
   const { ready } = useSession();
   const show = ready && fontsReady;
   useEffect(() => {
-    if (show) SplashScreen.hideAsync().catch(() => {});
-  }, [show]);
-  if (!show) return <View style={{ flex: 1, backgroundColor: colors.paper }} />;
-  return <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper }, animation: 'none' }} />;
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
+  // 첫 화면은 아래에서 미리 그려 두고, 그 위에 타이핑하는 도나(Figma 10-m2)를 한 바퀴 덮었다가 흐리게 걷는다
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.paper }}>
+      {show ? <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.paper }, animation: 'none' }} /> : null}
+      <LaunchLoading ready={show} />
+    </View>
+  );
 }
 
 export default function RootLayout() {

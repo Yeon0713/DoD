@@ -39,6 +39,8 @@ export const REASON_LOOK: Record<ReasonKind, { icon: IconName; tone: ColorName; 
   season: { icon: 'sun', tone: 'done', soft: 'doneSoft' },
   reservation: { icon: 'calendar', tone: 'brand', soft: 'brandSoft' },
   lunch: { icon: 'utensils', tone: 'brand', soft: 'brandSoft' },
+  weekday_to_weekend: { icon: 'users', tone: 'brand', soft: 'brandSoft' },
+  weekend_next_peak: { icon: 'utensils', tone: 'brand', soft: 'brandSoft' },
 };
 
 /** 흰 카드. 안쪽 여백 16. */
@@ -391,7 +393,12 @@ function Checklist({ card }: { card: ChecklistCard }) {
       {card.items.map((it) => (
         <View key={it.id} style={[styles.inline, { alignItems: 'flex-start' }]}>
           <View style={{ paddingTop: 4 }}>
-            <Icon name={it.state === 'done' ? 'check' : it.state === 'canceled' ? 'x' : 'clock'} size={Math.round(20 * scale)} color={it.state === 'todo' ? 'ink2' : 'brand'} />
+            {it.tone === 'urgent' ? (
+              // 아쉬운 리뷰에서 나온 알바생 교정 카드: 알바생 화면 맨 위에 붉은 표시로 뜨는 것과 같은 표시
+              <Icon name="alert" size={Math.round(20 * scale)} color="urgent" />
+            ) : (
+              <Icon name={it.state === 'done' ? 'check' : it.state === 'canceled' ? 'x' : 'clock'} size={Math.round(20 * scale)} color={it.state === 'todo' ? 'ink2' : 'brand'} />
+            )}
           </View>
           <View style={{ flex: 1 }}>
             <Txt variant="bodyStrong">{it.title}</Txt>

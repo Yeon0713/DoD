@@ -24,7 +24,11 @@ const FRAMES = [
 ];
 const FRAME_MS = [180, 180, 180, 180, 120, 240];
 
-/** 타이핑하는 도나. 평소에는 멈춰 있고, 사장님이나 도나가 말하는 동안에만 움직인다. */
+/** 도나가 타이핑하는 때: 마이크가 사장님 말을 알아듣는 동안(듣고 있어요, 받아쓰는 중, 답 기다리는 중)과 도나가 말하는 동안.
+ *  시작 화면(Figma 10-m2)과 같은 6프레임 모션이다. 대기("도나야" 하고 불러 주세요), 못 알아들음, 마이크 꺼짐에는 멈춘다. */
+export const donnaMoves = (s: VoiceState) => s === 'listening' || s === 'hearing' || s === 'waiting' || s === 'speaking';
+
+/** 타이핑하는 도나. 평소에는 멈춰 있고, 마이크가 알아듣거나 도나가 말하는 동안에만 움직인다. */
 export function Donna({ size, moving }: { size: number; moving: boolean }) {
   const [frame, setFrame] = useState(0);
   useEffect(() => {

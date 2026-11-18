@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Utterance(BaseModel):
@@ -31,13 +31,35 @@ class TurnRequest(BaseModel):
     session_id: str | None = None
     client_time: str | None = None
     utterance: Utterance | None = None
-    event: Literal["auto_next"] | None = None
+    event: Literal["auto_next", "notice"] | None = None  # notice: 사장님 앱이 도나 알림(negative_review)을 열었다
+    notice_id: str | None = None
     context: TurnContext = TurnContext()
 
 
+class BriefingNotifyPatch(BaseModel):
+    on: bool | None = None
+    time: str | None = Field(default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")  # null 이면 기본(문 열기 1시간 전)
+
+
+class DayHours(BaseModel):
+    closed: bool = False
+    open: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    close: str = Field(pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+
+
+class HoursPatch(BaseModel):
+    days: list[DayHours] = Field(min_length=7, max_length=7)  # 월요일부터
+
+
 class SettingsPatch(BaseModel):
+    """보낸 것만 바꾼다. negative_review_auto_reply 의 null 은 '아직 묻지 않음'으로 되돌리는 값이라, 안 보낸 것과 다르다."""
+
     store_id: str
-    negative_review_auto_reply: bool | None
+    negative_review_auto_reply: bool | None = None
+    briefing_notify: BriefingNotifyPatch | None = None
+    hours: HoursPatch | None = None
+    # 아쉬운 리뷰 답글에 붙일 사장님이 정한 보상 한 문장 (불만 종류 packaging, missing, taste_temp, hall_service). null 은 지움
+    compensation: dict[str, str | None] | None = None
 
 
 class ReviewIn(BaseModel):
@@ -45,8 +67,15 @@ class ReviewIn(BaseModel):
     platform: str = "baemin"
     rating: int
     text: str
-    written_at: str
+    written_at: str | None = None  # 비우면 지금 (백엔드 시계)
     order_channel: Literal["delivery", "hall"] = "delivery"
+    menus: list[str] = []  # 손님이 주문한 메뉴 (배달 앱 리뷰에 보이는 것)
+
+
+class DemoReviewIn(BaseModel):
+    store_id: str
+    name: str  # 픽스처 demo_reviews 의 이름 (leak, missing, cold, hall)
+    written_at: str | None = None
 
 
 class ClockIn(BaseModel):
@@ -55,4 +84,14 @@ class ClockIn(BaseModel):
 
 class RunIn(BaseModel):
     store_id: str
-    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled"]
+    job: Literal["collect", "label_reviews", "auto_reply", "prepare_briefing", "post_scheduled", "instagram_publish"]
+
+
+class InstagramConnectIn(BaseModel):
+    store_id: str | None = None  # 앱은 {} 로 부른다. 비우면 시연 가게
+
+
+class InstagramPostIn(BaseModel):
+    store_id: str
+    kind: Literal["feed", "story"]
+    post_at: str | None = None  # 비우면 지금 올린다

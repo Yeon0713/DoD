@@ -43,7 +43,8 @@ def build(s: Situation, c: PosterChoice) -> str:
         images.append(
             f"- Attached image {n}: the restaurant's LOGO. Its background has already been removed (transparent PNG). "
             "Reproduce it exactly as given, same shapes and letters, do not redraw, restyle or recolor it. "
-            "Place it small near the top or bottom DIRECTLY on the poster: no white box, plate, badge, sticker, frame or background shape behind it. "
+            "Place it ONCE, small near the top, DIRECTLY on the poster: no white box, plate, badge, sticker, frame or background shape behind it. "
+            "Do not repeat the logo anywhere else (never in the footer). "
             "Put it over a calm area of the image where it stays readable."
         )
         n += 1
@@ -53,14 +54,24 @@ def build(s: Situation, c: PosterChoice) -> str:
     text = [f'- Headline (largest): "{c.headline.replace(chr(10), " / ")}"  (" / " marks a line break)', f'- Sub line: "{c.line}"']
     if c.extra.strip():
         text.append(f'- Extra info (smaller): "{c.extra.strip()}"')
-    text.append(f'- Footer (small): "{s.store_name}" and "{s.address}"')
+    text.append(f'- Footer (bottom): ONLY the store name "{s.store_name}" and the full address "{s.address}", '
+                "written exactly as given. No logo, slogan, menu list or any other text in the footer.")
+    layout = (
+        "Layout from top to bottom: "
+        + ("the logo small and centered near the top; " if c.has_logo else "")
+        + "the headline large and centered; "
+        "the sub line centered right under the headline (it may wrap to two lines); the date line in a small rounded pill under the sub line; "
+        "then the hero food photo filling the lower half. "
+        "Footer: a soft dark gradient band across the very bottom of the photo, with the store name in bold white on the first line "
+        "and the full address in smaller white text on the second line, both left-aligned."
+    )
     lines = [
         "Create ONE vertical Instagram Story poster image for a small Korean restaurant.",
         "Canvas: portrait 9:16 (1080x1920 story). If 9:16 is not available, use the tallest portrait size.",
         f"Restaurant: {s.store_name} ({s.category}). Date shown on poster: {s.date_ko}.",
         occasion,
         f"Weather/season mood: {weather}." if weather else "",
-        f"Featured menu: {c.menu}." if c.menu else "",
+        f"Featured menu: {c.menu} (show it in the photo only; do NOT write the dish name as text on the poster)." if c.menu else "",
         f"Style: {STYLES.get(c.style, STYLES['PHOTO'])[1]}",
         "Design must be CLEAN and SIMPLE, not busy: one hero food photo, a calm uncluttered background, generous empty space, "
         "only the text listed below, at most 2 small decorative motifs, a limited palette of 2-3 colors. "
@@ -70,6 +81,7 @@ def build(s: Situation, c: PosterChoice) -> str:
         "Korean text to render EXACTLY as written (verbatim, correct Hangul spelling, no other words, no English):",
         *text,
         f'- Date line: "{s.date_ko}"',
+        layout,
         "Layout rules: keep the top 12% and bottom 15% free of important text (Instagram UI covers them); "
         "large, high-contrast, easy-to-read Korean typography for older readers; no prices, no QR codes, no fake discounts, "
         "no other brand names or logos, no watermarks, no people's faces.",

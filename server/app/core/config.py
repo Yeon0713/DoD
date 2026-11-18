@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     voice_tts: bool = True
     clova_voice_client_id: str = ""
     clova_voice_client_secret: str = ""
+    # 받아 적기를 CLOVA Speech 단문 인식으로 (voice/stt.py). 비어 있으면 CSR. 단문 인식 도메인 > 빌더 > 설정 > 연동 정보의 Secret Key
+    clova_speech_secret_key: str = ""
+    # CLOVA Speech 키워드 부스팅: 잘 듣게 할 단어, 쉼표로 구분 (3글자 이상, 한국어만). CSR 은 "도나야"를 "누나야"로 적는다
+    voice_stt_boostings: str = "도나야"
     clova_studio_api_key: str = ""
     clova_studio_base_url: str = "https://clovastudio.stream.ntruss.com"
     clova_studio_model: str = "HCX-005"

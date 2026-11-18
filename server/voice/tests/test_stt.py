@@ -19,6 +19,8 @@ def client(monkeypatch):
     monkeypatch.setattr(settings, "voice_stt", True)
     monkeypatch.setattr(settings, "clova_voice_client_id", "test-id")
     monkeypatch.setattr(settings, "clova_voice_client_secret", "test-secret")
+    monkeypatch.setattr(settings, "clova_speech_secret_key", "")  # 기본은 CSR 로 시험한다 (내 .env 와 상관없이)
+    monkeypatch.setattr(settings, "voice_stt_boostings", "도나야")
     return TestClient(app)
 
 
@@ -46,6 +48,34 @@ def test_rest_sends_korean_wav(client, monkeypatch):
     monkeypatch.setattr(httpx.AsyncClient, "post", post)
     assert client.post("/v1/stt", content=pcm).json() == {"text": "도나야"}
     assert client.post("/v1/stt", content=b"short").status_code == 422
+    assert client.get("/v1/stt/status").json()["model"] == "naver-csr"
+
+
+def test_clova_speech_key_sends_wake_word_boosting(client, monkeypatch):
+    """CLOVA Speech 키가 있으면 단문 인식으로, "도나야"를 부스팅해서 보낸다. 3글자보다 짧은 단어는 뺀다."""
+    pcm = bytes(16000)
+    monkeypatch.setattr(settings, "clova_speech_secret_key", "speech-secret")
+    monkeypatch.setattr(settings, "voice_stt_boostings", "도나야, 초옹장 ,도나")
+
+    async def post(self, url, *, headers, params, content):
+        assert url == "https://clovaspeech-gw.ncloud.com/recog/v1/stt"
+        assert params == {"lang": "Kor", "boostings": "도나야\t초옹장"}
+        assert headers["X-CLOVASPEECH-API-KEY"] == "speech-secret"
+        assert "X-NCP-APIGW-API-KEY" not in headers
+        return httpx.Response(200, json={"text": "도나야 오늘 일정 알려줘"}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "post", post)
+    assert client.post("/v1/stt", content=pcm).json() == {"text": "도나야 오늘 일정 알려줘"}
+    assert client.get("/v1/stt/status").json() == {"enabled": True, "available": True, "model": "clova-speech",
+                                                   "boostings": ["도나야", "초옹장"]}
+
+
+def test_clova_speech_key_alone_is_enough(client, monkeypatch):
+    monkeypatch.setattr(settings, "clova_voice_client_id", "")
+    monkeypatch.setattr(settings, "clova_voice_client_secret", "")
+    assert client.get("/v1/stt/status").json()["available"] is False
+    monkeypatch.setattr(settings, "clova_speech_secret_key", "speech-secret")
+    assert client.get("/v1/stt/status").json()["available"] is True
 
 
 def test_only_finished_unpaused_utterance_is_sent(client, monkeypatch):

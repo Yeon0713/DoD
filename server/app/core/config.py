@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     ncloud_secret_key: str = ""
 
     # HyperCLOVA X (CLOVA Studio > API 키)
+    voice_stt: bool = False
+    voice_tts: bool = True
+    clova_voice_client_id: str = ""
+    clova_voice_client_secret: str = ""
     clova_studio_api_key: str = ""
     clova_studio_base_url: str = "https://clovastudio.stream.ntruss.com"
     clova_studio_model: str = "HCX-005"

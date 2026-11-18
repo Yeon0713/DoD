@@ -14,9 +14,8 @@ from fastapi.testclient import TestClient
 from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
-from voice import clock, config, context, prepared_snapshot, stt, tts
+from voice import clock, config, context, prepared_snapshot, tts
 from voice.dialog import echo
-from voice import clock, config, context, tts
 from voice.instagram import graph, media, posts, story_event
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "s001_baseline.json"
@@ -95,7 +94,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(context, "post", NoClova())
     monkeypatch.setattr(config, "DEMO_FIXTURE", "")  # 켤 때 시연 가게를 넣지 않는다
     monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
-    monkeypatch.setattr(stt, "ENABLED", False)  # 받아 적기 모델도 (test_stt.py 는 가짜 모델로 켠다)
+    monkeypatch.setattr(settings, "voice_stt", False)  # 네이버 CSR 을 부르지 않는다 (test_stt.py 는 따로 켠다)
     monkeypatch.setattr(prepared_snapshot, "ENABLED", False)  # 밤사이 준비 저장본(실제 CLOVA 답글)을 쓰지 않고 늘 새로 준비한다
     monkeypatch.setattr(settings, "instagram_access_token", "")
     monkeypatch.setattr(settings, "instagram_user_id", "")

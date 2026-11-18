@@ -192,7 +192,7 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("report", "결과 폴더들을 모아 보고서 report-<날짜>.md 를 쓴다 (CLOVA 없음. --results 비우면 스위트마다 최근 결과, "
                     "--out 으로 저장 위치)",
           _run_report, needs_clova=lambda args: False),
-    Suite("tts", "TTS 합성 시간: 대표 문장 20개의 첫 소리·전체 합성 p50·p95 (voice/tts.py 와 같은 모델, CLOVA 없음. "
+    Suite("tts", "TTS 합성 시간: 대표 문장 20개의 첫 소리·전체 합성 p50·p95 (CLOVA Voice 유료 호출. "
                  "TTS 를 쓸 수 없으면 결과를 남기지 않고 안 돌림)",
           _run_tts, needs_clova=lambda args: False),
     Suite("summary", "평가 지표 요약: 질문 1~5 의 대표 지표를 마크다운 표 하나로 (CLOVA 없음. --results 결과 폴더들, "

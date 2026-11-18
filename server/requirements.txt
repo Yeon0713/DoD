@@ -5,7 +5,7 @@ httpx>=0.27
 sqlalchemy>=2.0
 pytest>=8.0
 pillow>=10  # 가게 로고 바탕 지우기 (app/core/logo_image.py)
-# 음성 백엔드 받아 적기 (voice/stt.py): Faster-Whisper large-v3-turbo + Silero VAD(들어 있음). 소리는 배열로 넘겨 av 로 파일을 읽지 않는다
-faster-whisper==1.2.1
 boto3>=1.34  # 인스타 사진을 NCP Object Storage 에 올릴 때만 (MEDIA_HOST=object_storage, voice/instagram/media.py)
 openpyxl>=3.1  # Harness 평가 도구의 엑셀 읽기·쓰기 (Harness/evals/gold.py)
+
+webrtcvad-wheels>=2.0.14,<3  # voice activity detection for CSR

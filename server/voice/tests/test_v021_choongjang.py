@@ -96,10 +96,33 @@ def test_sales_and_notices(chj: Choongjang):
     assert settings["store"]["name"] == "초옹장" and settings["open_time_label"] == "오전 10시 반"
 
 
-def test_tts_is_off_in_tests_and_app_falls_back(chj: Choongjang):
+def test_disabled_tts_returns_no_audio(chj: Choongjang):
     response = chj.client.get("/v1/tts", params={"text": "오늘 일정이에요."})
-    assert response.status_code == 204  # 만든 목소리가 없으면 앱이 기기 목소리로 읽는다
+    assert response.status_code == 204
     assert chj.client.get("/v1/tts/status").json()["available"] is False
+
+
+def test_live_tts_uses_ara_pro_and_does_not_cache(chj: Choongjang, monkeypatch):
+    import httpx
+
+    calls = []
+
+    def post(url, *, headers, data, timeout):
+        calls.append(data)
+        assert headers["X-NCP-APIGW-API-KEY-ID"] == "test-id"
+        assert headers["X-NCP-APIGW-API-KEY"] == "test-secret"
+        return httpx.Response(200, content=b"audio", request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(tts, "ENABLED", True)
+    monkeypatch.setattr(tts.settings, "clova_voice_client_id", "test-id")
+    monkeypatch.setattr(tts.settings, "clova_voice_client_secret", "test-secret")
+    monkeypatch.setattr(tts.httpx, "post", post)
+    for _ in range(2):
+        res = chj.client.get("/v1/tts", params={"text": "12시에 와요."})
+        assert res.status_code == 200 and res.content == b"audio"
+        assert res.headers["cache-control"] == "no-store"
+    assert calls == [dict(speaker="vara", speed=-2, alpha=1, pitch=-1, emotion=0,
+                          format="wav", text="열두 시에 와요.", **{"emotion-strength": 0})] * 2
 
 
 @pytest.mark.parametrize("text, spoken", [

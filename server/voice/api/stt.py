@@ -1,67 +1,72 @@
-"""받아 적기 API (voice/stt.py, 2026-11-18).
-
-  WebSocket /v1/stt/stream   앱이 마이크 소리(16kHz, 16비트, 모노 PCM)를 조각으로 계속 보낸다.
-                             글로 {"type": "pause"} / {"type": "resume"} 을 보내면 도나가 말하는 동안 듣지 않는다.
-                             서버가 보내는 것: {"type": "ready"} / {"type": "speech_start"} / {"type": "final", "text"} / {"type": "error"}
-  POST /v1/stt               소리 한 덩이(같은 PCM)를 받아 적는다 (시험·확인용). {"text"}
-  GET  /v1/stt/status        {"available", "model", "device", "loaded", "error"}. 앱은 available 이 아니면 브라우저 음성 인식을 쓴다
-"""
-
 import json
 
-from fastapi import APIRouter, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import JSONResponse
-from starlette.concurrency import run_in_threadpool
+import httpx
+from fastapi import APIRouter, HTTPException, Request, WebSocket, WebSocketDisconnect
 
+from app.core.config import settings
 from voice import stt
 
 router = APIRouter(prefix="/stt")
 
 
 @router.get("/status")
-def get_status():
-    return stt.status()
+def status():
+    return {"enabled": settings.voice_stt, "available": stt.available(), "model": "naver-csr"}
 
 
 @router.post("")
-async def post_stt(request: Request):
+async def recognize(request: Request):
     if not stt.available():
-        return JSONResponse(status_code=503, content={"error": {"code": "stt_off", "message": "받아 적기가 꺼져 있어요."}})
-    audio = stt.pcm16_to_float(await request.body())
-    return {"text": await run_in_threadpool(stt.transcribe, audio)}
+        raise HTTPException(503, "CSR 사용 설정과 인증 정보를 확인해 주세요.")
+    pcm = bytearray()
+    async for chunk in request.stream():
+        if len(pcm) + len(chunk) > stt.MAX_PCM:
+            raise HTTPException(413, "최대 60초까지 인식할 수 있어요.")
+        pcm.extend(chunk)
+    if len(pcm) <= stt.RATE * 2 * 0.4 or len(pcm) % 2:
+        raise HTTPException(422, "16kHz 모노 PCM16 음성이 필요해요 (400ms 초과).")
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            return {"text": await stt.transcribe(client, pcm)}
+    except (httpx.HTTPError, ValueError, KeyError) as error:
+        raise HTTPException(502, "CSR에서 음성을 인식하지 못했어요.") from error
 
 
 @router.websocket("/stream")
-async def stream(socket: WebSocket):
-    await socket.accept()
+async def stream(ws: WebSocket):
+    await ws.accept()
     if not stt.available():
-        await socket.send_json({"type": "error", "message": "받아 적기가 꺼져 있어요."})
-        await socket.close()
+        await ws.close(code=1008)
         return
-    await run_in_threadpool(stt._models.load)
-    await socket.send_json({"type": "ready", **stt.status()})
-    segmenter = stt.Segmenter()
+    segments = stt.Utterances()
+    generation = 0
     paused = False
     try:
-        while True:
-            message = await socket.receive()
-            if message.get("type") == "websocket.disconnect":
-                break
-            if message.get("text"):
-                command = json.loads(message["text"]).get("type")
-                if command in ("pause", "resume"):
-                    paused = command == "pause"
-                    segmenter.reset()
-                continue
-            data = message.get("bytes")
-            if not data or paused:
-                continue
-            events = await run_in_threadpool(segmenter.feed, stt.pcm16_to_float(data))
-            for event in events:
-                if event["type"] == "speech_start":
-                    await socket.send_json({"type": "speech_start"})
-                else:
-                    text = await run_in_threadpool(stt.transcribe, event["audio"])
-                    await socket.send_json({"type": "final", "text": text, "seconds": round(len(event["audio"]) / stt.RATE, 2)})
+        async with httpx.AsyncClient(timeout=10) as client:
+            await ws.send_json({"type": "ready"})
+            while True:
+                msg = await ws.receive()
+                if msg["type"] == "websocket.disconnect":
+                    return
+                if msg.get("text"):
+                    cmd = json.loads(msg["text"])
+                    if cmd["type"] in ("pause", "resume"):
+                        paused = cmd["type"] == "pause"
+                        generation = cmd.get("generation", 0)
+                        segments = stt.Utterances()
+                    continue
+                pcm = msg.get("bytes")
+                if not pcm or paused:
+                    continue
+                if len(pcm) > stt.RATE * 2 or len(pcm) % 2:
+                    await ws.close(code=1009)
+                    return
+                for event, audio in segments.feed(pcm):
+                    result = {"type": event, "generation": generation}
+                    if audio is not None:
+                        result["text"] = await stt.transcribe(client, audio)
+                    await ws.send_json(result)
     except WebSocketDisconnect:
         pass
+    except (httpx.HTTPError, ValueError, KeyError):
+        await ws.close(code=1011)

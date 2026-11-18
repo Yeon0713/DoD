@@ -5,32 +5,26 @@
 | | 폴더 | 주소 | 기술 |
 |---|---|---|---|
 | 앱 | `app/` | http://localhost:8090 | Expo SDK 58 (React Native Web) |
-| 백엔드 (하네스 에이전트) | `../server/voice/` | http://localhost:8100 | FastAPI + Harness + CLOVA, 받아 적기 Faster-Whisper large-v3-turbo + Silero VAD |
-| 도나 목소리 (CosyVoice 2) | `../server/cosyvoice_service/` | http://127.0.0.1:8110 | conda 환경 `donna-cosyvoice` (설치는 그 폴더 README) |
+| 백엔드 (하네스 에이전트) | `../server/voice/` | http://localhost:8100 | FastAPI + Harness + CLOVA X, 받아 적기 네이버 CSR, 목소리 CLOVA Voice |
 | 백엔드 목업 (알바생·인스타용, 지금은 끔) | `server/` | http://localhost:8100 | FastAPI |
 
 기존 앱이 쓰는 3000, 8000, 8082와 겹치지 않습니다. 실제 백엔드와 목업은 같은 8100을 쓰므로 하나만 켭니다.
 
-**사장님 앱은 실제 백엔드(`server/voice`)에 붙어 있습니다.** 답글은 하네스 에이전트가 CLOVA로 쓰고, 도나는 CosyVoice 2로 말합니다 (본보기 목소리는 예전 Qwen3-TTS Sohee + 도나 목소리 설계, `docs/donna-voice-design.md`). **알바생 기능도 실제 백엔드에 연결했습니다 (2026-11-18)**: 말로 초대(랜덤 6자리 코드)·시키기·다 했대?·취소·내보내기, 알바생 가입·로그인. 인스타 기능은 아직 실제 백엔드에 연결하지 않아 목업을 켜야 보입니다.
+**사장님 앱은 실제 백엔드(`server/voice`)에 붙어 있습니다.** 답글은 하네스 에이전트가 CLOVA로 쓰고, 도나는 CLOVA Voice(아라 Pro, `vara`)로 말합니다. **알바생 기능도 실제 백엔드에 연결했습니다 (2026-11-18)**: 말로 초대(랜덤 6자리 코드)·시키기·다 했대?·취소·내보내기, 알바생 가입·로그인. 인스타 기능은 아직 실제 백엔드에 연결하지 않아 목업을 켜야 보입니다.
 
 ## 켜는 법
 
-도나 목소리 서비스 → 백엔드 → 앱 순서로 켭니다. 백엔드는 켤 때 초옹장 데이터를 넣고 시계를 11월 17일 아침 9시 2분으로 맞춘 뒤 브리핑을 준비합니다. **밤사이 준비 결과 저장본**(`server/voice/fixtures/s005_choongjang.prepared.json`)을 그대로 넣으므로 켜자마자, 또 "처음부터"를 누르자마자 바로 브리핑할 수 있습니다. 시나리오 파일이나 답글 프롬프트를 고치면 `cd server && .venv/bin/python -m voice.prepared_snapshot s005_choongjang`로 저장본을 다시 만듭니다(CLOVA, 3 ~ 4분). 도나 목소리는 그다음부터 뒤에서 만들어 둡니다.
+백엔드 → 앱 순서로 켭니다. 백엔드는 켤 때 초옹장 데이터를 넣고 시계를 11월 17일 아침 9시 2분으로 맞춘 뒤 브리핑을 준비합니다. **밤사이 준비 결과 저장본**(`server/voice/fixtures/s005_choongjang.prepared.json`)을 그대로 넣으므로 켜자마자, 또 "처음부터"를 누르자마자 바로 브리핑할 수 있습니다. 시나리오 파일이나 답글 프롬프트를 고치면 `cd server && .venv/bin/python -m voice.prepared_snapshot s005_choongjang`로 저장본을 다시 만듭니다(CLOVA, 3 ~ 4분).
 
-**듣기와 말하기 (2026-11-18)**
-- 받아 적기(STT): 앱이 마이크 소리를 백엔드로 보내고, 백엔드가 Silero VAD로 말소리 구간을 잘라 Faster-Whisper large-v3-turbo로 받아 적습니다(맥 GPU, 말이 끝나고 약 3초). 백엔드 받아 적기를 못 쓰면 앱이 브라우저 음성 인식으로 듣습니다. 처음 켤 때 Whisper 모델(약 1.6GB)을 받습니다.
-- 도나 목소리(TTS): CosyVoice 2가 본보기 목소리로 읽습니다. 서비스가 꺼져 있으면 앱이 기기 목소리로 읽습니다. 예전 Qwen3-TTS로 돌리려면 `VOICE_TTS_ENGINE=qwen3`.
+**듣기와 말하기 (네이버 클라우드, 2026-11-19)**
+- 받아 적기(STT): 앱이 마이크 소리를 백엔드로 보내고, 백엔드가 webrtcvad로 말소리 구간을 잘라 네이버 CSR(CLOVA Speech Recognition)로 받아 적습니다. `server/.env`의 `VOICE_STT=true`일 때만 쓰고, 아니면 앱이 브라우저 음성 인식으로 듣습니다.
+- 도나 목소리(TTS): CLOVA Voice Premium(`vara`)으로 그때그때 만듭니다. 소리를 못 받으면 화면에 다시 듣기 버튼이 나옵니다.
+- 둘 다 `server/.env`의 `CLOVA_VOICE_CLIENT_ID` / `CLOVA_VOICE_CLIENT_SECRET`이 필요합니다(AI·NAVER API Application에서 CSR과 CLOVA Voice에 체크).
 
 처음 한 번 (라이브러리):
 
 ```bash
-cd server && .venv/bin/pip install -r requirements.txt mlx-audio==0.6.5
-```
-
-도나 목소리 서비스 (처음 한 번 설치는 `server/cosyvoice_service/README.md`):
-
-```bash
-cd server/cosyvoice_service && conda run -n donna-cosyvoice --no-capture-output python cosyvoice_server.py
+cd server && .venv/bin/pip install -r requirements.txt
 ```
 
 백엔드:

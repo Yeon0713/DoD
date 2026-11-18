@@ -90,11 +90,6 @@ def seed(name: str, *, fresh: bool) -> dict:
     if (fresh or repo.store(store_id) is None) and prepared_snapshot.restore(name, payload):
         # 밤사이 준비 결과 저장본 (voice/prepared_snapshot.py): CLOVA 를 기다리지 않고 바로 브리핑할 수 있다
         queue.run_due()
-        brief = briefing.current(store_id)
-        if brief:
-            from voice import tts
-
-            tts.prewarm(briefing.spoken(brief))  # 목소리는 뒤에서 (만들어 둔 것은 그대로 쓴다)
         return {"store_id": store_id, "loaded": True, "prepared": "snapshot", "now": clock.iso(clock.now())}
     if fresh or repo.store(store_id) is None:
         result = {**load_fixtures(payload), "loaded": True}

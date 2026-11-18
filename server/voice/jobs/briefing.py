@@ -481,17 +481,6 @@ def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n
     return rows
 
 
-def spoken(briefing: dict) -> list[str]:
-    """이 브리핑에서 도나가 소리 내어 읽을 문장 전부 (목소리를 미리 만들어 둔다)."""
-    texts: list[str] = []
-    details = [d[k] for d in briefing["details"].values() for k in ("show", "read")] + [s for d in briefing["details"].values() for s in d.get("slides", [])]
-    for response in [*briefing["steps"].values(), *details]:
-        for item in (response or {}).get("say", []):
-            if item["text"] not in texts:
-                texts.append(item["text"])
-    return texts
-
-
 def prepare(store_id: str) -> dict | None:
     """브리핑 묶음을 만들어 저장한다. 가게가 없으면 None."""
     view = load(store_id)
@@ -531,11 +520,7 @@ def prepare(store_id: str) -> dict | None:
         "steps": steps, "details": details,
         "sources": {"replies": sorted({r.get("reply_source") for r in view.reviews() if r.get("reply_source")} - {None})},
     }
-    saved = repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
-    from voice import tts  # 목소리를 미리 만든다 (뒤에서. 기다리지 않는다)
-
-    tts.prewarm(spoken(saved))
-    return saved
+    return repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
 
 
 def current(store_id: str) -> dict | None:

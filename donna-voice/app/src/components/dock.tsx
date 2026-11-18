@@ -97,6 +97,8 @@ const PILL_TEXT: Record<VoiceState, string> = {
   listening: '듣고 있어요',
   hearing: '',
   waiting: '',
+  preparing: '도나 목소리를 준비하고 있어요',
+  retry_audio: '음성을 재생하지 못했어요 · 다시 듣기',
   speaking: '도나가 말하고 있어요',
   not_understood: '한 번 더 말씀해 주세요',
   error: '지금은 답하기 어려워요',
@@ -105,7 +107,7 @@ const PILL_TEXT: Record<VoiceState, string> = {
 
 /** 맨 아래 큰 알약. 도나가 듣는지 말하는지를 알려 준다. 듣는 동안에는 받아쓴 말이 여기 나타난다. */
 export function ListeningPill() {
-  const { voiceState, heard } = useConversation();
+  const { voiceState, heard, retryAudio } = useConversation();
   const { scale } = useLayout();
   const router = useRouter();
   const hearing = voiceState === 'hearing' || voiceState === 'waiting';
@@ -119,7 +121,9 @@ export function ListeningPill() {
       </Txt>
     </View>
   );
-  // 마이크가 꺼져 있을 때만 누를 수 있다: 켜는 화면으로 간다.
+  if (voiceState === 'retry_audio') {
+    return <Pressable onPress={retryAudio} accessibilityRole="button" accessibilityLabel="다시 듣기">{body}</Pressable>;
+  }
   if (voiceState === 'mic_off') {
     return (
       <Pressable onPress={() => router.push('/mic')} accessibilityRole="button" accessibilityLabel="마이크 켜기">

@@ -3,6 +3,7 @@
 호출어가 없어서 주방 대화가 그대로 들어온다. 도나에게 한 말이 아니면 not_for_donna, 도나에게 한 말인데 뜻을 모르면 unknown.
 애매하면 not_for_donna (틀리게 답하는 것보다 가만히 있는 편이 낫다).
 예산: 1단계, 3초 (말로 하는 대화라 늦으면 못 쓴다). 첫 요청부터 submit_intent 를 강제한다.
+엄격한 예산(Budget.strict): 호출 제한 시간 = 남은 예산, 429·강제 제출 400 이면 다시 묻지 않고 물러난다 (최악 3초 남짓).
 물러나기: 규칙의 heuristic (None 을 돌려주면 부르는 쪽이 정한다).
 """
 
@@ -56,7 +57,7 @@ SPEC = AgentSpec(
     submit=SUBMIT,
     check=check,
     task_id=lambda task: task["text"],
-    budget=Budget(max_steps=1, max_rejections=1, max_seconds=3),
+    budget=Budget(max_steps=1, max_rejections=1, max_seconds=3, strict=True),
     temperature=0,
 )
 

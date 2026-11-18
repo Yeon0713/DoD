@@ -238,7 +238,7 @@ def test_evaluate_counts_real_429_waits_per_case(gold_rows, monkeypatch):
 
 def test_confirmed_facts_reach_agent_critic_judge_and_normal_set(gold_rows):
     facts = guards_eval.load_store_facts()
-    assert "셀프바 강릉 초당순두부 무료" in facts and "새뱅이 장칼국수" in facts
+    assert "셀프바의 강릉 초당순두부 무료" in facts and "새뱅이 장칼국수" in facts
     sets = guards_eval.gold_cases(gold_rows, facts=facts)
     assert all(row["store_facts"] == facts for row in sets["normal"] + sets["violation"])  # critic·심판 입력
     assert set(guards_eval.gold_store().menus) == set(guards_eval.eval_menu_names())

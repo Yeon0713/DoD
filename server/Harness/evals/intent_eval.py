@@ -17,6 +17,18 @@
   missed_command_rate  정답이 명령(그 둘이 아닌 것)인데 not_for_donna 로 무시한 / 정답이 명령인 것 (낮을수록 좋다)
   judge_latency        판정 에이전트를 부른 말의 응답 초 중앙값 (note 에 최댓값). judge_within_budget 은 3초 안 비율
   rule_coverage        규칙만으로 가른 / 전체
+
+오발성 세분. '반응'은 not_for_donna·unknown 이 아닌 뜻으로 답한 것, '무시'는 not_for_donna.
+  false_activation_rate          정답이 not_for_donna 인 말 중 반응한 / 정답이 not_for_donna 인 말 (wrong_answer_rate 의 부분 집합)
+  window_false_answer_rate       8초 창(addressed false 이고 직전 상황이 있는 말: last_type·briefing_step 이 있거나 도나가 말하던 중)
+                                 안의 주방 대화 중 반응한 / 그 주방 대화
+  missed_command_rate_addressed  "도나야"로 부른 말(addressed true) 중 무시한 / 부른 말 전체 (목표 0)
+  wake_accept_rate               호출어 세트(source wake) 중 부른 말(정답이 not_for_donna 가 아님)을 무시하지 않은 / 그 말
+  wake_false_accept_rate         호출어 세트 중 부르지 않은 비슷한 말(정답 not_for_donna)에 반응한 / 그 말
+  호출어 세트는 앱이 호출어를 떼지 못하고 글자 그대로 보낸 말(addressed false)이다. 백엔드가 그 말을 어떻게 받는지 잰다.
+  앱의 실제 호출어 감지(음성)는 여기서 재지 않는다.
+
+--dry-run 이면 규칙만 돌려 판정 에이전트를 부를 말 수(= 예상 CLOVA 호출 수)를 보여 주고 끝낸다.
 """
 
 import argparse
@@ -118,7 +130,43 @@ def score(name: str, rows: list[dict]) -> list[dict]:
                                         note=f"최댓값 {latency['max']}초, 판정 {len(judged)}건"))
         out.append(metrics.metric("judge_within_budget", f"판정 {JUDGE_BUDGET_SECONDS}초 안 비율", question=QUESTION,
                                   system=name, numerator=latency["within_budget"] or 0, denominator=latency["total"]))
-    return out
+    return out + misfire_metrics(name, rows)
+
+
+def in_window(row: dict) -> bool:
+    """8초 창 안의 말: 부르지 않았고(addressed false), 도나가 브리핑 중이거나 묻거나 답한 직후."""
+    context = row.get("context") or {"last_type": row.get("last_type")}  # 예전 결과 줄에는 last_type 만 있다
+    return not row["addressed"] and bool(context.get("last_type") or context.get("briefing_step") is not None
+                                         or context.get("donna_was_speaking"))
+
+
+def misfire_metrics(name: str, rows: list[dict]) -> list[dict]:
+    """오발성 세분. 정의는 모듈 설명."""
+    kitchen = [row for row in rows if row["expected_intent"] == "not_for_donna"]
+    window = [row for row in kitchen if in_window(row)]
+    addressed = [row for row in rows if row["addressed"]]
+    wake = [row for row in rows if row.get("source") == "wake"]
+    wake_call = [row for row in wake if row["expected_intent"] != "not_for_donna"]
+    wake_not = [row for row in wake if row["expected_intent"] == "not_for_donna"]
+
+    def reacted(row: dict) -> bool:
+        return row["intent"] not in SILENT
+
+    def ignored(row: dict) -> bool:
+        return row["intent"] == "not_for_donna"
+
+    return [
+        metrics.metric("false_activation_rate", "부르지 않았는데 반응한 비율 (주방 대화에)", question=QUESTION, system=name,
+                       numerator=sum(map(reacted, kitchen)), denominator=len(kitchen), higher_is_better=False),
+        metrics.metric("window_false_answer_rate", "8초 창 안 주방 대화에 반응한 비율", question=QUESTION, system=name,
+                       numerator=sum(map(reacted, window)), denominator=len(window), higher_is_better=False),
+        metrics.metric("missed_command_rate_addressed", "\"도나야\"로 부른 말을 무시한 비율", question=QUESTION, system=name,
+                       numerator=sum(map(ignored, addressed)), denominator=len(addressed), higher_is_better=False),
+        metrics.metric("wake_accept_rate", "호출어 변형을 부른 말로 받은 비율", question=QUESTION, system=name,
+                       numerator=sum(not ignored(row) for row in wake_call), denominator=len(wake_call)),
+        metrics.metric("wake_false_accept_rate", "호출어와 비슷한 말에 반응한 비율", question=QUESTION, system=name,
+                       numerator=sum(map(reacted, wake_not)), denominator=len(wake_not), higher_is_better=False),
+    ]
 
 
 def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -> dict:
@@ -140,6 +188,7 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -
                     rows.append({"case_id": case["id"], "system": name, "run": run, "source": case.get("source"),
                                  "text": case["text"], "addressed": bool(case.get("addressed")),
                                  "last_type": (case.get("context") or {}).get("last_type"),
+                                 "context": dict(case.get("context") or {}),
                                  "expected_intent": case["expected_intent"], "expected_jump_to": case.get("expected_jump_to"),
                                  **got, "correct": is_correct(case, got)})
     finally:
@@ -156,6 +205,29 @@ def evaluate(cases: list[dict], names: list[str], *, runs: int = 1, post=None) -
     return {"metrics": out, "cases": rows, "confusion": confusion, "calls": counting.calls}
 
 
+def judge_needed(cases: list[dict]) -> list[dict]:
+    """규칙이 못 가른 말 (rule+judge 에서 판정 에이전트를 부르는 말). CLOVA 를 부르지 않는다."""
+    from voice.dialog import intent_rules
+
+    return [case for case in cases if intent_rules.match(case["text"], (case.get("context") or {}).get("last_type"),
+                                                         bool(case.get("addressed"))) is None]
+
+
+def planned_calls(cases: list[dict], names: list[str], runs: int) -> dict:
+    """{시스템: {typical, max}}. typical 은 판정 에이전트를 부를 말 수 × 회차, max 는 429 뒤 한 번 더 부른 경우."""
+    needed = len(judge_needed(cases))
+    return {name: {"typical": needed * runs, "max": needed * runs * 2} if name == "rule+judge" else {"typical": 0, "max": 0}
+            for name in names}
+
+
+def print_plan(cases: list[dict], names: list[str], runs: int) -> dict:
+    plan = planned_calls(cases, names, runs)
+    for name, calls in plan.items():
+        print(f"  {name}: 예상 CLOVA 호출 {calls['typical']}회 (429 로 다시 부르면 최대 {calls['max']}회)")
+    print("--dry-run: CLOVA 를 부르지 않고 끝냅니다", flush=True)
+    return plan
+
+
 def run(args: argparse.Namespace):
     """python -m Harness.evals intent --runs 3 [--systems rule,rule+judge]"""
     names = args.system_names
@@ -164,6 +236,8 @@ def run(args: argparse.Namespace):
         wanted = {part for part in args.ids.split(",") if part}
         cases = [case for case in cases if case["id"] in wanted]
     print(f"뜻 판정 {len(cases)}건, 시스템 {', '.join(names)}, 회차 {args.runs}", flush=True)
+    if getattr(args, "dry_run", False):
+        return print_plan(cases, names, args.runs)
     config = {"model": settings.clova_studio_model if "rule+judge" in names else None, "runs": args.runs,
               "data": {"file": DATA.name, "version": body.get("version"), "sha256": report.file_sha256(DATA),
                        "verified_by": body.get("verified_by")},

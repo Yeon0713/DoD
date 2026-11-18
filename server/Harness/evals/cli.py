@@ -12,7 +12,8 @@ CLOVA 를 부르는 평가는 한 번에 한 프로세스만 돌린다. 동시 �
 guards 는 판정기 이름(regex, critic, judge_tools, judge_thinking)이다.
 
 critic, live 는 기존 스크립트(Harness/critic_eval.py, live_eval.py)를 그대로 부른다. 두 스크립트는 아직 예전 결과 모양
-(result.json 에 schema 없음)으로 쓴다. 음성 점검(voice/live_check.py)은 run() 입구가 생기면 스위트로 더한다.
+(result.json 에 schema 없음)으로 쓴다. 음성 점검(voice/live_check.py)의 /v1/turn 응답 시간은 voice 스위트가 잰다.
+평가 지표 요약: summary 가 스위트 결과(label, reply, guards, intent, noise, voice, tts)를 질문 1~5 표 하나로 모은다 (계산은 scorecard.py, 대시보드도 같은 계산을 쓴다).
 """
 
 import argparse
@@ -101,6 +102,36 @@ def _intent_systems(text: str) -> list[str]:
     return intent_eval.parse_systems(text)
 
 
+def _run_noise(args: argparse.Namespace) -> object:
+    from Harness.evals import noise_eval
+
+    return noise_eval.run(args)
+
+
+def _run_voice(args: argparse.Namespace) -> object:
+    from Harness.evals import voice_eval
+
+    return voice_eval.run(args)
+
+
+def _voice_systems(text: str) -> list[str]:
+    from Harness.evals import voice_eval
+
+    return voice_eval.parse_systems(text)
+
+
+def _run_tts(args: argparse.Namespace) -> object:
+    from Harness.evals import tts_eval
+
+    return tts_eval.run(args)
+
+
+def _run_summary(args: argparse.Namespace) -> object:
+    from Harness.evals import summary
+
+    return summary.run(args)
+
+
 def _run_all(args: argparse.Namespace) -> object:
     from Harness.evals import run_all
 
@@ -146,13 +177,27 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("intent", "뜻 판정(질문 4, 공통): 규칙(rule)과 규칙+판정 에이전트(rule+judge)의 정확도·잘못 답한 비율·명령 무시·"
                     "판정 시간(3초)·규칙 비율. 세트 Harness/evals/data/intents_v1.json (rule 은 CLOVA 없이 돈다)",
           _run_intent, uses_systems=True, parse_systems=_intent_systems, default_systems="rule,rule+judge",
-          needs_clova=lambda args: "rule+judge" in args.system_names),
+          needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
+    Suite("noise", "소음 강건성(모의 받아쓰기 오류, 오디오 아님): intent 세트에 오류를 강도 0~3 으로 넣고 강도별 뜻 판정 정확도·"
+                   "오발성·명령 무시 (--levels 0,1,2,3, --systems 기본 rule,rule+judge. rule 은 CLOVA 없이 돈다)",
+          _run_noise, uses_systems=True, parse_systems=_intent_systems, default_systems="rule,rule+judge",
+          needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
+    Suite("voice", "응답 시간: POST /v1/turn 을 말 20개 대본으로 보내 종류별(브리핑 1초, 질문 3초, 주방 대화 3초) 목표 안 비율·"
+                   "p50·p95·최댓값, 5초 초과율 (--systems 기본 rule+judge, rule 은 CLOVA 없이)",
+          _run_voice, uses_systems=True, parse_systems=_voice_systems, default_systems="rule+judge",
+          needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
     Suite("all", "label → guards → reply → batch → intent 를 차례로 (스위트마다 기본 --systems). 실패해도 다음으로 가고 "
                  "끝에 결과 폴더를 출력한다. --baseline 이면 기준점으로 적는다",
           _run_all, needs_clova=lambda args: False),
     Suite("report", "결과 폴더들을 모아 보고서 report-<날짜>.md 를 쓴다 (CLOVA 없음. --results 비우면 스위트마다 최근 결과, "
                     "--out 으로 저장 위치)",
           _run_report, needs_clova=lambda args: False),
+    Suite("tts", "TTS 합성 시간: 대표 문장 20개의 첫 소리·전체 합성 p50·p95 (voice/tts.py 와 같은 모델, CLOVA 없음. "
+                 "TTS 를 쓸 수 없으면 결과를 남기지 않고 안 돌림)",
+          _run_tts, needs_clova=lambda args: False),
+    Suite("summary", "평가 지표 요약: 질문 1~5 의 대표 지표를 마크다운 표 하나로 (CLOVA 없음. --results 결과 폴더들, "
+                     "비우면 모든 결과에서 지표마다 최근. --out 저장 위치. 대시보드 평가 탭 맨 위 카드와 같은 계산)",
+          _run_summary, needs_clova=lambda args: False),
 )}
 
 
@@ -180,7 +225,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="심판 방식. tools: 추론 끄고 도구로 제출, thinking: 추론 켜고 JSON 글로 답")
     parser.add_argument("--scope", choices=("full", "balanced"), default="full",
                         help="label: full 이면 전체와 balanced 둘 다, balanced 면 balanced 64건만 분류")
-    parser.add_argument("--dry-run", action="store_true", help="guards: 세트와 예상 호출 수만 보여 주고 CLOVA 를 부르지 않는다")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="guards·intent·noise·voice: 세트와 예상 호출 수만 보여 주고 CLOVA 를 부르지 않는다")
+    parser.add_argument("--levels", default="0,1,2,3", help="noise: 모의 받아쓰기 오류 강도 (쉼표로, 0~3)")
     parser.add_argument("--resume", default=None, metavar="결과폴더",
                         help="guards·reply: 끊긴 결과 폴더를 이어 돌린다 (cases.jsonl 에 있는 판정은 건너뜀)")
     parser.add_argument("--split", choices=("tune", "holdout", "injection"), default="tune",
@@ -197,8 +244,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="guards: 판정기마다 회차 (예: judge_tools=1,judge_thinking=1). 적지 않은 판정기는 --runs")
     parser.add_argument("--baseline", action="store_true",
                         help="all: 결과에 기준점 표시(config.baseline). report: 기준점 결과만 모은다")
-    parser.add_argument("--results", default="", help="report: 쉼표로 구분한 결과 폴더 (비우면 스위트마다 최근)")
-    parser.add_argument("--out", default=None, help="report: 보고서 파일 경로 (기본 지금 폴더의 report-<날짜>.md)")
+    parser.add_argument("--results", default="", help="report·summary: 쉼표로 구분한 결과 폴더 (비우면 스위트마다 최근)")
+    parser.add_argument("--out", default=None,
+                        help="report·summary: 파일 경로 (기본 지금 폴더의 report-<날짜>.md, 평가지표-요약-<날짜>.md)")
     gold.add_arguments(parser)  # 정답지를 쓰는 스위트가 gold.from_args(args) 로 읽는다
     return parser
 

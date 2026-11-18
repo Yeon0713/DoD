@@ -320,3 +320,10 @@ def test_cli_help_lists_suites(capsys):
     for name in cli.SUITES:
         assert name in text
     assert "--judge-mode" in text and "--systems" in text and "--concurrency" in text
+
+
+@pytest.mark.parametrize("suite", ["label", "reply", "batch"])
+def test_dry_run_stops_suites_that_would_call_clova_anyway(suite):
+    """--dry-run 을 읽지 않는 스위트는 옵션을 무시하고 실제 CLOVA 를 부른다. 그래서 돌리지 않고 멈춘다."""
+    with pytest.raises(SystemExit, match="--dry-run 을 지원하지 않아요"):
+        cli.main([suite, "--dry-run"])

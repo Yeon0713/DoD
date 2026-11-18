@@ -199,6 +199,7 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
                      "비우면 모든 결과에서 지표마다 최근. --out 저장 위치. 대시보드 평가 탭 맨 위 카드와 같은 계산)",
           _run_summary, needs_clova=lambda args: False),
 )}
+DRY_RUN_SUITES = ("guards", "intent", "noise", "voice")  # --dry-run 을 읽는 스위트. 나머지는 옵션을 무시하고 실제로 돈다
 
 
 def suite_list() -> str:
@@ -257,6 +258,9 @@ def main(argv: list[str] | None = None) -> None:
     suite = SUITES[args.suite]
     if args.runs < 1:
         raise SystemExit("--runs 는 1 이상이어야 해요")
+    if args.dry_run and suite.name not in DRY_RUN_SUITES:  # 모르는 채 실제 CLOVA 를 부르지 않게 멈춘다
+        raise SystemExit(f"{suite.name} 스위트는 --dry-run 을 지원하지 않아요 (지원: {', '.join(DRY_RUN_SUITES)}). "
+                         "--dry-run 을 빼면 실제 CLOVA 를 불러요")
     args.system_names = []
     if suite.uses_systems:
         try:

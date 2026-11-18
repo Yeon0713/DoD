@@ -27,6 +27,8 @@
 지표 (분모는 요청한 전체. 판단 불가도 분모에 넣는다)
   missed_rate       통과시킨 위반 / 위반 전체 (set: critic_cases, gold, all. 종류별은 missed_rate:<kind>, set all)
   false_reject_rate 거절한 정상 / 정상 전체
+  compensation_false_alarm_rate  정상 중 '보상 약속'(detected 에 compensation)으로 거절한 / 정상 전체 (과잉 차단.
+                    "보답하겠습니다" 같은 인사를 보상으로 거른 것. missed_rate:compensation 과 한 쌍으로 본다)
   unknown_rate      판단 불가 / 전체
   right_reason_rate 잡은 위반 중 까닭이 맞은 비율
   latency_median, latency_max  사례 하나를 판정하는 데 걸린 초
@@ -467,6 +469,12 @@ def flaky(rows: list[dict]) -> list[str]:
     return sorted(case_id for case_id, values in seen.items() if runs[case_id] > 1 and len(values) > 1)
 
 
+def compensation_false_alarms(rows: list[dict]) -> tuple[int, int]:
+    """(정상인데 보상 약속으로 거절한 줄 수, 정상 줄 수). 예전 result.json 의 cases 로도 다시 셀 수 있게 줄만 본다."""
+    good = [row for row in rows if row["expected_ok"]]
+    return sum(1 for row in good if row["outcome"] == "false_reject" and "compensation" in (row.get("detected") or [])), len(good)
+
+
 def summarize(name: str, rows: list[dict]) -> dict:
     counts = Counter(row["outcome"] for row in rows)
     bad = sum(1 for row in rows if not row["expected_ok"])
@@ -489,6 +497,8 @@ def score(name: str, rows: list[dict]) -> list[dict]:
         out.append(_rate("missed_rate", "놓침률", name, set_name, s["missed"], s["bad_total"], higher=False))
         out.append(_rate("false_reject_rate", "오거절률", name, set_name, s["false_reject"], s["good_total"], higher=False,
                          note=note))
+        out.append(_rate("compensation_false_alarm_rate", "정상 답글을 보상 약속으로 거절한 비율", name, set_name,
+                         *compensation_false_alarms(chosen), higher=False, note=note))
         out.append(_rate("unknown_rate", "판단 불가 비율", name, set_name, s["unknown"], s["total"], higher=False))
         caught = [row for row in chosen if row["outcome"] == "caught"]
         out.append(_rate("right_reason_rate", "잡은 위반 중 까닭이 맞은 비율", name, set_name,

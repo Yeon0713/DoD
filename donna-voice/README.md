@@ -5,7 +5,7 @@
 | | 폴더 | 주소 | 기술 |
 |---|---|---|---|
 | 앱 | `app/` | http://localhost:8090 | Expo SDK 58 (React Native Web) |
-| 백엔드 (하네스 에이전트) | `../server/voice/` | http://localhost:8100 | FastAPI + Harness + CLOVA X, 받아 적기 네이버 CSR, 목소리 CLOVA Voice |
+| 백엔드 (하네스 에이전트) | `../server/voice/` | http://localhost:8100 | FastAPI + Harness + CLOVA X, 받아 적기 CLOVA Speech("도나야" 부스팅), 목소리 CLOVA Voice |
 | 백엔드 목업 (알바생·인스타용, 지금은 끔) | `server/` | http://localhost:8100 | FastAPI |
 
 기존 앱이 쓰는 3000, 8000, 8082와 겹치지 않습니다. 실제 백엔드와 목업은 같은 8100을 쓰므로 하나만 켭니다.
@@ -17,7 +17,9 @@
 백엔드 → 앱 순서로 켭니다. 백엔드는 켤 때 초옹장 데이터를 넣고 시계를 11월 17일 아침 9시 2분으로 맞춘 뒤 브리핑을 준비합니다. **밤사이 준비 결과 저장본**(`server/voice/fixtures/s005_choongjang.prepared.json`)을 그대로 넣으므로 켜자마자, 또 "처음부터"를 누르자마자 바로 브리핑할 수 있습니다. 시나리오 파일이나 답글 프롬프트를 고치면 `cd server && .venv/bin/python -m voice.prepared_snapshot s005_choongjang`로 저장본을 다시 만듭니다(CLOVA, 3 ~ 4분).
 
 **듣기와 말하기 (네이버 클라우드, 2026-11-19)**
-- 받아 적기(STT): 앱이 마이크 소리를 백엔드로 보내고, 백엔드가 webrtcvad로 말소리 구간을 잘라 네이버 CSR(CLOVA Speech Recognition)로 받아 적습니다. `server/.env`의 `VOICE_STT=true`일 때만 쓰고, 아니면 앱이 브라우저 음성 인식으로 듣습니다.
+- 받아 적기(STT): 앱이 마이크 소리를 백엔드로 보내고, 백엔드가 webrtcvad로 말소리 구간을 잘라 네이버로 받아 적습니다. `server/.env`의 `VOICE_STT=true`일 때만 쓰고, 아니면 앱이 브라우저 음성 인식으로 듣습니다.
+  - `CLOVA_SPEECH_SECRET_KEY`가 있으면 **CLOVA Speech 단문 인식 + 키워드 부스팅**(`VOICE_STT_BOOSTINGS`, 기본 `도나야`)으로 받아 적습니다. 키는 콘솔 > CLOVA Speech > 도메인(단문 인식) > 빌더 실행 > 설정 > 연동 정보의 Secret Key입니다.
+  - 없으면 CSR(CLOVA Speech Recognition)로 받아 적습니다. CSR은 호출어 "도나야"를 "누나야", "도나헤어"로 적어서 앱이 부르지 않은 말로 버리는 일이 많습니다.
 - 도나 목소리(TTS): CLOVA Voice Premium(`vara`)으로 그때그때 만듭니다. 소리를 못 받으면 화면에 다시 듣기 버튼이 나옵니다.
 - 둘 다 `server/.env`의 `CLOVA_VOICE_CLIENT_ID` / `CLOVA_VOICE_CLIENT_SECRET`이 필요합니다(AI·NAVER API Application에서 CSR과 CLOVA Voice에 체크).
 

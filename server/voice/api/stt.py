@@ -11,7 +11,8 @@ router = APIRouter(prefix="/stt")
 
 @router.get("/status")
 def status():
-    return {"enabled": settings.voice_stt, "available": stt.available(), "model": "naver-csr"}
+    return {"enabled": settings.voice_stt, "available": stt.available(), "model": stt.engine(),
+            "boostings": stt.boostings() if stt.engine() == "clova-speech" else []}
 
 
 @router.post("")

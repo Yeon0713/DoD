@@ -57,3 +57,19 @@ def test_no_card_declines():
     found = proposal_of(rid)
     assert found["state"] == "declined" and found["task_id"] is None
     assert [t for t in staff.store_tasks("s005") if t["origin"] == "review"] == []
+
+
+def test_two_stores_keep_their_own_documents():
+    """가게마다 1번부터 매기는 번호라도 id 에 가게가 들어가 다른 가게 것을 덮어쓰거나 막지 않는다 (known-bugs B1)."""
+    from voice import notices
+
+    payload = {"title": "우산꽂이 내놓기", "detail": "입구에 우산꽂이를 내놓아 주세요", "phase": "open"}
+    for store_id, name in (("s005", "민수"), ("s777", "지은")):
+        proposals.create(store_id, dept="customer", by="field_variable", payload=payload, reason={"type": "weather"}, dedupe=False)
+        notices.push(store_id, "negative_review", "아쉬운 리뷰가 올라왔어요")
+        staff.ensure_person(store_id, name)
+        staff.add_task(store_id, "바닥 닦기", "open", origin="owner")  # 예전에는 두 번째 가게에서 IntegrityError
+    for store_id, name in (("s005", "민수"), ("s777", "지은")):
+        assert len(repo.all_of("proposal", store_id)) == 1 and len(repo.all_of("notice", store_id)) == 1
+        assert staff.find_by_name(store_id, name)["store_id"] == store_id
+        assert [t["title"] for t in staff.store_tasks(store_id)] == ["바닥 닦기"]

@@ -73,6 +73,15 @@ def test_urgent_is_not_merged_into_plain():
     assert urgent["state"] == "proposed"
 
 
+def test_today_impact_is_not_merged_into_plain():
+    """현장 변수의 today_impact 도 긴급이다. 같은 글의 일반 할 일에 묶이면 긴급 표시가 사라진다 (known-bugs B2)."""
+    choongjang()
+    applied(UMBRELLA, "rv_a")
+    impact = proposals.create("s005", dept="customer", by="field_variable", payload={**UMBRELLA, "today_impact": True},
+                              reason={"type": "weather"})
+    assert impact["state"] == "proposed" and proposals.urgent(impact)
+
+
 def test_three_in_a_week_proposes_manual_once():
     donna = choongjang()
     task = applied(SEAL, "rv_a")

@@ -63,7 +63,7 @@ def _put_pos_data(store_id: str, payload: dict) -> None:
 
 def add_review(body: dict) -> dict:
     store_id = body["store_id"]
-    review_id = f"rv_{1000 + repo.next_number(f'review:{store_id}')}"
+    review_id = f"rv_{store_id}_{1000 + repo.next_number(f'review:{store_id}')}"  # repo 키는 가게를 가리지 않는다
     written_at = body.get("written_at") or clock.iso(clock.now())
     review = repo.save_review(label.label({**body, "written_at": written_at, "id": review_id, "reply_status": "none"}))
     review_loop.on_new_review(review)  # 영업 중이면 알림 고리, 문 닫은 뒤면 10분 뒤 바로 답하기

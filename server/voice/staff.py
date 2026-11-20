@@ -79,7 +79,7 @@ def add_task(store_id: str, title: str, phase: str, *, repeat: str = "today", mu
     if origin not in ORIGINS:
         raise ValueError(f"할 일 origin 이 필요해요: {origin!r}")
     now = clock.now()
-    task_id = f"tk_{_next_task_number(store_id):04d}"
+    task_id = f"tk_{store_id}_{_next_task_number(store_id):04d}"  # 표 키 task_id 는 가게를 가리지 않으므로 가게 id 를 넣는다
     staff_db.add_task({
         "task_id": task_id, "store_id": store_id, "title": title, "phase": phase, "repeat": repeat, "kind": kind,
         "must_confirm": must_confirm or urgent, "urgent": urgent, "to_staff": to,
@@ -412,7 +412,7 @@ def ensure_person(store_id: str, word: str) -> dict:
     call = word.strip().rstrip("이") if len(word.strip()) > 2 and word.strip().endswith("이") else word.strip()
     from voice import repo
 
-    staff_id = f"st_{repo.next_number(f'staff:{store_id}'):03d}"
+    staff_id = f"st_{store_id}_{repo.next_number(f'staff:{store_id}'):03d}"  # 표 키 staff_id 는 가게를 가리지 않으므로 가게 id 를 넣는다
     staff_db.add_member({"staff_id": staff_id, "store_id": store_id, "name": call, "call": call, "status": "listed", "created_at": _now_iso()})
     return person(staff_id)
 

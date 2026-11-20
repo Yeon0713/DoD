@@ -158,3 +158,87 @@ def test_intern_staff_tasks_are_asked_one_by_one():
     following = staff_tasks.decide(load("s005"), "action.approve", None, session, "응, 넣어")
     assert following["type"] == "ask_tasks" and following["tasks"] != first["tasks"]  # 넣고 나서 다음 건을 바로 묻는다
     assert following["say"][0]["text"].startswith("알바생 할 일에 ")
+
+
+def test_waiting_replies_go_out_once_promoted(monkeypatch):
+    """사원일 때 써 두고 묻던 답글은 평가로 대리가 된 날 묻지 않는다. 아쉬운 리뷰 답글은 올리고 칭찬 답글은 예약한다 (known-bugs B3)."""
+    import datetime as dt
+
+    from voice import config
+    from voice.clock import SEOUL
+    from voice.tests.conftest import choongjang
+
+    donna = choongjang()
+    donna.client.post("/v1/dev/hr", json={"store_id": "s005", "ranks": {"negative_reply": "staff"}})
+    with clock.at(dt.datetime(2026, 11, 10, 12, 0, tzinfo=SEOUL)):  # 지난 2주 그대로 승인 (시연 기록 5/9 에 더해 승진 기준을 넘게)
+        for n in range(40):
+            hr.record("s005", "negative_reply", f"past_{n}", "approved", "응")
+    monkeypatch.setattr(config, "HR_EPOCH", dt.date(2026, 11, 18))  # 11/18 아침 준비가 평가일
+    donna.clock("2026-11-17T22:40:00+09:00")  # 문 닫은 뒤: 바로 답하지 않고 아침에 묻는다
+    rid = donna.demo_review("leak")
+    donna.clock("2026-11-17T23:30:00+09:00")  # 바로 답하기(30분 안)는 사원이라 돌지 않고 지나갔다
+    assert repo.review(rid)["reply_status"] == "none"
+    awaiting = {r["id"] for r in repo.reviews("s005") if r.get("reply_status") == "awaiting"}
+    assert awaiting
+    donna.clock("2026-11-18T09:30:00+09:00")
+    assert hr.rank("s005", "negative_reply") == "assistant" and hr.rank("s005", "positive_reply") == "assistant"
+    posted = repo.review(rid)
+    assert posted["reply_status"] == "posted" and posted["reply_text"] == posted["reply_ready"]["text"]
+    steps = briefing.current("s005")["steps"]
+    assert steps["negative"] is None and steps["scheduling"] is None  # 대리는 묻지 않는다
+    assert ("negative_reply", "done") in hr_log()
+    after = [repo.review(review_id) for review_id in awaiting]
+    assert {r["reply_status"] for r in after} == {"scheduled"} and {r["reply_trigger"] for r in after} == {"auto"}
+    assert all(clock.parse(r["reply_post_at"]) > clock.now() for r in after)  # 지난 때로 올리지 않는다
+    donna.clock("2026-11-19T09:30:00+09:00")
+    report = briefing.current("s005")["steps"]["done_report"]
+    assert report is not None and any(row["id"] == "dr_negative_reply" for row in report["cards"][0]["rows"])  # 다음 날 사후 보고
+
+
+def briefing_step(donna, key: str) -> dict:
+    """아침 브리핑을 듣다가 그 단계에서 멈춘다."""
+    response = donna.turn("오늘 일정 브리핑해 줘")
+    while (response.get("briefing") or {}).get("step_key") != key:
+        assert response["type"] != "end", f"{key} 단계가 없어요"
+        response = donna.turn("다음")
+    return response
+
+
+def test_overnight_reply_does_not_promise_an_expired_fix():
+    """밤사이 아쉬운 리뷰: 교정 할 일이 버려진(expired) 뒤 답글을 올리면 조치를 약속하지 않는 글로 (known-bugs B7)."""
+    from voice import proposals
+    from voice.tests.conftest import choongjang
+
+    donna = choongjang()
+    donna.client.post("/v1/dev/hr", json={"store_id": "s005", "ranks": {"negative_reply": "staff"}})
+    donna.clock("2026-11-17T22:40:00+09:00")
+    rid = donna.demo_review("leak")
+    donna.clock("2026-11-18T09:30:00+09:00")
+    ready = repo.review(rid)["reply_ready"]
+    assert "랩을 두 번" in ready["text"] and ready["plain"] and "랩을 두 번" not in ready["plain"]
+    donna.clock("2026-11-19T09:30:00+09:00")  # 11/18 브리핑을 듣지 않았다
+    assert proposals.for_review("s005", rid)["state"] == "expired"
+    assert {"job": "negative_reply", "ref": rid} in briefing_step(donna, "negative")["action"]["items"]
+    donna.turn("응")
+    assert repo.review(rid)["reply_status"] == "posted" and repo.review(rid)["reply_text"] == ready["plain"]
+
+
+def test_failed_auto_reply_is_asked_next_morning(monkeypatch):
+    """대리: 바로 답하기가 끝내 실패한 아쉬운 리뷰는 다음 아침 브리핑에서 묻는다 (known-bugs B6)."""
+    from voice.jobs import auto_reply
+    from voice.tests.conftest import choongjang
+
+    donna = choongjang()
+    donna.client.post("/v1/dev/hr", json={"store_id": "s005", "ranks": {"negative_reply": "assistant"}})
+    summaries = auto_reply.REPLY_SUMMARIES
+    monkeypatch.setattr(auto_reply, "REPLY_SUMMARIES", {})  # 바로 답하기에서만 오류
+    donna.clock("2026-11-17T22:40:00+09:00")
+    rid = donna.demo_review("leak")
+    donna.clock("2026-11-17T23:30:00+09:00")
+    monkeypatch.setattr(auto_reply, "REPLY_SUMMARIES", summaries)
+    assert repo.review(rid)["reply_status"] == "none" and repo.review(rid)["auto_reply_failed_at"]
+    donna.clock("2026-11-18T09:30:00+09:00")
+    asked = briefing_step(donna, "negative")
+    assert asked["action"]["items"] == [{"job": "negative_reply", "ref": rid}]  # 대리라 다른 리뷰는 묻지 않는다
+    donna.turn("응")
+    assert repo.review(rid)["reply_status"] == "posted" and ("negative_reply", "approved") in hr_log()

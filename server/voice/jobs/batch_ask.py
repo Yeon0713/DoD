@@ -67,15 +67,36 @@ def _neg_item(view: VoiceStore, ref: str) -> dict:
     return {"title": review["summary"], "sub": review["reply_ready"]["text"]}
 
 
+def ready_reply(view: VoiceStore, review: dict) -> tuple[str, str]:
+    """써 둔 답글(reply_ready) 중 올릴 글 → (글, source).
+    같은 리뷰의 교정 할 일을 뺐으면 그 조치를 약속하지 않는 글(plain)로 (영업 중 묶음 창과 밤사이 써 둔 글, plain 이 있을 때).
+    "좀 더 부드럽게"는 조치를 적은 글(text)만 고치므로, 고친 적이 있으면 그 지시대로 plain 을 지금 고친다 (known-bugs B4).
+    못 고치면 처음 plain 을 올린다 (지시는 빠져도 하지 않을 조치는 약속하지 않는다)."""
+    from voice.agents import voice_reply
+
+    ready = review["reply_ready"]
+    fix = proposals.for_review(view.store_id, review["id"])
+    if not (ready.get("plain") and fix and fix["state"] in ("declined", "expired")):
+        return ready["text"], ready["source"]
+    asked = ready.get("revised") or []
+    # 영업 중 묶음 창의 plain 은 review_loop._batch 가 알림 기록(reply_plain + 사장님이 정한 보상 문장)으로 만든다. 보상 문장은 빼고
+    # 고친 뒤 다시 붙인다. 밤사이 써 둔 plain(briefing.draft_negative, known-bugs B7)은 알림 기록도 보상 문장도 없다
+    record = repo.get("alert", f"al_{review['id']}")
+    base = record["reply_plain"] if record else ready["plain"]
+    written = voice_reply.revise(view, review, "AUTO", base, ", ".join(asked)) if asked else None
+    if written is None:
+        return ready["plain"], ready["source"]
+    preset = record["compensation"] if record and record["use_compensation"] else None
+    text, notes = voice_reply.safe_reply(voice_reply.compose(written["text"], preset), preset, base)
+    return text, ready["source"] if notes else written["source"]
+
+
 def _neg_approve(view: VoiceStore, ref: str) -> None:
     review = view.review(ref)
+    text, source = ready_reply(view, review)
     now = clock.now()
-    ready = review["reply_ready"]
-    fix = proposals.for_review(view.store_id, ref)
-    # 같은 리뷰의 교정 할 일을 뺐으면 그 조치를 약속하지 않는 글로 (영업 중 묶음 창, plain 이 있을 때)
-    text = (ready.get("plain") or ready["text"]) if fix and fix["state"] in ("declined", "expired") else ready["text"]
     review.update({
-        "reply_status": "posted", "reply_by": "donna", "reply_text": text, "reply_source": ready["source"],
+        "reply_status": "posted", "reply_by": "donna", "reply_text": text, "reply_source": source,
         "reply_posted_at": iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
         "reply_trigger": "owner_yes",
     })
@@ -88,13 +109,24 @@ def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
 
     review = view.review(ref)
     ready = review["reply_ready"]
-    written = voice_reply.revise(view, review, "AUTO", ready["text"], instruction)
+    # 영업 중 묶음 창의 글은 알림 기록의 사과 글 + 사장님이 정한 보상 문장이다 (review_loop.reply_text). 보상 문장은 에이전트에
+    # 넘기지 않고 고친 뒤 다시 붙인다 (review_loop._revise 와 같게, known-bugs B5). 밤사이 써 둔 글(알림 기록 없음)은 보상 문장이 없다
+    record = repo.get("alert", f"al_{ref}")
+    key = ("reply_base" if record["use_card"] and record["card"] else "reply_plain") if record else None
+    previous = record[key] if record else ready["text"]
+    written = voice_reply.revise(view, review, "AUTO", previous, instruction)
     if written is None:
         return False
-    text, notes = voice_reply.safe_reply(written["text"], None, ready.get("plain") or ready["text"])
+    _, notes = voice_reply.safe_reply(written["text"], None, previous)
     if notes:  # 고친 글이 보상 검사에 걸렸다: 고치지 않은 것으로
         return False
-    repo.save_review({**review, "reply_ready": {**ready, "text": text, "plain": text, "source": written["source"]}})
+    preset = record["compensation"] if record and record["use_compensation"] else None
+    if record:  # 다시 고치면 고친 글에서 이어 고친다
+        repo.put("alert", record["id"], record["store_id"], {**record, key: written["text"]})
+    # plain 은 그대로 두고 지시만 적어 둔다. 할 일을 빼고 올릴 때 ready_reply 가 그 지시대로 고친다 (known-bugs B4)
+    revised = [*(ready.get("revised") or []), instruction]
+    text = voice_reply.compose(written["text"], preset)
+    repo.save_review({**review, "reply_ready": {**ready, "text": text, "source": written["source"], "revised": revised}})
     return True
 
 

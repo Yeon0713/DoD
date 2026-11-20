@@ -10,7 +10,7 @@ POST /api/stores/{store_id}/reviews/import 한 플랫폼(배민, 네이버, 쿠�
 GET  /api/stores/{store_id}/logo           가게 로고 PNG, 바탕 지움 (올린 로고 → 네이버 소식에서 찾은 로고)
 POST /api/stores/{store_id}/logo           로고 올리기 {"data_url": "data:image/png;base64,..."} (바탕을 지워 저장)
 DELETE /api/stores/{store_id}/logo         올린 로고 지우기
-GET  /api/stores/{store_id}/weather        기상청에서 받아 둔 그 가게 지역 날씨 (등록할 때 받고, 그 뒤 3시간마다 새로 받는다)
+GET  /api/stores/{store_id}/weather        기상청에서 받아 둔 그 가게 지역 날씨 (등록할 때 받고, 그 뒤 매일 자정에 새로 받는다)
 POST /api/stores/{store_id}/weather/refresh 그 가게 지역 날씨를 기상청에서 다시 받는다
 
 가게 검색은 GET /api/naver/search (네이버 지역 검색) 를 쓴다.
@@ -154,7 +154,7 @@ def register(body: RegisterRequest, background: BackgroundTasks):
     save_settings_changes(store_id, {})
     # 가게 좌표로 그 지역 기상청 날씨를 받는다. API 를 수십 번 불러 시간이 걸리므로 등록 응답을 보낸 뒤에 한다
     if store_weather.can_fetch(store_id):
-        # 실패해도 등록은 그대로 두고(공통 목업 날씨를 쓴다) 기록만 남긴다. 그 뒤로는 3시간마다 새로 받는다 (app/weather/auto_refresh.py)
+        # 실패해도 등록은 그대로 두고(공통 목업 날씨를 쓴다) 기록만 남긴다. 그 뒤로는 매일 자정에 새로 받는다 (app/weather/auto_refresh.py)
         background.add_task(auto_refresh.refresh_store, store_id)
     return {"store_id": store_id, "place": _place_payload(info)}
 

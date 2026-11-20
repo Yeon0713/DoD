@@ -27,7 +27,7 @@ async def lifespan(_app: FastAPI):
     """서버가 켜질 때 한 번.
     - 개발자 대시보드를 켰으면 모든 가게 시연 기간을 뒤에서 미리 훑어 둔다
       (대시보드 시연 탭에서 가게를 고르면 바로 열리게. modules/dev_tools/demo_week_scan.py).
-    - 켜져 있는 동안 등록한 가게 날씨를 3시간마다 새로 받는다 (기상청 키가 있을 때만)."""
+    - 켜져 있는 동안 등록한 가게 날씨를 매일 자정에 새로 받는다 (기상청 키가 있을 때만)."""
     if settings.dev_tools_enabled:
         from app.modules.dev_tools import demo_week_scan
 

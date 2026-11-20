@@ -53,11 +53,11 @@ def step(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, dict | None]:
         mine = [e for e in daily if e["job"] == job]
         says.append(say(LINES[job](len(mine))))
         says.append(say(f"{'첫 번째는 ' if len(mine) > 1 else ''}{describe(view, mine[0])}이에요."))
-        rows.append({"id": f"dr_{job}", "kind": "done_report", "label": ROW_LABELS[job], "value": f"{len(mine)}건"})
+        rows.append({"id": f"dr_{job}", "kind": "done", "label": ROW_LABELS[job], "value": f"{len(mine)}건"})
     for job in dict.fromkeys(e["job"] for e in weekly):
         n = sum(1 for e in weekly if e["job"] == job)
         says.append(say(f"지난주 {hr.JOBS[job]['name']} {speech.count(n, '건')}을 처리했어요."))
-        rows.append({"id": f"dw_{job}", "kind": "done_report", "label": ROW_LABELS[job], "value": f"지난주 {n}건"})
+        rows.append({"id": f"dw_{job}", "kind": "done", "label": ROW_LABELS[job], "value": f"지난주 {n}건"})
     if daily:  # "그거 지워"는 알바생 일 취소(staff.cancel)라서 무엇을 지울지 같이 말하게 한다
         example = "두 번째 거 지워" if len(daily) > 1 else ("그 인스타 지워" if daily[0]["job"] == "instagram_post" else "그 답글 지워")
         says.append(say(f"되돌릴 게 있으면 '{example}'처럼 말씀해 주세요."))

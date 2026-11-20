@@ -185,7 +185,7 @@ def read(store_id: str) -> dict:
     found = all_rules(store_id)
     if not found:
         return answer("수첩이 비어 있어요", [say("업무 수첩에 적은 규칙이 아직 없어요.")], [])
-    rows = [{"id": r["id"], "kind": "notebook", "label": AGENT_NAMES.get(r["agent"], r["agent"])[:6], "value": r["text"]} for r in found[:4]]
+    rows = [{"id": r["id"], "kind": "task", "label": AGENT_NAMES.get(r["agent"], r["agent"])[:6], "value": r["text"]} for r in found[:4]]
     return answer(f"수첩 규칙 {len(found)}개예요", [say(f"업무 수첩에 규칙이 {speech.count(len(found), '개')} 있어요."),
                                                   *[say(line) for line in _listing(found)]], [{"type": "rows", "id": "notebook", "rows": rows}])
 

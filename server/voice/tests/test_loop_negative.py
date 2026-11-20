@@ -29,8 +29,11 @@ def review(review_id: str) -> dict:
     return repo.review(review_id)
 
 
-def urgent(donna: Choongjang, staff_id: str = "st_harin") -> list[dict]:
-    return donna.staff_today(staff_id)["urgent"]
+def fix_cards(donna: Choongjang, staff_id: str = "st_harin") -> list[dict]:
+    """아쉬운 리뷰에서 나온 교정 카드. 긴급이 아니라 '확인 필요'에 뜬다 (2026-11-20)."""
+    today = donna.staff_today(staff_id)
+    assert today["urgent"] == []  # 맨 위 긴급에는 올라가지 않는다 (퇴근을 막지 않는다)
+    return [t for g in today["groups"] for t in g["must"] if t["sub"] == "리뷰에서 나온 일"]
 
 
 def jobs(donna: Choongjang, review_id: str) -> dict[str, str]:
@@ -65,7 +68,7 @@ def test_l3_alert_turn():
     review_card, todo = asked["cards"]
     assert review_card["reply"]["text"].endswith(LEAK_PRESET) and review_card["reply"]["posted_at"] is None
     assert review_card["reply"]["text"].startswith("국물이 새서 불편하게 해 드려 정말 죄송합니다.")
-    assert todo["type"] == "checklist" and todo["items"][0]["title"] == "배달 용기 이중 실링" and todo["items"][0]["tone"] == "urgent"
+    assert todo["type"] == "checklist" and todo["items"][0]["title"] == "배달 용기 이중 실링" and "tone" not in todo["items"][0]
     assert asked["action"] == {"kind": "review_fix", "alert_id": f"al_{rid}", "compensation": True, "staff_card": "배달 용기 이중 실링",
                                "deadline_at": "2026-11-17T16:10:00+09:00"}
 
@@ -76,13 +79,13 @@ def test_l4_approve():
     donna.clock("2026-11-17T15:41:00+09:00")
     done = donna.turn("응, 진행해")
     assert done["intent"] == "action.approve" and done["type"] == "answer" and done["headline"] == "답글 올리고 할 일 넣었어요"
-    assert [s["text"] for s in done["say"]] == ["서비스 안내를 넣어 사과 답글을 올렸어요.", "알바생 할 일 맨 위에 배달 용기 이중 실링을 넣었어요.",
+    assert [s["text"] for s in done["say"]] == ["서비스 안내를 넣어 사과 답글을 올렸어요.", "알바생 할 일에 배달 용기 이중 실링을 넣었어요.",
                                                 "알바생이 확인하면 알려 드릴게요."]
     posted = review(rid)
     assert posted["reply_status"] == "posted" and posted["reply_trigger"] == "owner_yes" and posted["replied_in_minutes"] == 1
     assert posted["reply_text"].endswith(LEAK_PRESET) and posted["reply_posted_at"] == "2026-11-17T15:41:00+09:00"
     assert alert_of(rid)["state"] == "card_pinned"
-    assert [t["title"] for t in urgent(donna)] == ["배달 용기 이중 실링"]
+    assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
 
 
 def test_l6_confirm_closes():
@@ -90,7 +93,7 @@ def test_l6_confirm_closes():
     donna.open_notice()
     donna.clock("2026-11-17T15:41:00+09:00")
     donna.turn("응, 진행해")
-    card = urgent(donna)[0]
+    card = fix_cards(donna)[0]
     donna.clock("2026-11-17T15:43:00+09:00")
     donna.staff_post(f"/tasks/{card['id']}/confirm", staff_id="st_harin")
     assert alert_of(rid)["state"] == "closed"
@@ -120,7 +123,7 @@ def test_l8_idempotent():
     donna.open_notice()
     first = donna.turn("응, 진행해", request_id="req_yes")
     again = donna.turn("응, 진행해", request_id="req_yes")
-    assert first == again and len(urgent(donna)) == 1
+    assert first == again and len(fix_cards(donna)) == 1
     assert len([a for a in repo.all_of("activity", "s005") if a["text"] == "아쉬운 리뷰에 사과 답글을 올렸어요"]) == 1
 
 
@@ -146,7 +149,7 @@ def test_e1_drop_compensation():
     done = donna.turn("쿠폰 빼고 사과만 올려")
     assert done["intent"] == "action.approve" and done["say"][0]["text"] == "서비스 안내는 빼고 사과 답글을 올렸어요."
     assert LEAK_PRESET not in review(rid)["reply_text"] and review(rid)["reply_status"] == "posted"
-    assert [t["title"] for t in urgent(donna)] == ["배달 용기 이중 실링"]
+    assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
 
 
 def test_e2_no_card():
@@ -157,7 +160,7 @@ def test_e2_no_card():
     assert [s["text"] for s in edit["say"]] == ["알바생 할 일은 빼고, 사과 답글에 다음 주문 서비스 안내를 넣어 올릴까요?"]
     assert [c["type"] for c in edit["cards"]] == ["review"] and review(rid)["reply_status"] == "proposed"
     done = donna.turn("응, 올려")
-    assert done["headline"] == "사과 답글을 올렸어요" and urgent(donna) == [] and alert_of(rid)["state"] == "closed"
+    assert done["headline"] == "사과 답글을 올렸어요" and fix_cards(donna) == [] and alert_of(rid)["state"] == "closed"
     assert review(rid)["reply_text"].endswith(LEAK_PRESET)
 
 
@@ -168,7 +171,7 @@ def test_e3_edit_not_cancel():
     assert edit["intent"] == "action.edit" and alert_of(rid)["state"] == "alerted"
     assert edit["say"][0]["text"] == "서비스 안내는 빼고, 사과 답글을 올리고, 알바생 할 일에 배달 용기 이중 실링을 넣을까요?"
     done = donna.turn("진행해")
-    assert done["intent"] == "action.approve" and LEAK_PRESET not in review(rid)["reply_text"] and len(urgent(donna)) == 1
+    assert done["intent"] == "action.approve" and LEAK_PRESET not in review(rid)["reply_text"] and len(fix_cards(donna)) == 1
 
 
 def test_e4_cancel():
@@ -178,7 +181,7 @@ def test_e4_cancel():
     assert no["intent"] == "action.cancel" and [s["text"] for s in no["say"]] == ["네, 올리지 않을게요.", "초안은 남겨 둘게요."]
     assert review(rid)["reply_status"] == "drafted" and alert_of(rid)["state"] == "canceled"
     donna.clock("2026-11-17T16:10:00+09:00")
-    assert review(rid)["reply_status"] == "drafted" and donna.notices() == [] and urgent(donna) == []
+    assert review(rid)["reply_status"] == "drafted" and donna.notices() == [] and fix_cards(donna) == []
 
 
 def test_e5_two_edits():
@@ -186,7 +189,7 @@ def test_e5_two_edits():
     donna.open_notice()
     done = donna.turn("사과만 올리고 카드도 빼")
     assert done["intent"] == "action.approve" and done["headline"] == "사과 답글을 올렸어요"
-    assert LEAK_PRESET not in review(rid)["reply_text"] and urgent(donna) == []
+    assert LEAK_PRESET not in review(rid)["reply_text"] and fix_cards(donna) == []
 
 
 def test_e6_no_preset():
@@ -227,7 +230,7 @@ def test_t2_fallback_posts():
     donna.clock("2026-11-17T16:05:00+09:00")
     posted = review(rid)
     assert posted["reply_status"] == "posted" and posted["reply_trigger"] == "timeout" and posted["replied_in_minutes"] == 25
-    assert LEAK_PRESET not in posted["reply_text"] and "랩을" not in posted["reply_text"] and urgent(donna) == []
+    assert LEAK_PRESET not in posted["reply_text"] and "랩을" not in posted["reply_text"] and fix_cards(donna) == []
     assert [(n["kind"], n["say"]) for n in donna.notices()] == [("reply_fallback", ["대답이 없으셔서 사과 답글만 먼저 올렸어요."])]
 
 
@@ -263,7 +266,7 @@ def test_t5_yes_after_fallback():
     donna.clock("2026-11-17T16:06:00+09:00")
     late = donna.turn("응, 진행해", addressed=True)
     assert late["intent"] == "action.approve" and [s["text"] for s in late["say"]] == ["답글은 이미 올렸어요.", "알바생 할 일만 넣었어요."]
-    assert review(rid)["reply_posted_at"] == "2026-11-17T16:05:00+09:00" and [t["title"] for t in urgent(donna)] == ["배달 용기 이중 실링"]
+    assert review(rid)["reply_posted_at"] == "2026-11-17T16:05:00+09:00" and [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
 
 
 def test_t6_clock_jump():
@@ -289,7 +292,7 @@ def test_g1_nothing_without_yes():
     donna, rid = leak()
     donna.open_notice()
     donna.clock("2026-11-17T15:50:00+09:00")
-    assert review(rid)["reply_status"] == "proposed" and urgent(donna) == []
+    assert review(rid)["reply_status"] == "proposed" and fix_cards(donna) == []
     assert donna.get("/v1/dev/platform")["items"][0]["reply"] is None
 
 
@@ -335,7 +338,7 @@ def test_g9_double_yes():
     donna.turn("응", request_id="req_a")
     again = donna.turn("응", request_id="req_b")
     assert again["headline"] == "답글은 이미 올렸어요" and again["say"][0]["text"] == "답글은 이미 올렸어요."
-    assert len(urgent(donna)) == 1
+    assert len(fix_cards(donna)) == 1
 
 
 @pytest.mark.parametrize("name, kind, card", [

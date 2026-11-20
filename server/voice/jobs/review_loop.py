@@ -3,7 +3,7 @@
 영업 중(문 열기 한 시간 전 ~ 문 닫을 때)에 아쉬운 리뷰가 오면
   1. 원인을 나누고(cause.py) 사과 답글과 알바생 교정 카드를 마련해, 사장님 앱에 알린다 (notice negative_review)
   2. 사장님이 알림을 열면 도나가 묻는다 (turn type ask_action): "사과 답글에 … 넣어 올리고, 알바생 할 일에 … 넣을까요?"
-  3. "응, 진행해" → 답글을 올리고(플랫폼에 올린 것으로 적는다) 알바생 할 일 맨 위에 교정 카드를 넣는다
+  3. "응, 진행해" → 답글을 올리고(플랫폼에 올린 것으로 적는다) 알바생 할 일에 교정 카드를 넣는다 (모두 확인 필요, 긴급 아님)
      "쿠폰 빼고 사과만", "카드는 넣지 마" → 고쳐서 다시 묻거나(올리라는 말이 같이 있으면) 바로 올린다. "안 해" → 초안만 남긴다
   4. 알바생이 카드를 확인하면 사장님께 알린다 (notice staff_checked) → 고리가 닫힌다
   대답이 없으면 15분 뒤 한 번 더 알리고, 25분이 되면 (허락했으면) 사과만 먼저 올린다. 허락이 없으면 초안으로 남긴다.
@@ -20,7 +20,7 @@
 import datetime as dt
 
 from app.core.seoul_time import at_time
-from voice import activity, clock, config, hours, notices, repo, speech, staff
+from voice import activity, clock, config, hours, notices, proposals, repo, speech
 from voice.agents import voice_reply
 from voice.clock import iso, parse
 from voice.context import load
@@ -86,13 +86,14 @@ def alert(store_id: str, review_id: str) -> dict | None:
     base, notes = voice_reply.safe_reply(written["text"], None, found["reply"])  # 에이전트 글에는 보상이 없어야 한다
     now = clock.now()
     preset = _preset(store_id, found["type"])
+    proposal = _propose(store_id, review, card) if card else None
     record = repo.put("alert", f"al_{review_id}", store_id, {
         "id": f"al_{review_id}", "store_id": store_id, "review_id": review_id, "state": "alerted",
         "cause": {k: found[k] for k in ("type", "detail", "summary")}, "card": card,
         "reply_base": base, "reply_plain": found["plain"], "reply_source": written["source"], "notes": written["notes"] + notes,
         "compensation": preset, "use_compensation": bool(preset), "use_card": bool(card),
         "created_at": iso(now), "deadline_at": iso(parse(review["written_at"]) + config.AUTO_REPLY_WINDOW),
-        "task_id": None, "decided_by": None, "decided_at": None,
+        "task_id": None, "proposal_id": proposal["id"] if proposal else None, "decided_by": None, "decided_at": None,
     })
     review.update({"reply_status": "proposed", "summary": found["summary"], "cause": found["type"]})
     repo.save_review(review)
@@ -167,9 +168,9 @@ def _cards(record: dict, review: dict, *, posted: bool) -> list[dict]:
              "posted_at": review.get("reply_posted_at") if posted else None, "scheduled_label": None if posted else "올리기 전 답글"}
     cards = [review_card(review, reply)]
     if record["use_card"] and record["card"]:
-        cards.append({"type": "checklist", "id": "fix_card", "title": "알바생 할 일 맨 위에 넣은 것" if posted else "알바생 할 일에 넣을 것",
+        cards.append({"type": "checklist", "id": "fix_card", "title": "알바생 할 일에 넣은 것" if posted else "알바생 할 일에 넣을 것",
                       "items": [{"id": record["task_id"] or "fix_card_item", "title": record["card"]["title"],
-                                 "sub": "알바생 확인 전" if posted else record["card"]["detail"], "state": "todo", "tone": "urgent"}]})
+                                 "sub": "알바생 확인 전" if posted else record["card"]["detail"], "state": "todo"}]})
     return cards
 
 
@@ -241,13 +242,21 @@ def _post(record: dict, trigger: str) -> dict:
     return review
 
 
-def _pin(record: dict) -> dict:
-    """알바생 할 일 맨 위에 교정 카드를 넣는다 (넣은 날과 다음 날)."""
-    card = record["card"]
-    review = repo.review(record["review_id"])
-    task = staff.add_task(record["store_id"], card["title"], "open", urgent=True, detail=card["detail"], days=2,
-                          source={"type": "review", "review_id": record["review_id"], "alert_id": record["id"], "review_text": review["text"]})
-    activity.log(record["store_id"], "donna", f"알바생 할 일에 {_obj(card['title'])} 넣었어요", f"fix:{record['review_id']}:card")
+def _propose(store_id: str, review: dict, card: dict) -> dict:
+    """교정 카드를 제안으로 남긴다 (묻는 중). 넣는 것은 사장님이 "진행해" 한 뒤 proposals.apply 가 한다."""
+    return proposals.create(
+        store_id, dept="customer", by="negative_review", state="asked",
+        payload={"title": card["title"], "detail": card["detail"], "phase": "open", "days": 2, "must_confirm": True, "urgent": False},
+        reason={"type": "review", "review_id": review["id"]},
+        link={"type": "review", "review_id": review["id"], "alert_id": f"al_{review['id']}", "review_text": review["text"]},
+    )
+
+
+def _pin(record: dict, trigger: str) -> dict:
+    """알바생 할 일에 교정 카드를 넣는다 (넣은 날과 다음 날, 저마다 확인). 긴급은 아니다 (퇴근을 막지 않는다)."""
+    pid = record.get("proposal_id") or _propose(record["store_id"], repo.review(record["review_id"]), record["card"])["id"]
+    task = proposals.apply(pid, trigger)
+    activity.log(record["store_id"], "donna", f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요", f"fix:{record['review_id']}:card")
     return task
 
 
@@ -255,7 +264,9 @@ def _finish(record: dict, trigger: str) -> dict:
     """올리고(아직이면) 카드를 넣는다. 반환한 record 의 state 는 card_pinned | closed."""
     if record["state"] != "fallback_posted":
         _post(record, trigger)
-    task = _pin(record) if record["use_card"] and record["card"] else None
+    task = _pin(record, trigger) if record["use_card"] and record["card"] else None
+    if task is None and record.get("proposal_id"):  # "카드는 넣지 마"
+        proposals.decline(record["proposal_id"], trigger)
     state = "card_pinned" if task else "closed"
     return repo.put("alert", record["id"], record["store_id"], {
         **record, "state": state, "task_id": task["id"] if task else None,
@@ -327,7 +338,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
     else:
         first = "사과 답글을 올렸어요."
     if record["task_id"]:
-        says = [say(first), say(f"알바생 할 일 맨 위에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
+        says = [say(first), say(f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
         return answer("답글 올리고 할 일 넣었어요", says, cards)
     return answer("사과 답글을 올렸어요", [say(first)], cards)
 

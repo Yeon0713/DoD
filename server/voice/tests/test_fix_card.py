@@ -67,3 +67,10 @@ def test_falls_back_to_template_when_clova_fails(agent):
     agent(500)
     found = card()
     assert found["card_source"] == "TEMPLATE" and found["card"]["title"] == "배달 칼국수 면·국물 따로 담기"
+
+
+def test_too_long_title_says_how_long(agent):
+    long = {**GOOD, "title": "주문한 음식이 잘 나갔는지 확인하기"}
+    fake = agent([call("submit_fix_card", long)], [call("submit_fix_card", GOOD)], judged())
+    assert card()["card_source"] == "AGENT" and fake.done()
+    assert "title 칸이 길어요 (지금 17자, 16자까지" in fake.tool_messages(1)[-1]

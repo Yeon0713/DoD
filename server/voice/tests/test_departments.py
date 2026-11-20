@@ -98,3 +98,14 @@ def test_why_lines_for_lead_input():
     choongjang(at=None)
     p = propose("quality", "field_variable", UMBRELLA)
     assert staff_tasks._why(load("s005"), p, clock.now()) == "오늘 14시부터 비가 와요."
+
+
+def test_long_summary_says_how_long(leads):
+    """팀장 summary 가 길면 지금 몇 자인지 알린다. "폭 34 이하"만 듣고 두 번 다 넘겨 판단 없이 남은 적이 있다 (2026-11-21)."""
+    seal = propose("customer", "negative_review", SEAL, "rv_x")
+    long = "고객 응대 부서는 면이 불지 않게 배달하기 위해 배달 주문 시 면을 따로 포장합니다."
+    fake = leads([call("submit_lead", {"items": [lead(seal["id"], "keep")], "order": [seal["id"]], "summary": long})],
+                 [call("submit_lead", {"items": [lead(seal["id"], "keep")], "order": [seal["id"]], "summary": "교정 하나"})])
+    departments.run_leads(load("s005"))
+    assert proposals.get(seal["id"])["lead"]["source"] == "AGENT" and fake.done()
+    assert fake.tool_messages(1)[-1].startswith("거절: summary 칸이 길어요 (지금 ")

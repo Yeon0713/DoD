@@ -74,7 +74,8 @@ export type Notice = {
 };
 
 // ask_tasks: 알바생 할 일로 넣을지 묶어 묻는다 ("응, 넣어" / "두 번째는 빼" / "안 해", 2026-11-20)
-export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'ask_action' | 'ask_tasks' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
+// ask_holiday: "○월 ○일을 쉬는 날로 적을게요. 맞아요?" (2026-11-20)
+export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'ask_action' | 'ask_tasks' | 'ask_holiday' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
 
 export type Turn = {
   turn_id: string;

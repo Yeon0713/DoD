@@ -305,8 +305,10 @@ def answer_question(view, text: str) -> dict:
 
 
 def _missed_tasks(intent: Intent, session: dict, view, addressed: bool) -> bool:
-    """"도나야"로 부른 말이고, 다른 것을 묻는 중이 아니고, 브리핑 밖이고, 오늘 못 물은 알바생 할 일이 남았다."""
+    """"도나야"로 부른 말이고, 다른 것을 묻는 중이 아니고, 브리핑 밖이고, 오늘 못 물은 알바생 할 일이 남았다.
+    브리핑을 부르는 말은 뺀다: 브리핑 마지막 단계(staff_tasks)가 묻는다 (2026-11-21, 앞에서 가로채 마지막 단계가 비던 것)."""
     return (addressed and intent.name not in ("echo", "not_for_donna", "stop", "unknown") and not intent.name.startswith("action.")
+            and not intent.name.startswith("briefing.")
             and session.get("mode") != "briefing" and session.get("last_type") not in ASKING_TYPES
             and staff_tasks.unasked_today(view, clock.now()))
 

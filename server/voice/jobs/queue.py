@@ -9,6 +9,8 @@
 
 run_due(지금까지) 는 예정 시각이 지난 작업을 시각 순서로 돌린다. 작업은 clock.at(예정 시각) 안에서 돌아서,
 dev/clock 으로 시계를 한꺼번에 옮겨도 그 작업이 원래 돌았어야 할 시각에 돈 것으로 적힌다.
+시계를 멈춰 둔 동안에는 fixtures 로 넣은 가게(가게 문서 fixture)의 작업만 돈다. 같은 서버에 앱으로 들어온 실제 가게가 있어도
+가짜 시각으로 그 가게 리뷰에 답글을 쓰지 않는다 (2026-11-21, 시계를 옮기면 실제 가게 작업까지 돌아 5분 넘게 멈췄다).
 서버에서는 main.py 의 스레드가 30초마다 부른다.
 """
 
@@ -70,7 +72,9 @@ def reschedule_prepare(store_id: str) -> dict | None:
 def _pending(until: dt.datetime) -> list[dict]:
     jobs = []
     for store_id in repo.store_ids():
-        jobs += [j for j in repo.all_of("job", store_id) if not j["done"] and parse(j["due_at"]) <= until]
+        if clock.fixed() and not (repo.store(store_id) or {}).get("fixture"):
+            continue  # 시계를 멈춘 동안(시연)은 fixtures 로 넣은 가게만. 앱으로 들어온 실제 가게는 실제 시각일 때만 돈다 (2026-11-21)
+        jobs +=[j for j in repo.all_of("job", store_id) if not j["done"] and parse(j["due_at"]) <= until]
     return sorted(jobs, key=lambda j: j["due_at"])
 
 

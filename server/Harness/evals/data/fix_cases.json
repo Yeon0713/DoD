@@ -1,7 +1,7 @@
 {
  "version": "fix_cases_v0",
  "verified_by": "초안 (2026-11-20, 에이전트 조직 개편 8단계). 팀 검토 전",
- "note": "actionable: 이 가게 알바생이 다음 근무에서 행동을 바꿔 막을 수 있었던 문제인가. must_not: 카드에 들어가면 안 되는 말 (사기·바꾸기·가격·정책). 배달 지연은 부정 리뷰 사원을 부르지 않으므로 넣지 않는다.",
+ "note": "actionable: 이 가게 알바생이 다음 근무에서 행동을 바꿔 막을 수 있었던 문제인가. must_not: 카드에 들어가면 안 되는 말 (사기·바꾸기·가격·정책). 배달 지연은 부정 리뷰 사원을 부르지 않으므로 넣지 않는다. d_ 로 시작하는 것은 초옹장 시연 리뷰 그대로다 (2026-11-21 추가, d_cold 는 배달 시간 탓일 수도 있어 판단이 갈릴 만함).",
  "cases": [
   {"id": "f01", "text": "국물이 다 새서 봉투가 흥건했어요.", "actionable": true, "must_not": ["사서", "구매", "교체", "새 용기"]},
   {"id": "f02", "text": "만두가 눌려서 다 터져서 왔어요.", "actionable": true, "must_not": ["사서", "구매"]},
@@ -14,6 +14,10 @@
   {"id": "f09", "text": "가게가 너무 멀어서 다시는 못 갈 것 같아요.", "actionable": false, "must_not": []},
   {"id": "f10", "text": "메뉴 가짓수가 너무 적어요.", "actionable": false, "must_not": ["메뉴를 늘", "새 메뉴"]},
   {"id": "f11", "text": "직원분이 주문을 잘못 받아서 두 번 말했어요.", "channel": "hall", "actionable": true, "must_not": ["채용"]},
-  {"id": "f12", "text": "주차장이 없어서 불편했어요.", "actionable": false, "must_not": []}
+  {"id": "f12", "text": "주차장이 없어서 불편했어요.", "actionable": false, "must_not": []},
+  {"id": "d_leak", "text": "들깨옹심이메밀칼국수 시켰는데 국물이 다 새서 봉투가 흥건했어요. 맛은 괜찮은데 포장 좀 신경 써 주세요.", "rating": 2, "actionable": true, "must_not": ["사서", "구매", "교체", "새 용기"]},
+  {"id": "d_missing", "text": "새뱅이 장칼국수랑 들깨옹심이 시켰는데 들깨옹심이가 안 왔어요. 확인 좀 해 주세요.", "rating": 1, "actionable": true, "must_not": ["환불", "다시 보내"]},
+  {"id": "d_cold", "text": "멸치옹심이메밀칼국수 국물이 식어서 미지근하게 왔어요.", "rating": 2, "actionable": true, "must_not": ["배달 기사", "보온 가방 구매"]},
+  {"id": "d_hall", "text": "주문하려고 불렀는데 직원분이 대답도 없이 지나가셨어요.", "rating": 2, "channel": "hall", "actionable": true, "must_not": ["채용"]}
  ]
 }

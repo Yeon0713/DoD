@@ -86,3 +86,19 @@ def test_allergy_cannot_ride_on_the_weather(agent):
     fake = agent(LOOK, submit(mixed), submit(UMBRELLA), judged())
     assert [p["payload"]["title"] for p in field_tasks.propose_today(load("s005"))] == ["우산꽂이 내놓기"]
     assert "그 할 일의 근거에 없어요" in fake.tool_messages(2)[-1] and fake.done()
+
+
+def test_too_long_title_says_which_field_and_how_long(agent):
+    """폭 거절은 어느 칸이 지금 몇 자이고 몇 자까지인지 말한다. "길어요"만 듣고는 같은 제목을 다시 냈다 (2026-11-21)."""
+    long_title = {**ALLERGY, "title": "땅콩 알레르기 손님 대체 메뉴 준비"}
+    fake = agent(LOOK, submit(long_title), submit(ALLERGY), judged())
+    assert len(field_tasks.propose_today(load("s005"))) == 1 and fake.done()
+    assert "1번째 할 일의 title 칸이 길어요 (지금 16.5자, 16자까지" in fake.tool_messages(2)[-1]
+
+
+def test_phase_is_chosen_in_korean_and_stored_as_code(agent):
+    """phase 는 우리말로 고르고 코드로 바꿔 넣는다. 영어 값을 보이면 모델이 다른 값을 쓰려다 CLOVA 가 40009 로 버렸다 (2026-11-21 재현)."""
+    assert field_tasks.ITEM["properties"]["phase"]["enum"] == ["문 열기 전", "영업 중", "마감"]
+    fake = agent(LOOK, submit({**UMBRELLA, "phase": "문 열기 전"}), judged())
+    [made] = field_tasks.propose_today(load("s005"))
+    assert made["payload"]["phase"] == "before_open" and fake.done()

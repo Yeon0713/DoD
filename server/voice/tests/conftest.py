@@ -93,6 +93,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(runner, "clock", lambda: 0.0)
     monkeypatch.setattr(context, "post", NoClova())
     monkeypatch.setattr(config, "DEMO_FIXTURE", "")  # 켤 때 시연 가게를 넣지 않는다
+    monkeypatch.setattr(config, "_DOTENV", {})  # 개발 PC 의 server/.env (VOICE_AGENT_* 등)에 흔들리지 않는다
     monkeypatch.setattr(tts, "ENABLED", False)  # 목소리 모델을 올리지 않는다
     monkeypatch.setattr(settings, "voice_stt", False)  # 네이버 CSR 을 부르지 않는다 (test_stt.py 는 따로 켠다)
     monkeypatch.setattr(prepared_snapshot, "ENABLED", False)  # 밤사이 준비 저장본(실제 CLOVA 답글)을 쓰지 않고 늘 새로 준비한다

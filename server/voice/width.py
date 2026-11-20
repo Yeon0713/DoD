@@ -41,6 +41,17 @@ def fits(text: str | None, field: str) -> bool:
     return width(text) <= LIMITS[field]
 
 
+# 에이전트에게 한도를 알릴 때는 '폭' 대신 글자 수로 말한다. "폭 17.0 > 16" 만 보고는 모델이 같은 글을 다시 냈다 (2026-11-21).
+def limit_note(field: str) -> str:
+    """도구 칸 설명에 붙이는 한도."""
+    return f"한글 {LIMITS[field]}자까지, 띄어쓰기·숫자는 반 자"
+
+
+def too_long(name: str, text: str, field: str) -> str:
+    """한도를 넘은 칸의 거절 문구: 어느 칸이 지금 몇 자이고 몇 자까지인지."""
+    return f"{name} 칸이 길어요 (지금 {width(text):g}자, {LIMITS[field]}자까지. 띄어쓰기·숫자는 반 자). 더 짧게 다시 써 주세요"
+
+
 def fit(field: str, *choices: str) -> str:
     """한도 안에 들어가는 첫 문장. 모두 넘으면 마지막(가장 짧게 준비한) 문장."""
     for choice in choices:

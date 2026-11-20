@@ -532,6 +532,7 @@ proposals.create(dept="customer", by="negative_review", kind="staff_task",
   - `turn.handle`(290-351행): 사장님이 부른 말(`addressed`)이고 묻지 않은 오늘 제안이 있으면, 원래 응답 앞에 `staff_tasks` 질문을 먼저 돌려줍니다. 원래 물은 말은 `session["deferred_utterance"]`에 두었다가 대답 뒤에 처리합니다.
   - 다만 다른 것을 묻고 있는 중(`ask_action`, `ask_staff`, `ask_permission`)이면 끼어들지 않습니다.
   - 브리핑 중에는 끼어들지 않습니다(맨 끝 단계에서 물으므로).
+  - **브리핑을 부르는 말("도나야, 오늘 일정 브리핑해 줘", `briefing.*`)에도 끼어들지 않습니다.** 맨 끝 단계가 묻습니다 (2026-11-21 고침: 전에는 이 말에 먼저 물어서 맨 끝 단계가 비었습니다).
 - 그날 문 닫는 시각까지 묻지 못하면 `proposals.expire`가 `expired`로 바꿉니다. 할 일은 넣지 않습니다.
 
 ### 3-5. 재방문 유도 사원 (좋은 리뷰)

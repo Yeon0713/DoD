@@ -23,6 +23,11 @@ def now() -> dt.datetime:
     return _fixed if _fixed is not None else now_seoul()
 
 
+def fixed() -> bool:
+    """dev/clock 으로 시계를 멈춰 둔 상태(시연)인가."""
+    return _fixed is not None
+
+
 def set_now(value: dt.datetime | None) -> None:
     global _fixed
     _fixed = value.astimezone(SEOUL) if value is not None else None

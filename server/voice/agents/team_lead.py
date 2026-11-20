@@ -25,7 +25,7 @@ def _submit(ids: list[str]) -> Tool:
         "items": array(obj({"id": string("결과 id", enum=ids), "verdict": string("남길지 뺄지", enum=["keep", "drop"]),
                             "reason": string("한 줄 이유 (drop 이면 꼭)")}), "결과마다 하나씩"),
         "order": array(string("결과 id", enum=ids), "사장님께 말할 순서 (남긴 것만)"),
-        "summary": string("부서 한 줄 요약"),
+        "summary": string(f"부서 한 줄 요약 ({width.limit_note('tip')})"),
     }))
 
 
@@ -44,8 +44,9 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
     for item in args["items"]:
         if item.get("verdict") == "drop" and not (item.get("reason") or "").strip():
             return f"{item['id']} 를 빼는 이유를 한 줄 적어 주세요"
-    if not width.fits((args.get("summary") or "").strip(), "tip"):
-        return f"summary 는 짧게 한 줄로 써 주세요 (폭 {width.LIMITS['tip']} 이하)"
+    summary = (args.get("summary") or "").strip()
+    if not width.fits(summary, "tip"):
+        return width.too_long("summary", summary, "tip")
     return None
 
 

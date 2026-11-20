@@ -25,6 +25,10 @@ RUN_KIND = "field_run"  # 그날 현장 변수 사원을 돌렸다는 표시 (�
 UNCHECKED = "검토 안 됨"
 ALLERGY_RE = re.compile(r"(\S+?)\s*알레르기")
 PHASES = ["before_open", "open", "closing"]
+# 모델에게는 우리말로 고르게 하고 코드로 바꾼다. 영어 값(before_open …)을 enum 이나 설명에 두면, 모델이 앞서 글로 쓴 계획에 끌려
+# 다른 값을 쓰려다 CLOVA 가 생성을 40009 ("Unsupported function")로 버렸다. 우리말 enum 은 같은 대화에서 3번 모두 통과 (2026-11-21 재현)
+PHASE_LABELS = {"문 열기 전": "before_open", "영업 중": "open", "마감": "closing"}
+PHASE_OF = {**PHASE_LABELS, **{p: p for p in PHASES}}
 
 
 def _view(ctx: RunContext) -> VoiceStore:
@@ -60,9 +64,9 @@ WEATHER = Tool("get_today_weather", "오늘 날씨 (비 시작 시각, 강수확
 RESERVATIONS = Tool("get_today_reservations", "오늘 예약 (시각, 인원, 손님이 남긴 특이사항 메모)", NO_ARGS, today_reservations)
 TASKS = Tool("get_staff_tasks", "알바생 매뉴얼(매일 할 일)과 오늘 이미 있는 할 일 제목", NO_ARGS, staff_tasks)
 ITEM = obj({
-    "title": string("알바생 화면에 보일 짧은 제목"),
-    "detail": string("무엇을 어떻게 하는지 한 문장"),
-    "phase": string("언제 할 일인가", enum=PHASES),
+    "title": string(f"알바생 화면에 보일 짧은 제목 ({width.limit_note('staff.title')})"),
+    "detail": string(f"무엇을 어떻게 하는지 한 문장 ({width.limit_note('staff.detail')})"),
+    "phase": string("언제 할 일인가", enum=list(PHASE_LABELS)),
     "today_impact": {"type": "boolean", "description": "오늘 안 하면 손님이 바로 겪는 일이면 true"},
     "source_type": string("근거", enum=["weather", "reservation"]),
     "source_id": string("근거의 id (날씨 id 또는 예약 id)"),
@@ -92,15 +96,17 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
     for n, item in enumerate(items, 1):
         title, detail = (item.get("title") or "").strip(), (item.get("detail") or "").strip()
         quote = (item.get("quote") or "").strip()
-        if not title or not detail or item.get("phase") not in PHASES:
-            return f"{n}번째 할 일의 title, detail, phase 를 채워 주세요"
+        if not title or not detail or item.get("phase") not in PHASE_OF:
+            return f"{n}번째 할 일의 title, detail 을 채우고 phase 는 {', '.join(PHASE_LABELS)} 중 하나로 써 주세요"
         source = _source_text(ctx, item)
         if not source:
             return f"{n}번째 할 일의 source_id '{item.get('source_id')}' 는 오늘 날씨·예약에 없어요"
         if not quote or quote not in source:
             return f"{n}번째 할 일의 quote 는 근거 도구 결과에서 글자 그대로 옮겨 주세요"
-        if not width.fits(title, "staff.title") or not width.fits(detail, "staff.detail"):
-            return f"{n}번째 할 일이 길어요. 제목은 짧게, detail 은 한 문장으로 줄여 주세요"
+        if not width.fits(title, "staff.title"):
+            return f"{n}번째 할 일의 " + width.too_long("title", title, "staff.title")
+        if not width.fits(detail, "staff.detail"):
+            return f"{n}번째 할 일의 " + width.too_long("detail", detail, "staff.detail")
         reason = guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
         if reason:
             return reason
@@ -160,7 +166,7 @@ def propose_today(view: VoiceStore) -> list[dict]:
                else f"예약 메모에 '{item['quote']}'라고 있어요.")
         made.append(proposals.create(
             view.store_id, dept="quality", by="field_variable", ask_on=day,
-            payload={"title": item["title"], "detail": item["detail"], "phase": item["phase"], "repeat": "today", "days": 1,
+            payload={"title": item["title"], "detail": item["detail"], "phase": PHASE_OF[item["phase"]], "repeat": "today", "days": 1,
                      "must_confirm": True, "urgent": False, "today_impact": bool(item.get("today_impact"))},
             reason={"type": item["source_type"], "id": item["source_id"], "quote": item["quote"], "date": day, "why": why},
         ))

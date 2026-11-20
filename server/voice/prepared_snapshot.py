@@ -15,7 +15,6 @@ fixtures/<시나리오>.prepared.json 에 저장해 두고, 다음부터는 계�
 
 import hashlib
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -23,7 +22,7 @@ from voice import clock, config, repo
 
 SKIP_KINDS = {"turn", "session", "notice"}
 VERSION = 1
-ENABLED = os.environ.get("VOICE_PREPARED_SNAPSHOT", "true").lower() != "false"  # 끄면 늘 새로 준비한다
+ENABLED = config.env("VOICE_PREPARED_SNAPSHOT", "true").lower() != "false"  # 끄면 늘 새로 준비한다
 FOLDER: Path | None = None  # 시험에서 바꾼다 (없으면 config.FIXTURES)
 
 

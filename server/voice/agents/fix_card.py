@@ -37,11 +37,15 @@ def manual(ctx: RunContext, task: dict, args: dict) -> dict:
 
 
 MANUAL = Tool("get_staff_tasks", "알바생 매뉴얼(매일 할 일)과 최근에 넣은 할 일 제목", NO_ARGS, manual)
+# title·detail 설명의 "actionable 이 false 면" 을 "알바생이 막을 수 없는 문제면" 으로 바꾸고 한도를 글자 수로 적었다 (2026-11-21).
+# 실제 CLOVA 5번씩: 시연 리뷰 "국물이 다 새서 봉투가 흥건했어요"가 FFFFF → 카드 3번(나머지 2번은 실패해 템플릿 카드),
+# 정답이 false 인 "양이 적어요"·"입맛에 안 맞아요"는 그대로 FFFFF. 대신 "면이 불어서 왔어요"는 TFTFT → FFFFF.
+# 판정 칸을 맨 뒤로 옮기면 "양이 적어요"에도 카드를 내서(5번 중 2번) 맨 앞에 둔다.
 SUBMIT = Tool("submit_fix_card", "알바생 교정 할 일을 낸다", obj({
     "actionable": {"type": "boolean", "description": "알바생이 다음 근무에서 행동을 바꿔 막을 수 있었던 문제면 true"},
     "quote": string("판단 근거가 된 리뷰 속 말을 글자 그대로"),
-    "title": string("알바생 화면에 보일 짧은 제목 (actionable 이 false 면 빈 글자)"),
-    "detail": string("무엇을 어떻게 하는지 한 문장 (actionable 이 false 면 빈 글자)"),
+    "title": string(f"알바생 화면에 보일 짧은 제목 ({width.limit_note('staff.title')}). 알바생이 막을 수 없는 문제면 빈 글자"),
+    "detail": string(f"무엇을 어떻게 하는지 한 문장 ({width.limit_note('staff.detail')}). 알바생이 막을 수 없는 문제면 빈 글자"),
 }, required=["actionable", "quote", "title", "detail"]))
 
 
@@ -63,9 +67,9 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
     if not title or not detail:
         return "actionable 이 true 면 title 과 detail 을 채워 주세요"
     if not width.fits(title, "staff.title"):
-        return f"title 이 길어요 (폭 {width.width(title)} > {width.LIMITS['staff.title']}). 더 짧게 줄여 주세요"
+        return width.too_long("title", title, "staff.title")
     if not width.fits(detail, "staff.detail"):
-        return f"detail 이 길어요 (폭 {width.width(detail)} > {width.LIMITS['staff.detail']}). 한 문장으로 줄여 주세요"
+        return width.too_long("detail", detail, "staff.detail")
     reason = guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
     if reason:
         return reason

@@ -95,6 +95,20 @@ def test_missed_in_briefing_is_asked_on_next_call_then_the_call_is_answered():
     assert later["type"] != "ask_tasks"  # 다시 묻지 않는다
 
 
+def test_called_briefing_is_not_cut_in_and_asks_at_the_end():
+    """'도나야, 브리핑해 줘'는 앞에서 가로채지 않는다. 브리핑 마지막 단계에서 묻는다 (2026-11-21, 시연이 이렇게 시작한다)."""
+    donna = morning()
+    first = donna.turn("오늘 일정 브리핑해 줘", addressed=True)
+    assert first["intent"] == "briefing.start" and first["type"] != "ask_tasks"
+    assert "그 전에 하나만요." not in [s["text"] for s in first["say"]]
+    response = first
+    for _ in range(8):
+        if response["type"] == "ask_tasks":
+            break
+        response = donna.turn("다음")
+    assert response["type"] == "ask_tasks" and response["briefing"]["step_key"] == "staff_tasks"
+
+
 def test_not_asked_after_close_and_expired_next_day():
     donna = morning()
     donna.clock("2026-11-17T21:00:00+09:00")  # 문 닫은 뒤에는 묻지 않는다

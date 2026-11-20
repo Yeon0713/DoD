@@ -22,11 +22,11 @@ from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import auto_reply, batch_ask, queue, schedule, staff_tasks, strengths
+from voice.jobs import auto_reply, batch_ask, done_report, queue, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "holiday", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
-GAUGE = {"schedule": 1, "holiday": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
+STEP_KEYS = ["schedule", "holiday", "done_report", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
+GAUGE = {"schedule": 1, "holiday": 1, "done_report": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
          "staff_tasks": 5, "end": 5}
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
@@ -92,7 +92,7 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
     예약할까요?"로 묻는다. 대답이 없어 올릴 날이 지난 awaiting 은 다음 날 준비 때 때와 글을 새로 정해 다시 묻는다 (9-0 b).
     같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않는다 (영업 중에 LLM 을 부르지 않게)."""
     asks = hr.asks(view.store_id, "positive_reply") is not None
-    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and (
+    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and not r.get("reply_deleted_at") and (
         r.get("reply_status", "none") == "none"
         or (r.get("reply_status") == "awaiting" and parse(r["reply_post_at"]).date() < now.date()))]
     if not waiting:
@@ -116,8 +116,8 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
 def draft_negative(view: VoiceStore) -> None:
     """아쉬운 리뷰에 답글을 미리 써 둔다. 아침 브리핑에서 "올릴까요?"에 "응"이면 이 글을 바로 올린다 (말하는 동안 LLM 을 기다리지 않게)."""
     for review in view.reviews():
-        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
-            continue
+        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none" or review.get("reply_deleted_at"):
+            continue  # 사장님이 지운 답글은 다시 쓰지 않는다 (사후 취소, 인사과 5단계)
         if not review.get("reply_ready"):  # 교정 카드를 먼저 정해 답글이 같은 조치를 약속하게 한다 (2026-11-20, 안 B)
             found = fix_card.card_for(view, review)
             fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
@@ -233,39 +233,13 @@ def _when(written: dt.datetime, now: dt.datetime) -> str:
     return f"{speech.weekday(written.date())}요일에"
 
 
-def replied_answer(review: dict, now: dt.datetime) -> dict:
-    """도나가 아쉬운 리뷰에 답한 것 (D-11). 허락받은 그 자리에서 올렸으면 '방금'."""
-    written = parse(review["written_at"])
-    who = "배달로 드신 손님이" if review.get("order_channel") == "delivery" else "가게에서 드신 손님이"
-    just_now = review.get("reply_trigger") == "permission"
-    minutes = review.get("replied_in_minutes") or 1
-    headline = "방금 답글을 달았어요" if just_now else f"{minutes}분 만에 답했어요"
-    second = "방금 사과 답글을 달았어요." if just_now else f"{minutes}분 만에 사과 답글을 달았어요."
-    says = [say(f"{_when(written, now)} {who} {told(review['summary'])} 리뷰를 남기셨어요.", None, [review["id"]])]
-    if review.get("reply_trigger") == "timeout":  # 영업 중 알림에 대답이 없어 사과만 먼저 올린 것 (jobs/review_loop.py)
-        says.append(say(f"{minutes}분 만에 사과 답글만 먼저 달았어요.", None, [review["id"]]))
-        record = repo.get("alert", f"al_{review['id']}") or {}
-        left = [w for w, on in (("서비스 안내", record.get("compensation")), ("할 일", record.get("card"))) if on]
-        if left:
-            says.append(say(f"{speech.josa('와 '.join(left), '은', '는')} 넣지 않았어요."))
-    else:
-        says.append(say(second, None, [review["id"]]))
-    reply = {"text": review["reply_text"], "posted_at": review["reply_posted_at"], "by": "donna"}
-    return answer(headline, says, [review_card(review, reply)])
-
-
 def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tuple[dict | None, dict | None]:
     """아쉬운 리뷰 단계와 자세히 보기. 부정 리뷰 답글 직급에 따라 갈린다 (인사과 4-a, 허락 질문 D-10 은 없앰).
     인턴·사원: 써 둔 답글을 "올릴까요?"로 묻는다 (인턴은 한 건씩, 사원은 묶어서, jobs/batch_ask.py).
-    대리·과장: 밤사이 묻지 않고 올렸으므로 올린 것을 알린다 (사후 보고는 5단계 done_report)."""
+    대리·과장: 묻지 않고 올렸으므로 이 단계는 없다. 올린 것은 done_report 단계가 알린다 (인사과 5단계)."""
     mode = hr.asks(view.store_id, "negative_reply")
     if mode is None:
-        replied = auto_replied(view, now)
-        if not replied:
-            return None, None
-        review = replied[0]
-        response = replied_answer(review, now)
-        return response, _detail(review, response["cards"][0]["reply"], "제가 올린 답글이에요.")
+        return None, None
     waiting_neg = sorted((r for r in waiting if r.get("sentiment") == "negative"), key=lambda r: r["written_at"], reverse=True)
     response = batch_ask.ask(view, [{"job": "negative_reply", "ref": r["id"]} for r in waiting_neg], mode)
     if response is None:
@@ -495,6 +469,7 @@ def prepare(store_id: str) -> dict | None:
 
     steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "holiday": holidays.step(view),
                                      "reviews": step_reviews(waiting)}
+    steps["done_report"], report_detail = done_report.step(view, now)  # 대리·과장이 처리한 것 사후 보고 (인사과 5단계)
     steps["negative"], negative_detail = step_negative(view, now, waiting)
     steps["positive"] = step_positive(view, now)
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
@@ -504,6 +479,8 @@ def prepare(store_id: str) -> dict | None:
     details = {key: plain_detail(step) for key, step in steps.items() if step and step["type"] == "answer"}
     if negative_detail:
         details["negative"] = negative_detail
+    if report_detail:
+        details["done_report"] = report_detail
     if scheduling_detail:
         details["scheduling"] = scheduling_detail
     if instagram_detail:

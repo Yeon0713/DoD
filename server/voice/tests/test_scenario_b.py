@@ -31,35 +31,27 @@ def test_b1_auto_reply_within_30_minutes():
     assert donna.home()["briefing_ready"] is True  # 09:00 에 작업 큐가 브리핑을 준비했다
 
 
-def test_b3_to_b6_negative_step_and_detail():
+def test_b3_to_b6_done_report_and_detail():
+    """대리가 밤사이 올린 답글은 아쉬운 리뷰 단계가 아니라 사후 보고 단계(done_report, 게이지 1)에서 알린다 (인사과 5단계)."""
     donna, review_id = night_then_morning()
     donna.turn("오늘 일정 브리핑해 줘")
-    donna.turn("다음")
     b3 = donna.turn("다음")
-    assert b3["type"] == "answer" and b3["briefing"] == {"step": 2, "total": 5, "step_key": "negative"}
-    assert b3["headline"] == "10분 만에 답했어요"
-    # v0.2.1 (D-11): 리뷰 원문과 실제로 단 답글을 그대로 보여 준다. 고칠 점(tip improve)은 내지 않는다
-    [review_card] = b3["cards"]
-    assert review_card["type"] == "review" and review_card["variant"] == "full" and review_card["id"] == review_id
-    assert review_card["text"] == NIGHT_REVIEW["text"] and review_card["reply"]["by"] == "donna"
-    assert review_card["reply"]["text"].startswith("늦은 배달로 불편을 드려 죄송합니다")
-    assert [s["text"] for s in b3["say"]] == ["어젯밤 배달로 드신 손님이 배달이 늦어 음식이 식었다는 리뷰를 남기셨어요.",
-                                             "10분 만에 사과 답글을 달았어요."]
+    assert b3["type"] == "answer" and b3["briefing"] == {"step": 1, "total": 5, "step_key": "done_report"}
+    assert b3["headline"] == "제가 처리한 것이에요"
+    assert [s["text"] for s in b3["say"]] == ["제가 알아서 처리한 게 있어요.", "아쉬운 리뷰 한 개에 사과 답글을 올렸어요.",
+                                             "배달이 늦어 음식이 식었다는 리뷰에 단 답글이에요.",
+                                             "되돌릴 게 있으면 '그 답글 지워'처럼 말씀해 주세요."]
+    assert [(r["label"], r["value"]) for r in b3["cards"][0]["rows"]] == [("아쉬운 리뷰 답글", "1건")]
 
     b4 = donna.turn("화면에 보여 줘")
-    assert b4["type"] == "show_detail" and len(b4["say"]) == 1
-    full = b4["cards"][0]
-    assert full["variant"] == "full" and full["text"] == NIGHT_REVIEW["text"]
-    assert full["reply"]["text"].startswith("늦은 배달로") and full["reply"]["posted_at"] == "2026-11-16T22:50:00+09:00"
-
+    assert b4["type"] == "show_detail" and b4["cards"][0]["id"] == review_id
+    assert b4["cards"][0]["reply"]["text"].startswith("늦은 배달로") and b4["cards"][0]["reply"]["posted_at"] == "2026-11-16T22:50:00+09:00"
     b5 = donna.turn("읽어 줘")
-    spoken = [s["text"] for s in b5["say"]]
-    assert b5["type"] == "answer" and NIGHT_REVIEW["text"] in spoken and full["reply"]["text"] in spoken
-
+    assert [s["text"] for s in b5["say"]] == ["첫 번째, 배달이 늦어 음식이 식었다는 리뷰에 단 답글이에요."]
     b6 = donna.turn("돌아가기")
-    assert b6["type"] == "answer" and b6["briefing"]["step_key"] == "negative" and b6["headline"] == "10분 만에 답했어요"
-    assert [s["text"] for s in b6["say"]] == ["브리핑으로 돌아왔어요."]
-
+    assert b6["briefing"]["step_key"] == "done_report" and [s["text"] for s in b6["say"]] == ["브리핑으로 돌아왔어요."]
+    after = donna.turn("다음")
+    assert after["briefing"]["step_key"] == "reviews"  # 아쉬운 리뷰 단계는 대리면 없다 (밤 리뷰는 이미 올렸다)
     for response in (b3, b4, b5, b6):
         assert width.violations(response) == []
 

@@ -29,7 +29,7 @@ from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
-from voice.jobs import batch_ask, hr_batch, review_loop, staff_tasks
+from voice.jobs import batch_ask, done_report, hr_batch, review_loop, staff_tasks
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -237,6 +237,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if name == "action.repeat":
             name = "notice.open"
         return {**review_loop.decide(view, name, intent.edits, session.get("alert_id"), intent.owner_said), "keep_context": "ask_action"}
+    if name == "report.undo":  # 사후 취소 (jobs/done_report.py)
+        return done_report.undo(view, intent.owner_said)
     if name.startswith("staff."):  # 알바생 일 (voice/staff_orders.py). 브리핑과 상관없이
         return staff_orders.handle(view, intent, session)
     if name in ("instagram.feed", "instagram.story"):
@@ -382,6 +384,8 @@ def handle(request: dict) -> dict:
             response = {**later, "say": response["say"] + later["say"], "cards": response["cards"] + later["cards"]}
     staff_tasks.remember_asked(response, session)
     batch_ask.remember(response, session)
+    if response.get("report"):  # 사후 보고를 앱에 보냈다 (9-0 h)
+        hr.mark_reported(store_id, response["report"])
     if response.get("holiday"):  # 쉬는 날을 묻는 중 (holiday.yes / holiday.no 가 본다)
         session["holiday_pending"] = response["holiday"]
     response.setdefault("briefing", None)

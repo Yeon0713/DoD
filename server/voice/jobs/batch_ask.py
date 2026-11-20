@@ -42,7 +42,7 @@ class Kind:
 def _neg_pending(view: VoiceStore, ref: str) -> bool:
     review = view.review(ref)
     return bool(review and review.get("sentiment") == "negative" and review.get("reply_status", "none") == "none"
-                and review.get("reply_ready"))
+                and review.get("reply_ready") and not review.get("reply_deleted_at"))
 
 
 def _neg_line(view: VoiceStore, ref: str) -> str:

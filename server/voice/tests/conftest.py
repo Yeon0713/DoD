@@ -45,6 +45,8 @@ class FakeGraph:
         for key, (code, message) in self.fail.items():
             if path.endswith(key):
                 return httpx.Response(400, json={"error": {"message": message, "code": code}})
+        if method == "DELETE":
+            return httpx.Response(200, json={"success": True})
         if method == "POST" and path.endswith("/media"):
             if params.get("is_carousel_item"):
                 self.children += 1
@@ -66,6 +68,9 @@ class FakeGraph:
 
     def get(self, url, params=None, timeout=None):
         return self._reply("GET", url, params or {})
+
+    def delete(self, url, params=None, timeout=None):
+        return self._reply("DELETE", url, params or {})
 
     def paths(self, method: str | None = None) -> list[str]:
         return [path for m, path, _ in self.calls if method in (None, m)]
@@ -104,6 +109,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "public_media_base_url", "https://media.example.test")
     monkeypatch.setattr(graph, "post", NoGraph())
     monkeypatch.setattr(graph, "get", NoGraph())
+    monkeypatch.setattr(graph, "delete", NoGraph())
     monkeypatch.setattr(graph, "sleep", lambda seconds: None)
     monkeypatch.setattr(media, "MEDIA_DIR", tmp_path / "voice_media")
     monkeypatch.setattr(posts, "kick", lambda: None)  # 게시 작업은 시험에서 /v1/dev/run 으로 돌린다
@@ -138,6 +144,7 @@ def ig_on(monkeypatch):
     def use(fake: FakeGraph) -> FakeGraph:
         monkeypatch.setattr(graph, "post", fake.post)
         monkeypatch.setattr(graph, "get", fake.get)
+        monkeypatch.setattr(graph, "delete", fake.delete)
         return fake
 
     return use

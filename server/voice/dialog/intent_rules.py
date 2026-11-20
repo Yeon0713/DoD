@@ -105,6 +105,10 @@ STAFF_INVITE_RE = re.compile(r"초대(해|하자|할게|좀|코드|해줘|보내
 STAFF_SHARE_RE = re.compile(r"(카톡|카카오톡|카카오)(으로|로)?(보내|공유|전해)")
 STAFF_STATUS_RE = re.compile(r"(시킨|보낸)(거|것|일)(은|는)?(다)?(했|어떻게)|다했(대|어|나|냐|니|는지)|했대")
 STAFF_CANCEL_RE = re.compile(r"취소|없던걸로|지워줘|보내지마")
+# 사후 취소 (인사과 5단계, jobs/done_report.py): 지우는 말 + (번호 또는 답글·인스타). 알바생 일 말이 있으면 staff.cancel 로 둔다
+UNDO_RE = re.compile(r"취소|지워|지우|내려")
+UNDO_TARGET_RE = re.compile(r"답글|인스타|게시물|올린")
+STAFF_WORD_RE = re.compile(r"할일|알바|시킨")
 STAFF_LIST_RE = re.compile(r"알바(생)?(들)?(은|는)?(누구|몇명|누가|명단)|누구(누구)?나왔|누가나왔|오늘나온(사람|알바)|출근한(사람|알바)")
 STAFF_MANUAL_RE = re.compile(r"매뉴얼")
 STAFF_TODAY_RE = re.compile(r"^(응|어|그래|네|예)?(오늘만|오늘하루만?|오늘)(해|해줘|보내|보내줘|요|이요)?$")  # 문장 전체가 대답일 때만
@@ -278,6 +282,8 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("store.holiday_cancel")
     if HOLIDAY_DATE_RE.search(n) and HOLIDAY_RE.search(n) and not STAFF_ORDER_RE.search(n):
         return found("store.holiday")
+    if UNDO_RE.search(n) and (UNDO_TARGET_RE.search(n) or ORDINAL_RE.search(n)) and not STAFF_WORD_RE.search(n):
+        return found("report.undo")
     staff = match_staff(n)
     if staff:
         return found(staff)

@@ -24,7 +24,7 @@ REPLY_SUMMARIES = {
 
 
 def eligible(review: dict, now: dt.datetime) -> bool:
-    if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
+    if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none" or review.get("reply_deleted_at"):
         return False
     written = parse(review["written_at"])
     return written <= now <= written + config.AUTO_REPLY_WINDOW

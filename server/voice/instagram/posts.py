@@ -270,3 +270,11 @@ def publish(store_id: str, post_id: str) -> dict | None:
     activity.log(store_id, "donna", text, f"instagram_{post['kind']}")
     notices.push(store_id, "instagram", text)
     return post
+
+
+def delete(store_id: str, post_id: str) -> dict:
+    """올린 게시물을 지운다 (사후 취소, 인사과 5단계). 지우면 status deleted. 못 지우면 InstagramError 를 그대로 낸다."""
+    post = get(post_id)
+    if post.get("media_id"):
+        graph.delete_media(post["media_id"])
+    return save({**post, "status": "deleted", "deleted_at": iso(clock.now())})

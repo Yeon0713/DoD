@@ -207,6 +207,50 @@ def demote(store_id: str, job: str, ref: str, *, offer: bool = False) -> str | N
         return to
 
 
+# ── 사후 보고 (4-7, 9장 5단계) ──
+
+
+def report_items(store_id: str, now: dt.datetime) -> list[dict]:
+    """아침 브리핑에서 알릴 것 (아직 보고하지 않은 done). 대리가 처리한 것은 오늘 전 것을 건별로,
+    과장이 처리한 것은 이번 주 월요일 전 것을 건수로 (월요일에 지난주 것. 듣지 못한 보고는 다음 브리핑에 이어 붙는다).
+    순서: 업무 표 순서 → 처리한 때."""
+    monday = now.date() - dt.timedelta(days=now.weekday())
+    found = []
+    for e in events(store_id):
+        if e["reaction"] != "done" or e.get("reported_at"):
+            continue
+        day = parse(e["at"]).date()
+        if (day < monday) if e["rank_at"] == "manager" else (day < now.date()):
+            found.append(e)
+    order = list(JOBS)
+    return sorted(found, key=lambda e: (e["rank_at"] == "manager", order.index(e["job"]), e["at"]))
+
+
+def mark_reported(store_id: str, ids: list[str]) -> None:
+    """보고를 앱에 보냈다 (9-0 h). 다음 보고에 다시 넣지 않고, 사후 취소 기간을 이날로 센다."""
+    now = iso(clock.now())
+    with repo.lock():
+        for e in events(store_id):
+            if e["id"] in ids and not e.get("reported_at"):
+                repo.put(EVENT_KIND, e["id"], store_id, {**e, "reported_at": now})
+
+
+def reported_on(store_id: str, day: dt.date) -> list[dict]:
+    """그날 보고한 대리 건 (보고한 순서). "두 번째 거 취소해"의 번호가 가리키는 목록."""
+    found = [e for e in events(store_id) if e["reaction"] == "done" and e["rank_at"] != "manager"
+             and e.get("reported_at") and parse(e["reported_at"]).date() == day]
+    order = list(JOBS)
+    return sorted(found, key=lambda e: (order.index(e["job"]), e["at"]))
+
+
+def undo(store_id: str, event: dict, in_time: bool, said: str | None = None) -> str | None:
+    """사후 취소: 보고를 들은 날 영업이 끝나기 전이면 기록하고 강등한다 (4-6·4-7). 지났으면 아무것도 하지 않는다 (지우기만)."""
+    if not in_time:
+        return None
+    record(store_id, event["job"], event["ref"], "canceled_after", said)
+    return demote(store_id, event["job"], event["ref"])
+
+
 # ── 이관 (4-9, 9-0 j) ──
 
 

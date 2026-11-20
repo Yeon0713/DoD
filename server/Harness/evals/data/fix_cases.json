@@ -1,0 +1,19 @@
+{
+ "version": "fix_cases_v0",
+ "verified_by": "초안 (2026-11-20, 에이전트 조직 개편 8단계). 팀 검토 전",
+ "note": "actionable: 이 가게 알바생이 다음 근무에서 행동을 바꿔 막을 수 있었던 문제인가. must_not: 카드에 들어가면 안 되는 말 (사기·바꾸기·가격·정책). 배달 지연은 부정 리뷰 사원을 부르지 않으므로 넣지 않는다.",
+ "cases": [
+  {"id": "f01", "text": "국물이 다 새서 봉투가 흥건했어요.", "actionable": true, "must_not": ["사서", "구매", "교체", "새 용기"]},
+  {"id": "f02", "text": "만두가 눌려서 다 터져서 왔어요.", "actionable": true, "must_not": ["사서", "구매"]},
+  {"id": "f03", "text": "젓가락이 안 왔어요.", "actionable": true, "must_not": ["환불", "서비스"]},
+  {"id": "f04", "text": "물 달라고 했는데 한참 뒤에 줬어요.", "channel": "hall", "actionable": true, "must_not": ["채용", "직원을 더"]},
+  {"id": "f05", "text": "면이 불어서 왔어요.", "actionable": true, "must_not": ["사서", "구매"]},
+  {"id": "f06", "text": "주문한 들깨칼국수 대신 다른 메뉴가 왔어요.", "actionable": true, "must_not": ["환불", "다시 보내"]},
+  {"id": "f07", "text": "가격에 비해 양이 너무 적어요.", "actionable": false, "must_not": ["가격", "양을 늘"]},
+  {"id": "f08", "text": "그냥 제 입맛에는 안 맞았어요.", "actionable": false, "must_not": []},
+  {"id": "f09", "text": "가게가 너무 멀어서 다시는 못 갈 것 같아요.", "actionable": false, "must_not": []},
+  {"id": "f10", "text": "메뉴 가짓수가 너무 적어요.", "actionable": false, "must_not": ["메뉴를 늘", "새 메뉴"]},
+  {"id": "f11", "text": "직원분이 주문을 잘못 받아서 두 번 말했어요.", "channel": "hall", "actionable": true, "must_not": ["채용"]},
+  {"id": "f12", "text": "주차장이 없어서 불편했어요.", "actionable": false, "must_not": []}
+ ]
+}

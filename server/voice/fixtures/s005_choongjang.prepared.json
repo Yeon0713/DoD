@@ -1,11 +1,12 @@
 {
  "version": 1,
  "fixture": "s005_choongjang",
- "fixture_sha": "285aca799478acee",
+ "fixture_sha": "01b837838237b770",
  "store_id": "s005",
  "demo_now": "2026-11-17T09:02:00+09:00",
  "counters": {
-  "task:s005": 6
+  "task:s005": 6,
+  "proposal:s005": 1
  },
  "docs": [
   {
@@ -84,6 +85,8 @@
     "id": "rs_0031",
     "starts_at": "2026-11-17T12:00:00+09:00",
     "party_size": 12,
+    "name": "박*수",
+    "memo": "땅콩 알레르기 손님 1명 있어요",
     "kind": "group"
    }
   },
@@ -94,6 +97,8 @@
     "id": "rs_0032",
     "starts_at": "2026-11-17T18:00:00+09:00",
     "party_size": 4,
+    "name": "이*영",
+    "memo": "아이 의자 2개 부탁드려요",
     "kind": "general"
    }
   },
@@ -464,6 +469,11 @@
      "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
      "taste_temp": null,
      "hall_service": null
+    },
+    "story_event": {
+     "headline": "비 오는 날 이벤트",
+     "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
+     "staff_task": "스토리 태그 손님 음료 1캔 드리기"
     }
    }
   },
@@ -943,8 +953,8 @@
     "topic": "other",
     "summary": "좋게 봐 주셨어요",
     "reply_by": "donna",
-    "reply_text": "점심에 든든하게 드시고 가셨다니 정말 기뻐요. 들깨옹심이의 쫀득한 식감을 알아봐 주셔서 감사합니다. 다음에도 맛있게 드시고 가세요!",
-    "reply_source": "AGENT",
+    "reply_text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+    "reply_source": "FALLBACK",
     "reply_notes": [],
     "reply_post_at": "2026-11-17T11:00:00+09:00",
     "reply_reason": {
@@ -990,7 +1000,7 @@
     "topic": "taste",
     "summary": "국물 맛이 좋았대요",
     "reply_by": "donna",
-    "reply_text": "들깨 국물이 고소하다고 해 주셔서 정말 기뻐요. 비 오는 날 또 찾아 주세요!",
+    "reply_text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
     "reply_source": "AGENT",
     "reply_notes": [],
     "reply_post_at": "2026-11-17T11:00:00+09:00",
@@ -1072,7 +1082,7 @@
     "topic": "delivery",
     "summary": "면이 불어서 왔대요",
     "reply_ready": {
-     "text": "아이고, 그렇게 느끼셨다니 정말 죄송합니다. 앞으로 배달 시간을 조금 더 앞당겨서 면이 붇지 않게 신경 쓰겠습니다. 다음번엔 따뜻한 상태로 받아보실 수 있도록 노력할게요.",
+     "text": "면이 퍼지지 않게 잘 포장해서 보내드리겠습니다. 죄송합니다.",
      "source": "AGENT",
      "notes": []
     }
@@ -1098,6 +1108,71 @@
      "source": "FALLBACK",
      "notes": []
     }
+   }
+  },
+  {
+   "kind": "proposal",
+   "id": "pr_0001",
+   "data": {
+    "id": "pr_0001",
+    "store_id": "s005",
+    "dept": "customer",
+    "by": "negative_review",
+    "payload": {
+     "title": "면 불지 않게 배달하기",
+     "detail": "배달 주문 시 면을 따로 포장해 배달 시 면이 불지 않도록 합니다.",
+     "phase": "open",
+     "days": 2,
+     "must_confirm": true,
+     "urgent": false
+    },
+    "reason": {
+     "type": "review",
+     "review_id": "rv_0412"
+    },
+    "link": {
+     "type": "review",
+     "review_id": "rv_0412",
+     "alert_id": "al_rv_0412",
+     "review_text": "면이 불어서 왔어요."
+    },
+    "state": "proposed",
+    "same_as": null,
+    "merged": [],
+    "task_id": null,
+    "ask_on": "2026-11-17",
+    "created_at": "2026-11-17T09:02:00+09:00",
+    "decided_at": null,
+    "decided_by": null,
+    "lead": {
+     "verdict": "keep",
+     "reason": "",
+     "rank": 0,
+     "source": "FALLBACK"
+    }
+   }
+  },
+  {
+   "kind": "dept_report",
+   "id": "s005:2026-11-17:customer",
+   "data": {
+    "dept": "customer",
+    "date": "2026-11-17",
+    "items": [
+     "pr_0001"
+    ],
+    "verdicts": {
+     "pr_0001": {
+      "verdict": "keep",
+      "reason": ""
+     }
+    },
+    "order": [
+     "pr_0001"
+    ],
+    "summary": null,
+    "source": "FALLBACK",
+    "at": "2026-11-17T09:02:00+09:00"
    }
   },
   {
@@ -1211,6 +1286,7 @@
       ],
       "expects_reply": false
      },
+     "holiday": null,
      "reviews": {
       "type": "answer",
       "headline": "답글 기다리는 리뷰 5개",
@@ -1434,6 +1510,43 @@
        }
       ],
       "expects_reply": false
+     },
+     "instagram": null,
+     "story_event": null,
+     "staff_tasks": {
+      "type": "ask_tasks",
+      "headline": "알바생 할 일 넣을까요?",
+      "say": [
+       {
+        "text": "어젯밤 면이 불어서 왔다는 리뷰 때문이에요.",
+        "caption": null,
+        "focus": []
+       },
+       {
+        "text": "알바생 할 일에 면 불지 않게 배달하기를 넣을까요?",
+        "caption": null,
+        "focus": []
+       }
+      ],
+      "cards": [
+       {
+        "type": "checklist",
+        "id": "staff_tasks",
+        "title": "알바생 할 일에 넣을 것",
+        "items": [
+         {
+          "id": "pr_0001",
+          "title": "1. 면 불지 않게 배달하기",
+          "sub": "배달 주문 시 면을 따로 포장해 배달 시 면이 불지 않도록 합니다.",
+          "state": "todo"
+         }
+        ]
+       }
+      ],
+      "expects_reply": true,
+      "tasks": [
+       "pr_0001"
+      ]
      }
     },
     "details": {
@@ -1733,7 +1846,7 @@
          "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
          "written_at": "2026-11-15T12:30:00+09:00",
          "reply": {
-          "text": "점심에 든든하게 드시고 가셨다니 정말 기뻐요. 들깨옹심이의 쫀득한 식감을 알아봐 주셔서 감사합니다. 다음에도 맛있게 드시고 가세요!",
+          "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
           "posted_at": null,
           "by": "donna",
           "scheduled_label": "화요일 오전 11시에 올릴 답글"
@@ -1747,7 +1860,7 @@
          "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
          "written_at": "2026-11-15T20:05:00+09:00",
          "reply": {
-          "text": "들깨 국물이 고소하다고 해 주셔서 정말 기뻐요. 비 오는 날 또 찾아 주세요!",
+          "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
           "posted_at": null,
           "by": "donna",
           "scheduled_label": "화요일 오전 11시에 올릴 답글"
@@ -1787,7 +1900,7 @@
          ]
         },
         {
-         "text": "점심에 든든하게 드시고 가셨다니 정말 기뻐요. 들깨옹심이의 쫀득한 식감을 알아봐 주셔서 감사합니다. 다음에도 맛있게 드시고 가세요!",
+         "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
          "caption": null,
          "focus": [
           "rv_0405"
@@ -1801,7 +1914,7 @@
          ]
         },
         {
-         "text": "들깨 국물이 고소하다고 해 주셔서 정말 기뻐요. 비 오는 날 또 찾아 주세요!",
+         "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
          "caption": null,
          "focus": [
           "rv_0401"
@@ -1831,7 +1944,7 @@
          "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
          "written_at": "2026-11-15T12:30:00+09:00",
          "reply": {
-          "text": "점심에 든든하게 드시고 가셨다니 정말 기뻐요. 들깨옹심이의 쫀득한 식감을 알아봐 주셔서 감사합니다. 다음에도 맛있게 드시고 가세요!",
+          "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
           "posted_at": null,
           "by": "donna",
           "scheduled_label": "화요일 오전 11시에 올릴 답글"
@@ -1845,7 +1958,7 @@
          "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
          "written_at": "2026-11-15T20:05:00+09:00",
          "reply": {
-          "text": "들깨 국물이 고소하다고 해 주셔서 정말 기뻐요. 비 오는 날 또 찾아 주세요!",
+          "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
           "posted_at": null,
           "by": "donna",
           "scheduled_label": "화요일 오전 11시에 올릴 답글"
@@ -1872,7 +1985,8 @@
     },
     "sources": {
      "replies": [
-      "AGENT"
+      "AGENT",
+      "FALLBACK"
      ]
     }
    }

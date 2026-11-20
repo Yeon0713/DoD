@@ -13,7 +13,7 @@ import re
 
 from Harness import guards, runner
 from Harness.agents import quote_judge
-from Harness.grounding import Evidence, ungrounded_numbers, ungrounded_terms
+from Harness.grounding import Evidence, ungrounded_numbers
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, array, obj, string
 from voice import clock, config, proposals, repo, staff, width
@@ -36,7 +36,9 @@ def today_weather(ctx: RunContext, task: dict, args: dict) -> dict:
     w = next((w for w in _view(ctx).data.get("weather", []) if w["date"] == day), None)
     if not w:
         return {"note": "오늘 날씨 정보가 없어요"}
-    rain = f"{w['rain_from']}시부터 비" if w.get("rain_from") is not None and w.get("rain_chance", 0) >= 0.6 else None
+    from voice.jobs.briefing import rain_text
+
+    rain = rain_text(w, ctx.now.date()) if w.get("rain_chance", 0) >= 0.6 else None  # '오후 2시부터 비' (브리핑과 같은 말)
     return {"id": f"weather:{day}", "label": w.get("label"), "rain_chance_percent": round(w.get("rain_chance", 0) * 100),
             "rain_mm": w.get("rain_mm"), "temp_min": w.get("temp_min"), "temp_max": w.get("temp_max"), "rain": rain}
 
@@ -105,9 +107,11 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
         loose = ungrounded_numbers(f"{title} {detail}", evidence)
         if loose:
             return f"{n}번째 할 일에 도구 결과에 없는 숫자가 있어요: {', '.join(dict.fromkeys(loose))}"
-        made_up = ungrounded_terms(ALLERGY_RE.findall(detail), evidence)
+        allergies = ALLERGY_RE.findall(f"{title} {detail}")
+        made_up = [a for a in allergies if a not in source]  # 손님 정보는 그 할 일의 근거(그 예약 메모)에만 있어야 한다
         if made_up:
-            return f"{n}번째 할 일의 알레르기({', '.join(made_up)})는 예약 메모에 적힌 그대로만 써 주세요"
+            return (f"{n}번째 할 일의 알레르기({', '.join(made_up)})는 그 할 일의 근거에 없어요. "
+                    "알레르기는 그 예약 메모를 근거로 한 할 일에만, 메모에 적힌 그대로 써 주세요")
         outside = quote_judge.ask("staff_scope", f"{title}. {detail}", ctx)
         if outside is None:
             notes.append(UNCHECKED)
@@ -152,7 +156,7 @@ def propose_today(view: VoiceStore) -> list[dict]:
     repo.put(RUN_KIND, run_id, view.store_id, {"id": run_id, "date": day, "items": len(items), "at": clock.iso(clock.now())})
     made = []
     for item in items:
-        why = (f"오늘 날씨가 '{item['quote']}'이에요." if item["source_type"] == "weather"
+        why = (f"오늘 {item['quote']} 소식이 있어요." if item["source_type"] == "weather"
                else f"예약 메모에 '{item['quote']}'라고 있어요.")
         made.append(proposals.create(
             view.store_id, dept="quality", by="field_variable", ask_on=day,

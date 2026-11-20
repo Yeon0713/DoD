@@ -15,7 +15,7 @@ LOOK = [call("get_today_weather", {}), call("get_today_reservations", {})]
 ALLERGY = {"title": "땅콩 알레르기 확인", "detail": "12시 단체 손님 음식에 땅콩이 들어가는지 주방에 먼저 확인해 주세요",
            "phase": "open", "today_impact": True, "source_type": "reservation", "source_id": "rs_0031", "quote": "땅콩 알레르기 손님 1명 있어요"}
 UMBRELLA = {"title": "우산꽂이 내놓기", "detail": "비 오기 전에 입구에 우산꽂이를 내놓아 주세요", "phase": "open",
-            "today_impact": False, "source_type": "weather", "source_id": "weather:2026-11-17", "quote": "14시부터 비"}
+            "today_impact": False, "source_type": "weather", "source_id": "weather:2026-11-17", "quote": "오후 2시부터 비"}
 
 
 def judged(*quotes):
@@ -78,3 +78,11 @@ def test_today_impact_becomes_urgent_when_applied(agent):
     assert task["origin"] == "field_variable" and task["urgent"] is True and task["must_confirm"] is True
     [shown] = [t for t in staff.store_tasks("s005") if t["id"] == task["id"]]
     assert shown["source"]["by"] == "field_variable"
+
+
+def test_allergy_cannot_ride_on_the_weather(agent):
+    """알레르기 손님 정보는 그 예약 메모를 근거로 한 할 일에만 (날씨를 근거로 한 할 일에 섞으면 거절)."""
+    mixed = {**UMBRELLA, "title": "땅콩 알레르기 손님 우산 준비", "detail": "땅콩 알레르기 손님이 비를 맞지 않게 우산을 준비하세요"}
+    fake = agent(LOOK, submit(mixed), submit(UMBRELLA), judged())
+    assert [p["payload"]["title"] for p in field_tasks.propose_today(load("s005"))] == ["우산꽂이 내놓기"]
+    assert "그 할 일의 근거에 없어요" in fake.tool_messages(2)[-1] and fake.done()

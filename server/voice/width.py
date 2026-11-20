@@ -20,6 +20,8 @@ LIMITS = {
     "reason.label": 8,
     "time_label": 6,  # v0.2.1 예약 카드는 '오전 10시 반'까지 들어간다 (D-13)
     "day_label": 1,
+    "staff.title": 16,  # 알바생 할 일 제목 (에이전트가 쓰는 교정·현장 변수·매뉴얼)
+    "staff.detail": 48,  # 알바생 할 일 무엇을 어떻게 (한 문장)
 }
 MAX_ITEMS = {"rows": 4, "bars": 3, "scheduled": 3, "suggestions": 2}
 

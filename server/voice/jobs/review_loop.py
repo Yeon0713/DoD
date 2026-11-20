@@ -87,6 +87,8 @@ def alert(store_id: str, review_id: str) -> dict | None:
     now = clock.now()
     preset = _preset(store_id, found["type"])
     proposal = _propose(store_id, review, card) if card else None
+    if proposal and proposal["state"] == "merged":  # 같은 할 일이 이미 알바생 화면에 있다. 다시 묻지 않는다
+        card = None
     record = repo.put("alert", f"al_{review_id}", store_id, {
         "id": f"al_{review_id}", "store_id": store_id, "review_id": review_id, "state": "alerted",
         "cause": {k: found[k] for k in ("type", "detail", "summary")}, "card": card,

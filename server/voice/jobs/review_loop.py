@@ -60,7 +60,7 @@ def on_new_review(review: dict) -> str:
     payload = {"review_id": review["id"]}
     if in_alert_hours(repo.store(store_id), written):
         queue.add(store_id, "review_alert", written, payload)
-        if not _auto(store_id):  # 대리·과장은 묻지 않고 올리므로 다시 알림·25분 처리가 없다
+        if hr.asks(store_id, "negative_reply") == "each":  # 인턴만 바로 묻는다. 사원은 묶음 창, 대리·과장은 묻지 않음
             queue.add(store_id, "review_remind", written + config.ALERT_REMIND_AFTER, payload)
             queue.add(store_id, "review_fallback", written + config.ALERT_FALLBACK_AFTER, payload)
         return "alert"
@@ -113,18 +113,44 @@ def alert(store_id: str, review_id: str) -> dict | None:
     platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
     if auto:
         return _auto_post(record, platform)
+    if hr.asks(store_id, "negative_reply") == "batch":
+        return _batch(record)
     notices.push(store_id, "negative_review", f"{platform}에 아쉬운 리뷰가 올라왔어요", opens_turn=True, alert_id=record["id"])
     return record
 
 
+def _batch(record: dict) -> dict:
+    """부정 리뷰 답글 사원: 바로 알리지 않고 묶음 창에 답글과 교정 할 일을 넣는다 (9-0 a·q, jobs/hr_batch.py).
+    대답이 없으면 다음 아침 브리핑에서 묻도록 답글은 써 둔 채(reply_ready) 두고, 할 일은 다음 날로 넘겨 둔다."""
+    from voice.jobs import hr_batch
+
+    review = repo.review(record["review_id"])
+    plain = {**record, "use_card": False}
+    review.update({"reply_status": "none", "reply_ready": {"text": reply_text(record), "plain": reply_text(plain),
+                                                          "source": record["reply_source"], "notes": record["notes"]}})
+    repo.save_review(review)
+    hr_batch.add(record["store_id"], "negative_reply", record["review_id"])
+    _batch_card(record)
+    return repo.put("alert", record["id"], record["store_id"], {**record, "state": "batched"})
+
+
+def _batch_card(record: dict) -> None:
+    """교정 할 일을 묶음 창에 넣는다. 대답이 없으면 다음 아침 브리핑에서 묻는다."""
+    from voice.jobs import hr_batch
+
+    if not (record["use_card"] and record["card"] and record.get("proposal_id")):
+        return
+    proposals.carry(record["proposal_id"], staff_tasks.briefing_day(repo.store(record["store_id"]), clock.now(), after_today=True))
+    hr_batch.add(record["store_id"], "review_fix_task", record["proposal_id"])
+
+
 def _auto_post(record: dict, platform: str) -> dict:
     """대리·과장: 사과 답글을 묻지 않고 올린다. 바로 알리지 않는다 (다음 날 아침 사후 보고, 6장 결정 15).
-    교정 카드가 있으면 제안으로 남겨 다음 아침 브리핑에서 묻는다 (알바생 할 일은 늘 결재)."""
+    교정 카드가 있으면 사원 방식(묶음 창)으로 묻는다 (알바생 할 일은 늘 결재, 9-0 q). 대답이 없으면 다음 아침 브리핑에서."""
     _post(record, "auto")
     hr.record(record["store_id"], "negative_reply", record["review_id"], "done")
     if record["use_card"] and record["card"] and record.get("proposal_id"):
-        day = staff_tasks.briefing_day(repo.store(record["store_id"]), clock.now(), after_today=True)
-        proposals.carry(record["proposal_id"], day)
+        _batch_card(record)
         return repo.put("alert", record["id"], record["store_id"], {**record, "state": "carried", "decided_by": "auto",
                                                                     "decided_at": iso(clock.now())})
     return repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "auto",

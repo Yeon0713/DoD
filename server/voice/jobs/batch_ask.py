@@ -12,7 +12,7 @@ session["batch"] 에 지금 묻는 것을 둔다 (remember). 다른 질문으로
 from dataclasses import dataclass
 from typing import Callable
 
-from voice import activity, clock, hr, repo, speech, width
+from voice import activity, clock, hr, proposals, repo, speech, width
 from voice.jobs import queue
 from voice.clock import iso, parse
 from voice.context import VoiceStore
@@ -70,8 +70,11 @@ def _neg_approve(view: VoiceStore, ref: str) -> None:
     review = view.review(ref)
     now = clock.now()
     ready = review["reply_ready"]
+    fix = proposals.for_review(view.store_id, ref)
+    # 같은 리뷰의 교정 할 일을 뺐으면 그 조치를 약속하지 않는 글로 (영업 중 묶음 창, plain 이 있을 때)
+    text = (ready.get("plain") or ready["text"]) if fix and fix["state"] in ("declined", "expired") else ready["text"]
     review.update({
-        "reply_status": "posted", "reply_by": "donna", "reply_text": ready["text"], "reply_source": ready["source"],
+        "reply_status": "posted", "reply_by": "donna", "reply_text": text, "reply_source": ready["source"],
         "reply_posted_at": iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
         "reply_trigger": "owner_yes",
     })
@@ -128,6 +131,39 @@ def _pos_reject(view: VoiceStore, ref: str) -> None:
     repo.save_review({**view.review(ref), "reply_status": "drafted"})
 
 
+# ── 알바생 할 일 (review_fix_task, field_task, manual_task: 늘 결재, 상한 사원) ──
+
+
+def _task_pending(view: VoiceStore, ref: str) -> bool:
+    found = proposals.get(ref)
+    return bool(found and found["state"] in proposals.LIVE)
+
+
+def _task_line(view: VoiceStore, ref: str) -> str:
+    title = proposals.get(ref)["payload"]["title"]
+    return f"알바생 할 일 {speech.josa(title, '이에요', '예요')}."
+
+
+def _task_one(view: VoiceStore, ref: str) -> tuple[list[str], list[dict]]:
+    from voice.jobs import staff_tasks
+
+    found = proposals.get(ref)
+    card = {"type": "checklist", "id": "batch", "title": "알바생 할 일에 넣을 것",
+            "items": [{"id": ref, "title": found["payload"]["title"], "sub": found["payload"].get("detail") or "", "state": "todo"}]}
+    return [staff_tasks._why(view, found, view.now), f"알바생 할 일에 {speech.josa(found['payload']['title'], '을', '를')} 넣을게요."], [card]
+
+
+def _task_item(view: VoiceStore, ref: str) -> dict:
+    payload = proposals.get(ref)["payload"]
+    return {"title": payload["title"], "sub": payload.get("detail") or ""}
+
+
+TASK = Kind(
+    pending=_task_pending, line=_task_line, one=_task_one, item=_task_item,
+    approve=lambda view, ref: proposals.apply(ref, "owner_yes"), reject=lambda view, ref: proposals.decline(ref, "owner_no"),
+    many="알바생 할 일이 {n} 있어요.", question="넣을까요?", headline="알바생 할 일 넣을까요?",
+    done=lambda n: "알바생 할 일을 넣었어요." if n == 1 else f"알바생 할 일 {n}개를 넣었어요.", none=("네, 알바생 할 일은 넣지 않을게요.",))
+
 KINDS: dict[str, Kind] = {
     "negative_reply": Kind(
         pending=_neg_pending, line=_neg_line, one=_neg_one, item=_neg_item, approve=_neg_approve, reject=_neg_reject,
@@ -137,6 +173,7 @@ KINDS: dict[str, Kind] = {
         pending=_pos_pending, line=_pos_line, one=_pos_one, item=_pos_item, approve=_pos_approve, reject=_pos_reject,
         many="좋은 리뷰 답글이 {n} 있어요.", question="이렇게 예약할까요?", headline="답글 예약할까요?",
         done=lambda n: "답글을 예약했어요." if n == 1 else f"답글 {n}개를 예약했어요.", none=("네, 예약하지 않을게요.", "초안은 남겨 둘게요.")),
+    "review_fix_task": TASK, "field_task": TASK, "manual_task": TASK,
 }
 
 

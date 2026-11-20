@@ -69,7 +69,7 @@ export type Home = {
 
 /** 도나 알림. opens_turn: 소리를 내고 turn(event: notice)로 열어 도나가 묻는다 (아쉬운 리뷰). say: 소리를 내고 읽는다. */
 export type Notice = {
-  id: string; kind: 'staff_joined' | 'unconfirmed' | 'story' | 'negative_review' | 'staff_checked' | 'reply_fallback' | 'story_event' | 'instagram' | 'negative_auto';
+  id: string; kind: 'staff_joined' | 'unconfirmed' | 'story' | 'negative_review' | 'staff_checked' | 'reply_fallback' | 'story_event' | 'instagram' | 'negative_auto' | 'hr_batch';
   text: string; time_label: string; say?: string[]; opens_turn?: boolean; alert_id?: string | null;
 };
 

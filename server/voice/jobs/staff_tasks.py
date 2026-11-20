@@ -59,12 +59,17 @@ def _why(view: VoiceStore, p: dict, now: dt.datetime) -> str:
 
 
 def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -> dict | None:
-    """물을 제안이 있으면 ask_tasks 응답. tasks 에 묻는 제안 id 가 순서대로 있다."""
+    """물을 제안이 있으면 ask_tasks 응답. tasks 에 묻는 제안 id 가 순서대로 있다.
+    업무 직급대로 (인사과 4-c): 맨 앞 제안의 업무가 인턴이면 그것 하나만, 사원이면 사원 업무 제안을 묶어서 묻는다."""
     from voice.jobs.briefing import answer, say
 
-    asking = proposals.for_briefing(view.store_id, now.date().isoformat())[:MAX_ASK]
-    if not asking:
+    found = proposals.for_briefing(view.store_id, now.date().isoformat())
+    if not found:
         return None
+    if _asks(found[0]) == "each":
+        asking = found[:1]
+    else:
+        asking = [p for p in found if _asks(p) != "each"][:MAX_ASK]
     says = [say(text) for text in lead or []]
     if len(asking) == 1:
         p = asking[0]
@@ -90,6 +95,20 @@ def unasked_today(view: VoiceStore, now: dt.datetime) -> bool:
     return bool(proposals.for_briefing(view.store_id, now.date().isoformat()))
 
 
+def _asks(p: dict) -> str | None:
+    return hr.asks(p["store_id"], hr.JOB_OF_PROPOSAL[p["by"]])
+
+
+def _then_next(view: VoiceStore, response: dict) -> dict:
+    """정한 뒤 남은 제안(인턴은 한 건씩, 사원은 넘친 것)이 있으면 이어서 묻는다."""
+    from voice import clock
+
+    follow = step(view, clock.now())
+    if follow is None:
+        return response
+    return {**follow, "say": response["say"] + follow["say"]}
+
+
 def _record(p: dict, reaction: str, said: str | None) -> None:
     """할 일 제안 한 건의 결재를 인사과에 남긴다 (업무는 제안한 담당 by 로 가린다)."""
     hr.record(p["store_id"], hr.JOB_OF_PROPOSAL[p["by"]], p["id"], reaction, said)
@@ -110,7 +129,7 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
             proposals.decline(p["id"], "owner_no")
             _record(p, "rejected", said)
         session.pop("tasks_pending", None)
-        return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+        return _then_next(view, answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], []))
     if name == "action.approve":
         for p in drop:
             proposals.decline(p["id"], "owner_edit")
@@ -120,9 +139,9 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
             _record(p, "approved", said)
         session.pop("tasks_pending", None)
         if not keep:
-            return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+            return _then_next(view, answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], []))
         titles = ", ".join(p["payload"]["title"] for p in keep)
-        return answer("할 일 넣었어요", [say(f"알바생 할 일에 {_obj(titles)} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")], [])
+        return _then_next(view, answer("할 일 넣었어요", [say(f"알바생 할 일에 {_obj(titles)} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")], []))
     if name == "action.edit" and drop:
         for p in drop:
             proposals.decline(p["id"], "owner_edit")

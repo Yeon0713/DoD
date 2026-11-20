@@ -29,7 +29,7 @@ from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
-from voice.jobs import batch_ask, review_loop, staff_tasks
+from voice.jobs import batch_ask, hr_batch, review_loop, staff_tasks
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -227,6 +227,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         response = holidays.decide(view, name, session)
         briefing_job.refresh_steps(view.store_id)
         return response
+    if name == "notice.open" and session.get("hr_batch"):  # 묶음 창 알림을 열었다
+        return hr_batch.ask(view, session.pop("hr_batch")) or answer("이미 정했어요", [say("그건 이미 정했어요.")], [])
     if session.get("batch") and name.startswith("action."):  # 인턴·사원 결재 묻기 (jobs/batch_ask.py, 인사과 4단계)
         return _batch_reply(view, intent, session)
     if session.get("story_id") and (name.startswith("action.") or name == "notice.open"):  # 스토리 이벤트 포스터를 묻는 중
@@ -339,9 +341,14 @@ def handle(request: dict) -> dict:
     addressed = False
     if request.get("event") == "notice":
         notice = repo.get("notice", request.get("notice_id") or "") or {}
+        session.pop("hr_batch", None)
         if notice.get("kind") == story_event.KIND:  # 이벤트 포스터를 다 그렸어요
             session["story_id"] = notice.get("alert_id")
             session.pop("alert_id", None)
+        elif notice.get("kind") == hr_batch.KIND:  # 사원 업무 묶음 창 (jobs/hr_batch.py)
+            session["hr_batch"] = notice.get("alert_id")
+            session.pop("alert_id", None)
+            session.pop("story_id", None)
         else:
             session.pop("story_id", None)
             session["alert_id"] = notice.get("alert_id") or (review_loop.pending(store_id) or {}).get("id")

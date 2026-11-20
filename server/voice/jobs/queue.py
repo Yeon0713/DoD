@@ -15,7 +15,7 @@ dev/clock 으로 시계를 한꺼번에 옮겨도 그 작업이 원래 돌았어
 가짜 시각으로 그 가게 리뷰에 답글을 쓰지 않는다 (2026-11-21, 시계를 옮기면 실제 가게 작업까지 돌아 5분 넘게 멈췄다).
 
 줄(lane) 두 개
-  alert  아쉬운 리뷰 알림(review_alert·remind·fallback). 30분 골든타임 안에 알려야 해서, 브리핑 준비가
+  alert  아쉬운 리뷰 알림(review_alert·remind·fallback), 사원 업무 묶음 창 알림(hr_batch). 30분 안에 알려야 해서, 브리핑 준비가
          답글을 쓰느라(LLM, 리뷰마다 수십 초) 오래 걸려도 기다리지 않는다
   slow   나머지 (브리핑 준비, 바로 답하기, 예약 답글, 인스타 게시, 브리핑 다시 만들기)
 서버에서는 main.py 의 스레드가 줄마다 하나씩 30초마다 run_due(lane=…) 를 부른다.
@@ -36,13 +36,13 @@ from voice.clock import iso, parse
 
 logger = logging.getLogger(__name__)
 
-ALERT_KINDS = frozenset({"review_alert", "review_remind", "review_fallback"})
+ALERT_KINDS = frozenset({"review_alert", "review_remind", "review_fallback", "hr_batch"})  # hr_batch: 사원 업무 묶음 창 알림 (인사과 4-c)
 LANES = ("alert", "slow")  # 두 줄을 모두 잡을 때도 이 순서로 잡는다 (서로 기다리다 멈추지 않게)
 RETRY_DELAYS = (dt.timedelta(minutes=1), dt.timedelta(minutes=5))  # 첫 실패 뒤 1분, 두 번째 실패 뒤 5분. 세 번째 실패면 끝
 KIND_NAMES = {
     "prepare_briefing": "브리핑 준비", "auto_reply": "아쉬운 리뷰 바로 답하기", "post_scheduled": "예약한 답글 올리기",
     "review_alert": "아쉬운 리뷰 알림", "review_remind": "아쉬운 리뷰 다시 알림", "review_fallback": "아쉬운 리뷰 대답 없음 처리",
-    "instagram_publish": "인스타 게시", "refresh_briefing": "브리핑 다시 만들기",
+    "instagram_publish": "인스타 게시", "refresh_briefing": "브리핑 다시 만들기", "hr_batch": "묶어서 묻기 알림",
 }
 _locks = {lane: threading.Lock() for lane in LANES}
 

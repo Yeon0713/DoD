@@ -17,7 +17,7 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, departments, holidays, hr, marketing, proposals, repo, speech, width
+from voice import activity, clock, config, departments, holidays, hr, locks, marketing, proposals, repo, speech, width
 from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
@@ -98,6 +98,7 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
     if not waiting:
         return 0
     for review in sorted(waiting, key=lambda r: r["written_at"]):
+        before = review.get("reply_status", "none")  # none 또는 다시 묻는 awaiting. 쓰는 사이 바뀌었으면 덮지 않는다
         slot = schedule.occasion_for(review, view.data, view.store, now)
         occasion = {**slot, "post_at": iso(slot["post_at"])}
         written = voice_reply.write(view, review, "SCHEDULED", occasion)
@@ -107,8 +108,7 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
             "reply_reason": {key: slot[key] for key in ("kind", "label", "meal", "context", "explanation")},
             "reply_trigger": None if asks else "auto",  # auto: 묻지 않고 예약 → 올릴 때 인사과에 done
         })
-        repo.save_review(review)
-        if not asks:
+        if repo.save_review_if(review, before) and not asks:  # 답글을 쓰는 사이 사장님이 직접 답했으면 덮지 않는다
             queue.add(view.store_id, "post_scheduled", slot["post_at"])
     return 0 if asks else len(waiting)
 
@@ -124,7 +124,7 @@ def draft_negative(view: VoiceStore) -> None:
             written = voice_reply.write(view, review, "AUTO", fix=fix)
             review["reply_ready"] = written
             auto_reply.propose_overnight(view.store_id, review, found, view.now)  # 할 일은 아침 브리핑에서 묻는다
-        repo.save_review(review)
+        repo.save_review_if(review, "none")  # 답글을 쓰는 사이 알림(review_loop.alert)이 proposed 로 바꿨으면 덮지 않는다
 
 
 # ── 3: 단계 응답 ──
@@ -449,7 +449,13 @@ def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n
 
 
 def prepare(store_id: str) -> dict | None:
-    """브리핑 묶음을 만들어 저장한다. 가게가 없으면 None."""
+    """브리핑 묶음을 만들어 저장한다. 가게가 없으면 None.
+    같은 가게의 준비는 한 번에 하나만 돈다 (작업 큐와 사장님의 "응"이 겹쳐도 답글을 두 번 쓰지 않게)."""
+    with locks.lock("prepare", store_id):
+        return _prepare(store_id)
+
+
+def _prepare(store_id: str) -> dict | None:
     view = load(store_id)
     if view is None:
         return None

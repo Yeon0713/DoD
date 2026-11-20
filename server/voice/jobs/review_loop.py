@@ -202,10 +202,8 @@ def fallback(store_id: str, review_id: str) -> str | None:
             repo.put("alert", record["id"], store_id, {**record, "state": "left_draft"})
             notices.push(store_id, "reply_fallback", "답글은 초안으로 남겨 뒀어요", say=["대답이 없으셔서 답글은 올리지 않고 초안으로 남겨 뒀어요."])
             result = "left_draft"
-    from voice.jobs import briefing
-
-    if briefing.current(store_id):
-        briefing.prepare(store_id)
+    # 브리핑을 다시 만드는 일(답글 쓰기, LLM)은 느린 줄로 넘긴다. 알림 줄은 다른 리뷰 알림을 기다리게 하지 않는다 (jobs/queue.py)
+    queue.add(store_id, "refresh_briefing", clock.now(), {"review_id": review_id})
     return result
 
 

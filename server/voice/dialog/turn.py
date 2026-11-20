@@ -22,7 +22,7 @@ import copy
 import datetime as dt
 import re
 
-from voice import activity, clock, holidays, hr, notebook, repo, speech, staff_orders, width
+from voice import activity, clock, holidays, hr, locks, notebook, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -360,6 +360,13 @@ def _missed_tasks(intent: Intent, session: dict, view, addressed: bool) -> bool:
 
 
 def handle(request: dict) -> dict:
+    """같은 가게의 말은 하나씩 처리한다. /v1/turn 은 스레드풀에서 동시에 돌 수 있는데, 세션을 읽고 → 뜻 판정(최대 3초)을
+    기다리고 → 세션을 쓰는 사이에 다른 말(auto_next, 겹친 말, 같은 request_id 재전송)이 끼면 단계가 두 번 넘어가거나 덮인다."""
+    with locks.lock("turn", request["store_id"]):
+        return _handle(request)
+
+
+def _handle(request: dict) -> dict:
     store_id = request["store_id"]
     view = load(store_id)
     if view is None:

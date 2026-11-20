@@ -117,3 +117,58 @@ def test_revise_eval_conditions():
     assert followed(case, "정말 😊 가나다라마바!") == ["shorter", "no_emoji", "no_exclaim", "must_not:정말", "must:감사"]
     cases = json.loads(REVISE_DATA.read_text(encoding="utf-8"))["cases"]
     assert len({c["id"] for c in cases}) == len(cases) >= 10 and all(c["kind"] in ("AUTO", "SCHEDULED") for c in cases)
+
+
+def test_window_reply_revised_then_fix_dropped_does_not_promise(monkeypatch):
+    """묶음 창에서 "좀 더 부드럽게"로 고친 뒤 교정 할 일을 빼면, 조치 없는 글(plain)을 같은 지시로 고쳐 올린다 (known-bugs B4)."""
+    from app.core.config import settings
+    from voice import context
+    from voice.tests.test_hr_flow import staff_negative
+
+    donna, rid = staff_negative()  # 부정 리뷰 답글 사원, 15:40 국물 샘 리뷰
+    donna.clock("2026-11-17T16:10:00+09:00")
+    donna.open_notice()
+    plain = repo.review(rid)["reply_ready"]["plain"]
+    monkeypatch.setattr(config, "agent_on", lambda name: name == "reply")
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    soft_plain = "국물이 새서 많이 불편하셨을 텐데 정말 죄송해요. 포장을 꼼꼼히 다시 살필게요."
+    plain_turns = reply_turns(soft_plain)
+    plain_turns[2] = judged("포장을 꼼꼼히 다시 살필게요.")  # 고칠 점: 조치 없는 글의 다짐
+    fake = FakeClova(*reply_turns(), *plain_turns)
+    monkeypatch.setattr(context, "post", fake)
+    donna.turn("좀 더 부드럽게 써 줘")
+    assert repo.review(rid)["reply_ready"]["plain"] == plain  # 조치 없는 글은 아직 고치지 않는다
+    donna.turn("두 번째는 빼고 올려")
+    posted, alert = repo.review(rid), repo.get("alert", f"al_{rid}")
+    assert posted["reply_status"] == "posted" and "랩을 두 번" not in posted["reply_text"]
+    assert posted["reply_text"] == f"{soft_plain} {alert['compensation']}"  # 사장님이 정한 보상 문장은 고치지 않고 다시 붙인다
+    asked = fake.requests[-len(plain_turns)]["messages"][-1]["content"]
+    assert fake.done() and alert["reply_plain"] in asked and alert["compensation"] not in asked  # 보상 문장을 뺀 plain 을 고쳤다
+    assert sorted(hr_log()) == [("negative_reply", "edited"), ("review_fix_task", "rejected")]
+
+
+def test_window_reply_revise_keeps_the_owner_compensation(monkeypatch):
+    """묶음 창 "좀 더 부드럽게": 사장님이 정한 보상 문장은 에이전트에 넘기지 않고, 고친 글 뒤에 그대로 다시 붙인다 (known-bugs B5).
+    두 번 고치면 두 번째는 첫 번째 고친 글에서 이어 고친다."""
+    from app.core.config import settings
+    from voice import context
+    from voice.tests.test_hr_flow import staff_negative
+
+    donna, rid = staff_negative()
+    donna.clock("2026-11-17T16:10:00+09:00")
+    donna.open_notice()
+    comp = repo.get("alert", f"al_{rid}")["compensation"]
+    assert comp and repo.review(rid)["reply_ready"]["text"].endswith(comp)  # 써 둔 글에 보상 문장이 붙어 있다
+    monkeypatch.setattr(config, "agent_on", lambda name: name == "reply")
+    monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
+    shorter = "국물이 새서 정말 죄송해요. 오늘부터 국물 메뉴는 랩을 두 번 씌워 보낼게요."
+    fake = FakeClova(*reply_turns(), *reply_turns(shorter))
+    monkeypatch.setattr(context, "post", fake)
+    donna.turn("좀 더 부드럽게 써 줘")
+    first = fake.requests[0]["messages"][-1]["content"]
+    assert comp not in first and repo.review(rid)["reply_ready"]["text"] == f"{SOFT} {comp}"
+    donna.turn("더 짧게")
+    second = fake.requests[len(reply_turns())]["messages"][-1]["content"]
+    assert SOFT in second and comp not in second  # 고친 글에서 이어 고친다
+    donna.turn("응")
+    assert fake.done() and repo.review(rid)["reply_text"] == f"{shorter} {comp}"

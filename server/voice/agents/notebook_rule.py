@@ -2,7 +2,8 @@
 
 입력: 사장님 말(고침·반려 지시), 업무, 지금 규칙. 출력: 계속 지킬 규칙인지, 칸(담당 | 가게 공통), 규칙 한 줄, 덮을 옛 규칙,
 코드로 볼 수 있는 것(금지 낱말, 이모티콘 금지). "이건 좀 더 부드럽게"처럼 그 건에만 하는 말은 규칙이 아니다.
-검사: 규칙 글 폭(tip 한도), replaces 가 실제 규칙 id 인지. 예산 5초 strict. 실패하거나 끄면 None (적지 않는다).
+검사: 규칙 글 폭(tip 한도), replaces 가 실제 규칙 id 인지. 예산 10초, strict 아님 (뒤 스레드에서 돌므로 사장님이 기다리지 않는다. 강제 제출·400 우회·429 기다리기가 돌게, known-bugs B8).
+실패하거나 끄면 None (적지 않는다).
 """
 
 from Harness import runner
@@ -42,7 +43,8 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
     if text and not width.fits(text, "tip"):
         return width.too_long("text", text, "tip")
     ids = {r["id"] for r in task["rules"]}
-    unknown = [i for i in args.get("replaces") or [] if i not in ids]
+    # 'none': 수첩이 비면 스키마 enum 이 ["none"] 뿐이라 모델이 적는다. 덮을 규칙 없음으로 본다 (judge 도 걸러 낸다)
+    unknown = [i for i in args.get("replaces") or [] if i != "none" and i not in ids]
     if unknown:
         return f"replaces 에는 지금 수첩 규칙 id 만 적을 수 있어요: {', '.join(unknown)}"
     return None
@@ -60,13 +62,15 @@ def judge(view: VoiceStore, said: str, job_name: str, rules: list[dict]) -> dict
         submit=_submit([r["id"] for r in rules]),
         check=check,
         task_id=lambda task: f"{task['job']}:{task['said']}",
-        budget=Budget(max_steps=2, max_rejections=2, max_seconds=5, strict=True),  # 거절 한 번은 다시 내게
+        budget=Budget(max_steps=2, max_rejections=2, max_seconds=10),  # 거절 한 번은 다시 내게
         temperature=0,
     )
     proposal = runner.run(spec, {"said": said, "job": job_name, "rules": rules}, run_context(view))
     if proposal is None or proposal.source != "AGENT":
         return None
     c = proposal.content
+    # 모델은 replaces 의 enum ["none"] 을 따라 banned_words 에도 'none' 을 적는다 (금지 낱말이 아니다)
+    banned = [str(w).strip() for w in c.get("banned_words") or [] if str(w).strip() and str(w).strip().lower() != "none"]
     return {"is_rule": bool(c.get("is_rule")), "scope": c.get("scope") or "agent", "text": (c.get("text") or "").strip(),
-            "replaces": [i for i in c.get("replaces") or [] if i != "none"], "banned_words": [str(w).strip() for w in c.get("banned_words") or [] if str(w).strip()],
+            "replaces": [i for i in c.get("replaces") or [] if i != "none"], "banned_words": banned,
             "no_emoji": bool(c.get("no_emoji"))}

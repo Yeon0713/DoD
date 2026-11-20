@@ -22,7 +22,7 @@ def push(store_id: str, kind: str, text: str, *, say: list[str] | None = None, o
     from voice.dialog import echo
 
     echo.remember(store_id, [*(say or []), text])  # 앱이 소리 내어 읽는다. 마이크로 다시 들어오면 흘려듣게
-    notice_id = f"nt_{repo.next_number(f'notice:{store_id}'):04d}"
+    notice_id = f"nt_{store_id}_{repo.next_number(f'notice:{store_id}'):04d}"  # repo 키는 가게를 가리지 않으므로 가게 id 를 넣는다
     return repo.put("notice", notice_id, store_id, {
         "id": notice_id, "kind": kind, "text": text, "say": say or [], "opens_turn": opens_turn,
         "alert_id": alert_id, "at": iso(clock.now()), "seen": False,

@@ -40,6 +40,16 @@ def reply_now(store_id: str, review_id: str) -> dict | None:
     now = clock.now()
     if review is None or not eligible(review, now):
         return None
+    try:
+        return _reply(store_id, view, dict(review), now)  # 복사본: 중간에 실패해도 아래 표시에 '올림'이 섞이지 않게
+    except Exception:
+        # 다시 해도(queue.RETRY_DELAYS) 30분 안에 못 올리면 대리여도 아침 브리핑에서 묻는다 (briefing.step_negative, known-bugs B6)
+        repo.save_review_if({**review, "auto_reply_failed_at": clock.iso(clock.now())}, "none")
+        raise
+
+
+def _reply(store_id: str, view, review: dict, now: dt.datetime) -> dict:
+    review_id = review["id"]
     found = fix_card.card_for(view, review)
     fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
     written = voice_reply.write(view, review, "AUTO", fix=fix)
@@ -62,6 +72,34 @@ def propose_overnight(store_id: str, review: dict, found: dict, now: dt.datetime
     if not found["card"] or proposals.for_review(store_id, review["id"]):
         return None
     return staff_tasks.propose_fix(store_id, review, found["card"], ask_on=staff_tasks.briefing_day(repo.store(store_id), now))
+
+
+def post_ready(store_id: str) -> list[str]:
+    """써 둔 채 남은 아쉬운 리뷰 답글(reply_ready)을 올린다. 브리핑 준비가 평가로 묻던 직급이 대리가 된 날에만 부른다 (known-bugs B3).
+    사원일 때 들어와 묻던 리뷰는 대리로 오른 날 아무도 묻지 않고, 바로 답하기(reply_now)는 30분이 지나 돌지 않는다.
+    올린 것은 인사과에 done 으로 남아 다음 아침 사후 보고에 나온다."""
+    from voice.context import load
+    from voice.jobs.batch_ask import ready_reply
+
+    if hr.asks(store_id, "negative_reply") is not None:
+        return []
+    view = load(store_id)
+    posted = []
+    for review in view.reviews() if view else []:
+        if (review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none"
+                or review.get("reply_deleted_at") or not review.get("reply_ready")):
+            continue
+        text, source = ready_reply(view, review)
+        now = clock.now()
+        review.update({
+            "reply_status": "posted", "reply_by": "donna", "reply_text": text, "reply_source": source,
+            "reply_notes": review["reply_ready"].get("notes", []), "reply_summary": REPLY_SUMMARIES[review.get("topic") or "other"],
+            "reply_posted_at": clock.iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
+        })
+        if repo.save_review_if(review, "none"):  # 쓰는 사이 사장님이 직접 답했으면 덮지 않는다
+            hr.record(store_id, "negative_reply", review["id"], "done")
+            posted.append(review["id"])
+    return posted
 
 
 def reply_pending(store_id: str) -> list[str]:

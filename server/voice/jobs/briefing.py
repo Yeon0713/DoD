@@ -85,16 +85,27 @@ def recent_positive(view: VoiceStore, now: dt.datetime) -> list[dict]:
 # ── 1~2: 미리 해 두는 일 ──
 
 
-def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
+def schedule_replies(view: VoiceStore, now: dt.datetime, *, promoted: bool = False) -> int:
     """답글 기다리는 좋은 리뷰마다 올릴 때(schedule.occasion_for: 평일 리뷰 → 토요일 오전, 주말 리뷰 → 24~48시간 안 식사 피크
     한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다.
     칭찬 리뷰 답글 직급 (인사과 4-b): 대리·과장은 지금처럼 예약한다. 인턴·사원은 써 두기만 하고(awaiting) 브리핑에서 "이렇게
     예약할까요?"로 묻는다. 대답이 없어 올릴 날이 지난 awaiting 은 다음 날 준비 때 때와 글을 새로 정해 다시 묻는다 (9-0 b).
-    같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않는다 (영업 중에 LLM 을 부르지 않게)."""
+    같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않는다 (영업 중에 LLM 을 부르지 않게).
+    promoted: 이번 평가에서 묻던 직급이 대리로 올랐다. 묻던 답글(awaiting) 중 올릴 때가 남은 것은 그대로 예약하고,
+    지난 것은 새로 정해 예약한다 (known-bugs B3)."""
     asks = hr.asks(view.store_id, "positive_reply") is not None
+
+    def stale(review: dict) -> bool:
+        at = parse(review["reply_post_at"])
+        return at <= now if promoted else at.date() < now.date()
+
+    if promoted:
+        for review in view.reviews():
+            if review.get("reply_status") == "awaiting" and not stale(review):
+                if repo.save_review_if({**review, "reply_status": "scheduled", "reply_trigger": "auto"}, "awaiting"):
+                    queue.add(view.store_id, "post_scheduled", parse(review["reply_post_at"]))
     waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and not r.get("reply_deleted_at") and (
-        r.get("reply_status", "none") == "none"
-        or (r.get("reply_status") == "awaiting" and parse(r["reply_post_at"]).date() < now.date()))]
+        r.get("reply_status", "none") == "none" or (r.get("reply_status") == "awaiting" and stale(r)))]
     if not waiting:
         return 0
     for review in sorted(waiting, key=lambda r: r["written_at"]):
@@ -122,7 +133,8 @@ def draft_negative(view: VoiceStore) -> None:
             found = fix_card.card_for(view, review)
             fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
             written = voice_reply.write(view, review, "AUTO", fix=fix)
-            review["reply_ready"] = written
+            # 교정 할 일을 빼거나 버린 뒤 올리면 그 조치를 약속하지 않는 글로 (batch_ask.ready_reply, known-bugs B7)
+            review["reply_ready"] = {**written, "plain": found["plain"]} if fix else written
             auto_reply.propose_overnight(view.store_id, review, found, view.now)  # 할 일은 아침 브리핑에서 묻는다
         repo.save_review_if(review, "none")  # 답글을 쓰는 사이 알림(review_loop.alert)이 proposed 로 바꿨으면 덮지 않는다
 
@@ -236,10 +248,11 @@ def _when(written: dt.datetime, now: dt.datetime) -> str:
 def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tuple[dict | None, dict | None]:
     """아쉬운 리뷰 단계와 자세히 보기. 부정 리뷰 답글 직급에 따라 갈린다 (인사과 4-a, 허락 질문 D-10 은 없앰).
     인턴·사원: 써 둔 답글을 "올릴까요?"로 묻는다 (인턴은 한 건씩, 사원은 묶어서, jobs/batch_ask.py).
-    대리·과장: 묻지 않고 올렸으므로 이 단계는 없다. 올린 것은 done_report 단계가 알린다 (인사과 5단계)."""
+    대리·과장: 묻지 않고 올렸으므로 이 단계는 없다. 올린 것은 done_report 단계가 알린다 (인사과 5단계).
+    다만 바로 답하기가 실패해 남은 리뷰(auto_reply_failed_at)는 묶어 묻는다. 대답이 없으면 다음 날 또 묻는다 (known-bugs B6)."""
     mode = hr.asks(view.store_id, "negative_reply")
-    if mode is None:
-        return None, None
+    if mode is None:  # 대리·과장: 바로 답하기가 실패해 남은 것만 묶어 묻는다 (known-bugs B6)
+        waiting, mode = [r for r in waiting if r.get("auto_reply_failed_at")], "batch"
     waiting_neg = sorted((r for r in waiting if r.get("sentiment") == "negative"), key=lambda r: r["written_at"], reverse=True)
     response = batch_ask.ask(view, [{"job": "negative_reply", "ref": r["id"]} for r in waiting_neg], mode)
     if response is None:
@@ -460,11 +473,16 @@ def _prepare(store_id: str) -> dict | None:
     if view is None:
         return None
     now = clock.now()
+    asked = {job: hr.asks(store_id, job) for job in ("negative_reply", "positive_reply")}
     hr.evaluate(store_id, now.date())  # 인사과 격주 평가 (평가일이 아니거나 이미 했으면 바로 돌아온다, voice/hr.py)
+    # 묻던 답글 업무가 이번 평가로 대리가 됐다: 대리는 묻지 않으므로 기다리던 답글을 올리거나 예약한다 (known-bugs B3)
+    promoted = {job for job, mode in asked.items() if mode is not None and hr.asks(store_id, job) is None}
     proposals.expire(store_id, now.date().isoformat())  # 물을 날이 지난 할 일 제안은 버린다 (브리핑을 듣지 않으면 넣지 않는다)
     proposals.promote_repeats(store_id)  # 매뉴얼 코칭: 일주일에 세 번 나온 할 일은 매일 할 일로 올리자고 묻는다
-    newly_scheduled = schedule_replies(view, now)
+    newly_scheduled = schedule_replies(view, now, promoted="positive_reply" in promoted)
     draft_negative(load(store_id))
+    if "negative_reply" in promoted:
+        auto_reply.post_ready(store_id)
     field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
     holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
     marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)

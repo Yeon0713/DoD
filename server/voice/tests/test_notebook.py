@@ -69,6 +69,15 @@ def test_unknown_replaces_id_is_rejected(judge):
     assert "replaces 에는" in fake.tool_messages(1)[-1] and len(notebook.all_rules("s005")) == 1
 
 
+def test_empty_notebook_accepts_none_in_replaces(judge):
+    """수첩이 비면 스키마의 replaces enum 은 ["none"] 뿐이라 모델이 'none' 을 적는다. 거절하지 않고 처음 한 번에 받는다."""
+    fake = judge(rule(replaces=["none"], banned=["none"]))  # 거절되면 두 번째 차례가 없어 실패한다
+    hr.record("s005", "negative_reply", "rv_0412", "edited", "이모티콘은 앞으로 쓰지 마")
+    [found] = notebook.all_rules("s005")
+    assert found["text"] == "이모티콘 쓰지 않기" and fake.done() and len(fake.requests) == 1
+    assert not found.get("banned_words")  # 'none' 은 금지 낱말로 적지 않는다
+
+
 def test_switch_off_stops_judging(judge, monkeypatch):
     fake = judge()
     monkeypatch.setenv("VOICE_HR", "false")

@@ -3,7 +3,7 @@
 사원(에이전트·규칙)은 알바생 할 일을 바로 넣지 않고 제안으로 남긴다. 사장님이 승인하면 apply 가 넣는다.
 사원이 제안한 할 일을 실제로 넣는 곳은 여기 하나다 (사장님이 말로 시킨 일, 매뉴얼, 이벤트 카드는 각자 넣는다).
 
-저장: repo 종류 proposal, id pr_<번호>
+저장: repo 종류 proposal, id pr_<가게>_<번호> (repo 키는 가게를 가리지 않는다)
   {id, store_id, dept, by, payload, reason, link, state, same_as, merged, task_id, created_at, decided_at, decided_by}
   dept     customer | quality | marketing
   by       넣자고 한 사원. negative_review (아쉬운 리뷰 교정) | manual_coach (반복 → 매뉴얼)
@@ -47,7 +47,7 @@ def _text(payload_or_task: dict) -> str:
 def create(store_id: str, *, dept: str, by: str, payload: dict, reason: dict, link: dict | None = None,
            state: str = "proposed", dedupe: bool = True, ask_on: str | None = None) -> dict:
     """ask_on: 아침 브리핑에서 물을 날 (YYYY-MM-DD). 없으면 부르는 쪽이 그 자리에서 묻는다 (영업 중 아쉬운 리뷰)."""
-    pid = f"pr_{repo.next_number(f'proposal:{store_id}'):04d}"
+    pid = f"pr_{store_id}_{repo.next_number(f'proposal:{store_id}'):04d}"  # repo 키는 가게를 가리지 않으므로 가게 id 를 넣는다
     record = {
         "id": pid, "store_id": store_id, "dept": dept, "by": by, "payload": payload, "reason": reason, "link": link or {},
         "state": state, "same_as": None, "merged": [], "task_id": None, "ask_on": ask_on, "created_at": iso(clock.now()),
@@ -143,7 +143,7 @@ def _candidates(store_id: str, record: dict) -> list[dict]:
     found = [{"id": t["id"], "kind": "task", "text": _text(t), "urgent": t["urgent"], "source": t["source"] or {}}
              for t in staff.store_tasks(store_id)
              if not t["canceled"] and (t["repeat"] == "daily" or now - parse(t["created_at"]) <= LOOK_BACK)]
-    found += [{"id": p["id"], "kind": "proposal", "text": _text(p["payload"]), "urgent": bool(p["payload"].get("urgent")),
+    found += [{"id": p["id"], "kind": "proposal", "text": _text(p["payload"]), "urgent": urgent(p),
                "source": p["link"]}
               for p in repo.all_of(KIND, store_id) if p["state"] in LIVE and p["id"] != record["id"]]
     return found
@@ -155,7 +155,7 @@ def _same_source(a: dict, b: dict) -> bool:
 
 def _find_same(store_id: str, record: dict) -> dict | None:
     candidates = _candidates(store_id, record)
-    if record["payload"].get("urgent"):  # 긴급은 일반 할 일과 묶지 않는다
+    if urgent(record):  # 긴급은 일반 할 일과 묶지 않는다 (현장 변수 today_impact 도 긴급)
         candidates = [c for c in candidates if c["urgent"]]
     same = next((c for c in candidates if _same_source(c["source"], record["link"])), None)
     if same:

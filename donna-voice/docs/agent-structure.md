@@ -621,7 +621,7 @@ flowchart LR
 | 파일 | 고칠 것 |
 |---|---|
 | 새 `voice/notebook.py` | `rules(store_id, agent)`(담당 + 공통), `add`, `replace`, `remove`, `section(store_id, agent)`. `section`은 프롬프트에 넣을 규칙 글과 최근 그대로 승인된 예시 3개를 만듭니다. 예시는 답글과 캡션만 씁니다 |
-| 새 `agents/notebook_rule.py` + `prompts/notebook_rule.txt` | • 입력: 사장님 말, 업무, 지금 규칙<br>• 출력: `{is_rule, scope: agent \| common, text, replaces: [], banned_words: [], no_emoji}`<br>• 검사: text 폭, `replaces`가 실제로 있는 id인지<br>• 예산: 5초 strict<br>• 실패하면 적지 않습니다 |
+| 새 `agents/notebook_rule.py` + `prompts/notebook_rule.txt` | • 입력: 사장님 말, 업무, 지금 규칙<br>• 출력: `{is_rule, scope: agent \| common, text, replaces: [], banned_words: [], no_emoji}`<br>• 검사: text 폭, `replaces`가 실제로 있는 id인지<br>• 예산: 10초, strict 아님 (뒤에서 판정하므로. 2026-11-21 5초 strict에서 바꿈, [known-bugs.md](known-bugs.md) B8)<br>• 실패하면 적지 않습니다 |
 | 부르는 곳 | `hr.record`가 `edited`나 `rejected`이고 사장님 말이 있으면 뒤에서 부릅니다(`story_event._spawn`처럼). 규칙을 적으면 `notices.push(say=["앞으로 이모티콘은 안 쓸게요."])` |
 | 프롬프트에 넣기 | `voice_reply`(kind에 따라 재방문 유도 또는 부정 리뷰), `caption_writer`, `topic_finder`, `fix_card`, `field_tasks`, `manual_line`의 `system_prompt`에 `notebook.section`을 붙입니다. Harness 캐시 키가 프롬프트를 포함하므로, 규칙이 바뀌면 다음에 새로 받습니다 |
 | 코드 검사 | `banned_words`와 `no_emoji`를 `voice_reply`·`caption_writer`의 check에 더합니다 |

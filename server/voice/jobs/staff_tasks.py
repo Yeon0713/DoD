@@ -10,7 +10,7 @@
 import datetime as dt
 
 from app.core.seoul_time import at_time
-from voice import hours, proposals, speech, width
+from voice import hours, hr, proposals, speech, width
 from voice.clock import parse
 from voice.context import VoiceStore
 
@@ -90,7 +90,12 @@ def unasked_today(view: VoiceStore, now: dt.datetime) -> bool:
     return bool(proposals.for_briefing(view.store_id, now.date().isoformat()))
 
 
-def decide(view: VoiceStore, name: str, edits: dict | None, session: dict) -> dict:
+def _record(p: dict, reaction: str, said: str | None) -> None:
+    """할 일 제안 한 건의 결재를 인사과에 남긴다 (업무는 제안한 담당 by 로 가린다)."""
+    hr.record(p["store_id"], hr.JOB_OF_PROPOSAL[p["by"]], p["id"], reaction, said)
+
+
+def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said: str | None = None) -> dict:
     """ask_tasks 뒤의 대답. 묻던 제안 id 는 session['tasks_pending'] (말한 순서)."""
     from voice.jobs.briefing import answer, say
 
@@ -103,13 +108,16 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict) -> di
     if name in ("action.cancel",) or (edits or {}).get("no_card"):
         for p in asked:
             proposals.decline(p["id"], "owner_no")
+            _record(p, "rejected", said)
         session.pop("tasks_pending", None)
         return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
     if name == "action.approve":
         for p in drop:
             proposals.decline(p["id"], "owner_edit")
+            _record(p, "rejected", said)  # "두 번째는 빼": 뺀 건만 반려
         for p in keep:
             proposals.apply(p["id"], "owner_yes")
+            _record(p, "approved", said)
         session.pop("tasks_pending", None)
         if not keep:
             return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
@@ -118,6 +126,7 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict) -> di
     if name == "action.edit" and drop:
         for p in drop:
             proposals.decline(p["id"], "owner_edit")
+            _record(p, "rejected", said)
         session["tasks_pending"] = [p["id"] for p in keep]
         if not keep:
             session.pop("tasks_pending", None)

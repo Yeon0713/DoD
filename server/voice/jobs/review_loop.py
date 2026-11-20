@@ -20,7 +20,7 @@
 import datetime as dt
 
 from app.core.seoul_time import at_time
-from voice import activity, clock, config, hours, notices, proposals, repo, speech
+from voice import activity, clock, config, hours, hr, notices, proposals, repo, speech
 from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import load
@@ -319,8 +319,14 @@ def _finish(record: dict, trigger: str) -> dict:
     })
 
 
-def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = None) -> dict:
-    """사장님 대답 (action.approve | action.edit | action.cancel | action.unclear | notice.open)."""
+def _record_card(record: dict, reaction: str, said: str | None) -> None:
+    """교정 할 일 결재를 인사과에 남긴다 (카드가 있을 때만, ref 는 제안 id)."""
+    if record.get("card") and record.get("proposal_id"):
+        hr.record(record["store_id"], "review_fix_task", record["proposal_id"], reaction, said)
+
+
+def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = None, said: str | None = None) -> dict:
+    """사장님 대답 (action.approve | action.edit | action.cancel | action.unclear | notice.open). said: 사장님 말 (인사과 기록)."""
     from voice.jobs.briefing import answer, say
 
     with repo._lock:
@@ -338,7 +344,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         if intent_name == "notice.open":
             return ask(view, record) if record["state"] in ASKING else answer("이미 처리했어요", [say("그 리뷰는 이미 처리했어요.")], [])
         if record["state"] == "auto_posted":
-            return _decide_task(view, record, intent_name, edits)
+            return _decide_task(view, record, intent_name, edits, said)
         if intent_name == "action.unclear":
             return ask(view, record, lead=["진행하시려면 '응, 진행해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
         if intent_name == "action.redo" and record["state"] in ASKING:  # "다시 만들어"를 승인으로 보고 올리던 것을 막는다 (2026-11-21)
@@ -362,6 +368,8 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": reply_text(record), "reply_source": record["reply_source"]})
             repo.save_review(review)
             repo.put("alert", record["id"], record["store_id"], {**record, "state": "canceled", "decided_by": "owner_no", "decided_at": iso(clock.now())})
+            hr.record(record["store_id"], "negative_reply", record["id"], "rejected", said)  # "안 해": 둘 다 반려
+            _record_card(record, "rejected", said)
             return answer("올리지 않을게요", [say("네, 올리지 않을게요."), say("초안은 남겨 둘게요.")], [])
 
         if intent_name == "action.edit":
@@ -374,6 +382,9 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         # action.approve
         was = record["state"]
         record = _finish(record, "owner_yes")
+        if was != "fallback_posted":  # 25분 시간 넘김으로 올린 답글은 기록하지 않는다 (무응답). "쿠폰 빼고"도 답글은 그대로 승인 (9-0 k)
+            hr.record(record["store_id"], "negative_reply", record["id"], "approved", said)
+        _record_card(record, "approved" if record["task_id"] else "rejected", said)  # "카드는 넣지 마": 할 일만 반려 (9-0 l)
     review = repo.review(record["review_id"])
     cards = _cards(record, review, posted=True)
     if was == "fallback_posted":
@@ -392,7 +403,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
     return answer("사과 답글을 올렸어요", [say(first)], cards)
 
 
-def _decide_task(view, record: dict, intent_name: str, edits: dict | None) -> dict:
+def _decide_task(view, record: dict, intent_name: str, edits: dict | None, said: str | None = None) -> dict:
     """자동 답글 뒤 '할 일에 넣을까요?'의 대답. 답글은 이미 올렸다."""
     from voice.jobs.briefing import answer, say
 
@@ -403,11 +414,13 @@ def _decide_task(view, record: dict, intent_name: str, edits: dict | None) -> di
             proposals.decline(record["proposal_id"], "owner_no")
         repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "owner_no",
                                                              "decided_at": iso(clock.now())})
+        _record_card(record, "rejected", said)
         return answer("할 일은 넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
     if intent_name == "action.approve":
         task = _pin(record, "owner_yes")
         record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "card_pinned", "task_id": task["id"],
                                                                       "decided_by": "owner_yes", "decided_at": iso(clock.now())})
+        _record_card(record, "approved", said)
         says = [say(f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
         return answer("할 일 넣었어요", says, _cards(record, repo.review(record["review_id"]), posted=True))
     return ask(view, record, lead=["넣을지 다시 말씀해 주세요."], headline="할 일 넣을까요?")

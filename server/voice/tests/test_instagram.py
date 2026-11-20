@@ -14,7 +14,7 @@ from voice import clock, config, repo, width
 from voice.instagram import graph, media, posts
 from voice.instagram.graph import InstagramError
 from voice.jobs import queue
-from voice.tests.conftest import FakeGraph, no_morning_tasks
+from voice.tests.conftest import FakeGraph, hr_log, no_morning_tasks
 from voice.tests.test_v021_choongjang import FIXTURE, Choongjang
 
 
@@ -93,6 +93,7 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert event["intent"] == "instagram.post" and event["type"] == "ask"
     assert event["briefing"]["step_key"] == "story_event"  # 11/17 은 비 오는 날이라 스토리 이벤트를 이어서 묻는다 (test_story_event.py)
     assert [s["text"] for s in event["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
+    assert hr_log() == [("instagram_post", "approved")]
     tasks = chj.turn("아니, 오늘은 안 해")
     assert tasks["type"] == "ask_tasks"  # 2026-11-20: 마지막에 알바생 할 일을 묻는다
     done = chj.turn("다음")
@@ -137,6 +138,7 @@ def test_later_does_not_post(chj: Choongjang, ig_on):
     assert later["intent"] == "instagram.later" and later["briefing"]["step_key"] == "story_event"  # 비 오는 날 (test_story_event.py)
     assert later["say"][0]["text"] == "네, 내일 브리핑에서 다시 여쭤볼게요."
     assert chj.get("/v1/instagram")["posts"] == []
+    assert hr_log() == []  # "나중에"는 세지 않는다 (9-0 n)
 
 
 def test_story_outside_briefing(chj: Choongjang, ig_on):
@@ -310,6 +312,7 @@ def test_do_not_post_in_briefing(chj: Choongjang, ig_on):
     said = chj.turn("인스타에 올리지 마")
     assert said["intent"] == "instagram.later"
     assert chj.get("/v1/instagram")["posts"] == []
+    assert hr_log() == [("instagram_post", "rejected")]  # "올리지 마"는 반려 (9-0 n)
 
 
 def test_unexpected_error_fails_instead_of_stuck(chj: Choongjang, ig_on, monkeypatch):

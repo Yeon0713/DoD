@@ -312,3 +312,10 @@ def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00",
         donna.staff_today("st_harin")
         donna.notices()  # 그때까지 쌓인 알림은 비운다
     return donna
+
+
+def hr_log(store_id: str = "s005") -> list[tuple[str, str]]:
+    """인사과에 남은 반응 (업무, 반응) 순서대로 (voice/hr.py, 9장 3단계)."""
+    from voice import hr
+
+    return [(e["job"], e["reaction"]) for e in hr.events(store_id)]

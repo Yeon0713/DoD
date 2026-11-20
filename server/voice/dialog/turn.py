@@ -20,8 +20,9 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 
 import copy
 import datetime as dt
+import re
 
-from voice import activity, clock, holidays, repo, speech, staff_orders, width
+from voice import activity, clock, holidays, hr, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -48,6 +49,7 @@ SITUATIONS = {
     "ask_holiday": "도나가 '○월 ○일을 쉬는 날로 적을게요. 맞아요?' 하고 물었어요",
 }
 # 이 질문들을 묻는 중에는 놓친 알바생 할 일 질문으로 끼어들지 않는다
+LATER_RE = re.compile(r"나중|다음에|내일")  # 인스타 "나중에": 반려로 세지 않는다 (9-0 n)
 ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask_holiday", "ask", "show_detail")
 
 
@@ -149,20 +151,24 @@ def post_now(view, kind: str) -> dict:
     return answer(f"인스타에 {what} 올릴게요", [say(f"인스타에 {what} 올릴게요."), say("다 올라가면 알려 드릴게요.")], [])
 
 
-def instagram_reply(name: str, session: dict, brief: dict, view) -> dict:
-    """인스타에 올릴까요(D-14) 뒤의 대답: 미리보기 넘기기, 올리기, 나중에."""
+def instagram_reply(name: str, session: dict, brief: dict, view, said: str | None = None) -> dict:
+    """인스타에 올릴까요(D-14) 뒤의 대답: 미리보기 넘기기, 올리기, 나중에. said: 사장님 말 (인사과 기록)."""
     if name == "instagram.next_photo":
         slides = brief["details"]["instagram"]["slides"]
         slide = session.get("insta_slide", 0) % len(slides) + 1
         session.update(insta_slide=slide, mode="detail")
         return {**copy.deepcopy(slides[slide - 1]), "briefing": _gauge("instagram")}
     if name == "instagram.later":
+        if not LATER_RE.search(intent_rules.normalize(said or "")):  # "나중에·다음에·내일"은 세지 않고, "안 해·올리지 마"는 반려 (9-0 n)
+            hr.record(view.store_id, "instagram_post", f"instagram:{view.store_id}:{view.now.date().isoformat()}", "rejected", said)
         activity.log(view.store_id, "owner", "인스타는 다음에 올리기로 했어요", "instagram_later")
         return _prefixed(_go(brief, session, _after(brief, "instagram")), "네, 내일 브리핑에서 다시 여쭤볼게요.")
     built = posts.build_feed(view)
     if built is None:
         return _prefixed(_go(brief, session, _after(brief, "instagram")), "올릴 메뉴 사진이 모자라요.")
-    posts.queue_publish(view.store_id, posts.create(view.store_id, built))
+    post = posts.create(view.store_id, built)
+    posts.queue_publish(view.store_id, post)
+    hr.record(view.store_id, "instagram_post", post["id"], "approved", said)
     activity.log(view.store_id, "owner", "인스타에 인기 메뉴를 올리라고 했어요", "instagram_ok")
     brief = briefing_job.refresh_instagram(view.store_id) or brief  # 오늘은 다시 묻지 않는다
     return _prefixed(_go(brief, session, _after(brief, "instagram")), "네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요.")
@@ -198,7 +204,7 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return _navigate(view, name.split(".", 1)[1])
     if session.get("last_type") == "ask_tasks" and (name.startswith("action.") or name in ("permission.yes", "permission.no")):
         name = {"permission.yes": "action.approve", "permission.no": "action.cancel"}.get(name, name)
-        response = staff_tasks.decide(view, name, intent.edits, session)
+        response = staff_tasks.decide(view, name, intent.edits, session, intent.owner_said)
         briefing_job.refresh_steps(view.store_id)
         return {**response, "answered_tasks": True, **({"keep_context": "ask_tasks"} if response["type"] == "ask_tasks" else {})}
     if name in ("store.holiday", "store.holiday_cancel"):  # 쉬는 날 (voice/holidays.py)
@@ -208,11 +214,11 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         briefing_job.refresh_steps(view.store_id)
         return response
     if session.get("story_id") and (name.startswith("action.") or name == "notice.open"):  # 스토리 이벤트 포스터를 묻는 중
-        return {**story_event.decide(view, name, intent.edits, session["story_id"]), "keep_context": "ask_action"}
+        return {**story_event.decide(view, name, intent.edits, session["story_id"], intent.owner_said), "keep_context": "ask_action"}
     if name.startswith("action.") or name == "notice.open":  # 아쉬운 리뷰 고리. 브리핑과 상관없이
         if name == "action.repeat":
             name = "notice.open"
-        return {**review_loop.decide(view, name, intent.edits, session.get("alert_id")), "keep_context": "ask_action"}
+        return {**review_loop.decide(view, name, intent.edits, session.get("alert_id"), intent.owner_said), "keep_context": "ask_action"}
     if name.startswith("staff."):  # 알바생 일 (voice/staff_orders.py). 브리핑과 상관없이
         return staff_orders.handle(view, intent, session)
     if name in ("instagram.feed", "instagram.story"):
@@ -228,7 +234,7 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
     if name.startswith("instagram."):
         if not asking_instagram(session) or not brief["details"].get("instagram"):
             return empty("not_understood")
-        return instagram_reply(name, session, brief, view)
+        return instagram_reply(name, session, brief, view, intent.owner_said)
     if name in ("briefing.start", "briefing.restart"):
         return _go(brief, session, _after(brief, None, inclusive=True))
     if name == "briefing.next":

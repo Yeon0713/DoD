@@ -5,7 +5,7 @@
 
 from voice import clock, proposals, staff
 from voice.jobs import briefing
-from voice.tests.conftest import choongjang
+from voice.tests.conftest import choongjang, hr_log
 
 SEAL = {"title": "배달 용기 이중 실링", "detail": "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여 주세요",
         "phase": "open", "days": 2, "must_confirm": True, "urgent": False}
@@ -61,6 +61,7 @@ def test_two_items_and_drop_the_second():
     assert [s["text"] for s in edited["say"]] == [f"둘째는 빼고, {NOODLE}를 넣을까요?"]
     donna.turn("응")
     assert [t["title"] for t in review_tasks()] == [NOODLE]
+    assert hr_log() == [("review_fix_task", "rejected"), ("review_fix_task", "approved")]  # 뺀 건만 반려, 건마다 센다
 
 
 def test_drop_and_put_in_one_sentence():
@@ -70,6 +71,7 @@ def test_drop_and_put_in_one_sentence():
     to_tasks_step(donna)
     done = donna.turn("첫 번째는 빼고 넣어")
     assert done["intent"] == "action.approve" and [t["title"] for t in review_tasks()] == ["배달 용기 이중 실링"]
+    assert sorted(hr_log()) == [("review_fix_task", "approved"), ("review_fix_task", "rejected")]
 
 
 def test_no_puts_nothing():
@@ -78,6 +80,7 @@ def test_no_puts_nothing():
     done = donna.turn("안 해")
     assert done["intent"] == "action.cancel" and done["say"][0]["text"] == "네, 알바생 할 일은 넣지 않을게요."
     assert review_tasks() == []
+    assert hr_log() == [("review_fix_task", "rejected")]
 
 
 def test_missed_in_briefing_is_asked_on_next_call_then_the_call_is_answered():

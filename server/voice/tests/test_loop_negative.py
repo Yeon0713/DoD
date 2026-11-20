@@ -9,8 +9,8 @@ import re
 
 import pytest
 
-from voice import repo, width
-from voice.tests.conftest import Choongjang, choongjang
+from voice import hr, repo, width
+from voice.tests.conftest import Choongjang, choongjang, hr_log
 
 LEAK_PRESET = "다음 주문 때 감자전 하나를 서비스로 드릴게요."
 MISSING_PRESET = "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요."
@@ -87,6 +87,8 @@ def test_l4_approve():
     assert posted["reply_text"].endswith(LEAK_PRESET) and posted["reply_posted_at"] == "2026-11-17T15:41:00+09:00"
     assert alert_of(rid)["state"] == "card_pinned"
     assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
+    assert hr_log() == [("negative_reply", "approved"), ("review_fix_task", "approved")]
+    assert [e["said"] for e in hr.events("s005")] == ["응, 진행해"] * 2 and hr.events("s005")[0]["ref"] == f"al_{rid}"
 
 
 def test_l6_confirm_closes():
@@ -151,6 +153,7 @@ def test_e1_drop_compensation():
     assert done["intent"] == "action.approve" and done["say"][0]["text"] == "서비스 안내는 빼고 사과 답글을 올렸어요."
     assert LEAK_PRESET not in review(rid)["reply_text"] and review(rid)["reply_status"] == "posted"
     assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
+    assert hr_log() == [("negative_reply", "approved"), ("review_fix_task", "approved")]  # "쿠폰 빼고"도 답글은 그대로 승인 (9-0 k)
 
 
 def test_e2_no_card():
@@ -163,6 +166,7 @@ def test_e2_no_card():
     done = donna.turn("응, 올려")
     assert done["headline"] == "사과 답글을 올렸어요" and fix_cards(donna) == [] and alert_of(rid)["state"] == "closed"
     assert review(rid)["reply_text"].endswith(LEAK_PRESET)
+    assert hr_log() == [("negative_reply", "approved"), ("review_fix_task", "rejected")]  # "카드는 넣지 마" (9-0 l)
 
 
 def test_e3_edit_not_cancel():
@@ -183,6 +187,7 @@ def test_e4_cancel():
     assert review(rid)["reply_status"] == "drafted" and alert_of(rid)["state"] == "canceled"
     donna.clock("2026-11-17T16:10:00+09:00")
     assert review(rid)["reply_status"] == "drafted" and donna.notices() == [] and fix_cards(donna) == []
+    assert hr_log() == [("negative_reply", "rejected"), ("review_fix_task", "rejected")]
 
 
 def test_e5_two_edits():
@@ -231,6 +236,7 @@ def test_t2_no_answer_leaves_draft():
     donna.clock("2026-11-17T16:05:00+09:00")
     assert review(rid)["reply_status"] == "none" and alert_of(rid)["state"] == "left_draft" and fix_cards(donna) == []
     assert [(n["kind"], n["say"]) for n in donna.notices()] == [("reply_fallback", ["대답이 없으셔서 답글은 올리지 않고 초안으로 남겨 뒀어요."])]
+    assert hr_log() == []  # 무응답은 세지 않는다
 
 
 def test_t4_no_permission():
@@ -391,6 +397,7 @@ def test_a1_auto_posts_without_compensation_and_asks_only_the_task():
     done = donna.turn("응, 넣어")
     assert done["headline"] == "할 일 넣었어요" and [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
     assert alert_of(rid)["state"] == "card_pinned"
+    assert hr_log() == [("review_fix_task", "approved")]  # 자동으로 올린 답글은 결재가 아니다
 
 
 def test_a2_no_answer_goes_to_next_morning():
@@ -417,6 +424,7 @@ def test_a3_no_means_no_task():
     donna.open_notice()
     done = donna.turn("안 해")
     assert done["headline"] == "할 일은 넣지 않을게요" and fix_cards(donna) == [] and alert_of(rid)["state"] == "closed"
+    assert hr_log() == [("review_fix_task", "rejected")]
 
 
 def test_a4_late_delivery_makes_no_card():

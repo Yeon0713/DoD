@@ -25,7 +25,7 @@ from PIL import Image
 from app.poster_ai import image_engine
 from app.poster_ai import prompt as poster_prompt
 from app.poster_ai.situation import Situation
-from voice import activity, clock, notices, repo, speech, staff
+from voice import activity, clock, hr, notices, repo, speech, staff
 from voice.clock import iso
 from voice.context import VoiceStore, load
 from voice.instagram import media, posts
@@ -211,7 +211,12 @@ def _status(record: dict) -> tuple[str, str]:
     }.get(record["state"], ("스토리는 이미 올렸어요", "이벤트 스토리는 이미 올렸어요."))
 
 
-def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | None) -> dict:
+def _record(record: dict, reaction: str, said: str | None) -> None:
+    """포스터 결재를 인사과에 남긴다. 다시 그린 포스터는 따로 센다 (ref = <이벤트 id>#<그린 횟수>)."""
+    hr.record(record["store_id"], "story_poster", f"{record['id']}#{record.get('drawn', 0)}", reaction, said)
+
+
+def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | None, said: str | None = None) -> dict:
     """알림을 연 뒤의 대답 (notice.open | action.approve | action.edit | action.cancel | action.unclear | action.repeat | action.redo)."""
     from voice.jobs.briefing import answer, say
 
@@ -222,6 +227,8 @@ def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | 
         if record["state"] in DONE | {"generating"}:
             headline, text = _status(record)
             return answer(headline, [say(text)], [])
+        if record["state"] == "ready":
+            _record(record, "rejected", said)  # "다시 그려": 반려
         start(view.store_id)
         return answer("포스터를 다시 그릴게요", [say("네, 포스터를 다시 그릴게요."), say("1~2분 걸려요. 다 되면 알려 드릴게요.")], [])
     if record["state"] != "ready":
@@ -233,6 +240,7 @@ def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | 
         return ask(view, record, lead=["올리시려면 '응, 올려'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
     if intent_name == "action.cancel":
         save({**record, "state": "declined", "decided_at": iso(clock.now())})
+        _record(record, "rejected", said)
         activity.log(view.store_id, "owner", "스토리 이벤트는 올리지 않기로 했어요", "story_event_no")
         return answer("올리지 않을게요", [say("네, 올리지 않을게요.")], [])
 
@@ -254,6 +262,7 @@ def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | 
         post = posts.create(view.store_id, built)
         post = posts.save({**post, "event_id": record["id"]})
         record = save({**record, "state": "approved", "post_id": post["id"], "decided_at": iso(clock.now())})
+    _record(record, "approved", said)  # "할 일은 넣지 마"도 포스터는 그대로 승인 (9-0 m)
     posts.queue_publish(view.store_id, post)
     says = [say("네, 이벤트 스토리를 올릴게요.")]
     if record["use_card"]:

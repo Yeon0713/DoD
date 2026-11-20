@@ -11,7 +11,7 @@ from app.poster_ai import image_engine
 from app.poster_ai.image_engine import PosterEngineError
 from voice import repo, staff, staff_orders, width
 from voice.instagram import media
-from voice.tests.conftest import FakeGraph
+from voice.tests.conftest import FakeGraph, hr_log
 from voice.tests.test_instagram import Choongjang, chj, connect, run_publish, to_instagram_step  # noqa: F401 (chj 는 fixture)
 
 SE_ID = "se_s005_2026-11-17"
@@ -155,6 +155,7 @@ def test_i3_i4_preview_post_and_card(chj: Choongjang, ig_on):
     assert [s["text"] for s in done["say"]] == ["네, 이벤트 스토리를 올릴게요.", f"올라가면 알바생 할 일 맨 위에 {TITLE}를 넣을게요."]
     assert record()["state"] == "approved"
     assert chj.staff_today("st_harin")["urgent"] == []  # 아직 안 올라갔다
+    assert hr_log() == [("story_poster", "approved")]
 
     run_publish(chj)
     created = [params for method, path, params in fake.calls if method == "POST" and path.endswith("/media")]
@@ -208,6 +209,7 @@ def test_i6_cancel_then_redo(chj: Choongjang, ig_on):
     assert record()["state"] == "ready" and record()["image_url"] == f"/media/{SE_ID}/poster_2.jpg"
     asked = open_story(chj)
     assert asked["cards"][0]["photo_url"] == f"/media/{SE_ID}/poster_2.jpg"
+    assert hr_log() == [("story_poster", "rejected")]  # 첫 포스터만 반려. 다시 그린 포스터는 따로 센다
 
 
 def test_i6_story_only(chj: Choongjang, ig_on):
@@ -220,6 +222,7 @@ def test_i6_story_only(chj: Choongjang, ig_on):
     assert done["say"] == [{"text": "네, 이벤트 스토리를 올릴게요.", "caption": None, "focus": []}]
     run_publish(chj)
     assert record()["state"] == "published" and chj.staff_today("st_harin")["urgent"] == []
+    assert hr_log() == [("story_poster", "approved")]  # "할 일은 넣지 마"도 포스터는 그대로 승인 (9-0 m)
 
 
 def test_i6_unclear_yes_asks_again(chj: Choongjang, ig_on):

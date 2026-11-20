@@ -17,7 +17,7 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, departments, holidays, marketing, proposals, repo, speech, width
+from voice import activity, clock, config, departments, holidays, hr, marketing, proposals, repo, speech, width
 from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
@@ -495,6 +495,7 @@ def prepare(store_id: str) -> dict | None:
     if view is None:
         return None
     now = clock.now()
+    hr.evaluate(store_id, now.date())  # 인사과 격주 평가 (평가일이 아니거나 이미 했으면 바로 돌아온다, voice/hr.py)
     proposals.expire(store_id, now.date().isoformat())  # 물을 날이 지난 할 일 제안은 버린다 (브리핑을 듣지 않으면 넣지 않는다)
     proposals.promote_repeats(store_id)  # 매뉴얼 코칭: 일주일에 세 번 나온 할 일은 매일 할 일로 올리자고 묻는다
     newly_scheduled = schedule_replies(view, now)

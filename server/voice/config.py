@@ -47,3 +47,15 @@ APP_ORIGINS = {o.strip() for o in env("VOICE_APP_ORIGINS", "http://localhost:809
 def agent_on(name: str) -> bool:
     """에이전트를 쓸지. VOICE_AGENT_<NAME>=false (셸 또는 server/.env) 로 끄면 템플릿·규칙으로만 돈다. CLOVA 키가 없어도 꺼진다."""
     return env(f"VOICE_AGENT_{name.upper()}", "true").lower() != "false" and clova_tools.is_enabled()
+
+
+# 인사과 (2026-11-21, donna-voice/docs/agent-structure.md 4장·9-0). 평가는 HR_EPOCH(월)부터 HR_PERIOD 마다
+HR_EPOCH = dt.date(2026, 11, 30)
+HR_PERIOD = dt.timedelta(days=14)
+HR_PROMOTE_RATIO = 0.9  # 2주 안 결재 중 그대로 승인이 이 비율 이상이면 한 단계 오른다
+HR_BATCH_WINDOW = dt.timedelta(minutes=30)  # 사원 업무의 영업 중 묶음: 첫 건 뒤 이만큼 모았다가 한 번에 묻는다 (9-0 a)
+
+
+def hr_on() -> bool:
+    """VOICE_HR=false (셸 또는 server/.env) 면 반응 기록·평가·강등·수첩 판정을 멈춘다. 직급은 저장된 그대로 읽는다 (9-0 r)."""
+    return env("VOICE_HR", "true").lower() != "false"

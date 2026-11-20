@@ -14,6 +14,8 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
   (두 번 "응"해도 "이미 올렸어요"). 질문이 열려 있으면 "도나야, 진행해"처럼 불러서 한 말도 그 질문의 대답으로 본다.
 - 비 오는 날 스토리 이벤트 (instagram/story_event.py): 브리핑 단계 story_event 에서 "응"이면 포스터를 그리기 시작한다.
   다 그린 알림(story_event)을 열면 session.story_id 를 두고, 그 뒤 action.* 대답은 story_event.decide 로 보낸다.
+- 알바생 할 일 묻기 (jobs/staff_tasks.py, 2026-11-20): 브리핑 마지막 단계(ask_tasks)의 대답은 staff_tasks.decide 로 보낸다.
+  브리핑에서 묻지 못한 할 일은 그날 사장님이 다음에 "도나야"라고 부르면 먼저 묻고, 대답한 뒤 원래 물은 말에 답한다.
 """
 
 import copy
@@ -26,7 +28,7 @@ from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
-from voice.jobs import review_loop
+from voice.jobs import review_loop, staff_tasks
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -42,7 +44,10 @@ SITUATIONS = {
     "ask_staff": "도나가 알바생 일로 '보낼까요?', '초대할까요?', '카카오톡으로 보낼까요?' 하고 물었어요",
     "ask_story": "도나가 비 오는 날 이벤트 포스터를 보여 주며 '스토리에 올리고, 알바생 할 일 맨 위에 이벤트 안내를 넣을까요?' 하고 물었어요",
     "ask_story_event": "도나가 '비 오는 날 이벤트 포스터를 만들어 스토리에 올릴까요?' 하고 물었어요",
+    "ask_tasks": "도나가 '알바생 할 일로 첫째 …, 둘째 …를 넣을까요?' 하고 물었어요",
 }
+# 이 질문들을 묻는 중에는 놓친 알바생 할 일 질문으로 끼어들지 않는다
+ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask", "show_detail")
 
 
 class StoreNotFound(Exception):
@@ -190,6 +195,11 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return answer_question(view, intent.owner_said)
     if name.startswith("navigate."):
         return _navigate(view, name.split(".", 1)[1])
+    if session.get("last_type") == "ask_tasks" and (name.startswith("action.") or name in ("permission.yes", "permission.no")):
+        name = {"permission.yes": "action.approve", "permission.no": "action.cancel"}.get(name, name)
+        response = staff_tasks.decide(view, name, intent.edits, session)
+        briefing_job.refresh_staff_tasks(view.store_id)
+        return {**response, "answered_tasks": True, **({"keep_context": "ask_tasks"} if response["type"] == "ask_tasks" else {})}
     if session.get("story_id") and (name.startswith("action.") or name == "notice.open"):  # 스토리 이벤트 포스터를 묻는 중
         return {**story_event.decide(view, name, intent.edits, session["story_id"]), "keep_context": "ask_action"}
     if name.startswith("action.") or name == "notice.open":  # 아쉬운 리뷰 고리. 브리핑과 상관없이
@@ -287,6 +297,13 @@ def answer_question(view, text: str) -> dict:
     return answer("그건 아직 몰라요", [say("그건 아직 몰라요.")], [])
 
 
+def _missed_tasks(intent: Intent, session: dict, view, addressed: bool) -> bool:
+    """"도나야"로 부른 말이고, 다른 것을 묻는 중이 아니고, 브리핑 밖이고, 오늘 못 물은 알바생 할 일이 남았다."""
+    return (addressed and intent.name not in ("echo", "not_for_donna", "stop", "unknown") and not intent.name.startswith("action.")
+            and session.get("mode") != "briefing" and session.get("last_type") not in ASKING_TYPES
+            and staff_tasks.unasked_today(view, clock.now()))
+
+
 def handle(request: dict) -> dict:
     store_id = request["store_id"]
     view = load(store_id)
@@ -300,6 +317,7 @@ def handle(request: dict) -> dict:
     session_id = request.get("session_id") or f"sess_{clock.now():%Y%m%d}_{store_id}"
     session = repo.get("session", session_id) or {"id": session_id, "store_id": store_id, "step": None, "mode": "idle", "last_type": None}
     utterance = request.get("utterance") or None
+    addressed = False
     if request.get("event") == "notice":
         notice = repo.get("notice", request.get("notice_id") or "") or {}
         if notice.get("kind") == story_event.KIND:  # 이벤트 포스터를 다 그렸어요
@@ -315,9 +333,9 @@ def handle(request: dict) -> dict:
         addressed = bool(utterance.get("addressed"))
         # 묻고 있는 아쉬운 리뷰가 있으면 "도나야, 진행해"도 그 대답이다 (허락 질문·자세히 보기 중이면 그쪽이 먼저)
         live = review_loop.pending(store_id) if addressed else None
-        if session.get("last_type") not in ("ask_permission", "show_detail") and live:
+        if session.get("last_type") not in ("ask_permission", "show_detail", "ask_tasks") and live:
             session["last_type"] = "ask_action"
-            if live["state"] in review_loop.PENDING:  # 묻고 있는 리뷰가 있으면 그 대답이다 (스토리 이벤트보다 먼저)
+            if live["state"] in review_loop.ASKING:  # 묻고 있는 리뷰가 있으면 그 대답이다 (스토리 이벤트보다 먼저)
                 session.pop("story_id", None)
         if session.get("last_type") != "ask_action":
             session.pop("alert_id", None)
@@ -328,7 +346,15 @@ def handle(request: dict) -> dict:
             intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
-    response = dispatch(intent, session, brief, view)
+    if _missed_tasks(intent, session, view, addressed):  # 브리핑에서 못 물은 알바생 할 일을 먼저 묻는다 (2026-11-20)
+        response = staff_tasks.step(view, clock.now(), lead=["그 전에 하나만요."])
+        session["deferred_text"] = utterance["text"]
+    else:
+        response = dispatch(intent, session, brief, view)
+        if response.pop("answered_tasks", False) and response["type"] != "ask_tasks" and session.get("deferred_text"):
+            later = dispatch(understand(session.pop("deferred_text"), session, view, True), session, briefing_job.current(store_id), view)
+            response = {**later, "say": response["say"] + later["say"], "cards": response["cards"] + later["cards"]}
+    staff_tasks.remember_asked(response, session)
     response.setdefault("briefing", None)
     if response["type"] not in ("ignore", "not_understood"):
         session["last_type"] = response.get("keep_context") or response["type"]

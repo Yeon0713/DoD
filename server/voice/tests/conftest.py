@@ -276,13 +276,26 @@ class Choongjang(Donna):
         return self.turn(event="notice", notice_id=found[-1]["id"])
 
 
-def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00") -> Choongjang:
+def no_morning_tasks(store_id: str = "s005") -> None:
+    """밤사이 리뷰에서 나온 오늘 알바생 할 일 제안을 사장님이 '안 해'라고 한 것으로 둔다. 그대로 두면 그날 처음 "도나야"로 부르는 말
+    앞에 도나가 놓친 할 일부터 묻는다 (jobs/staff_tasks.py, 2026-11-20). 할 일 묻기를 보는 시험은 keep_tasks=True 로 남겨 둔다."""
+    from voice import clock, proposals
+    from voice.jobs import briefing
+
+    for found in proposals.for_briefing(store_id, clock.now().date().isoformat()):
+        proposals.decline(found["id"], "test")
+    briefing.refresh_staff_tasks(store_id)
+
+
+def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00", keep_tasks: bool = False) -> Choongjang:
     """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 가입한 뒤 할 일 화면을 연다 (출근).
     at=None 이면 하린은 아직 안 들어온 상태 그대로다 (2026-11-18 픽스처: 시연에서 초대한다)."""
     donna = Choongjang()
     assert donna.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang"}).json()["store_id"] == "s005"
     if permission is not None:
         donna.settings(permission)
+    if not keep_tasks:
+        no_morning_tasks()
     if at:
         donna.clock(at)
         donna.join("하린")

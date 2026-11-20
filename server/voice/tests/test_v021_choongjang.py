@@ -68,16 +68,23 @@ def test_briefing_follows_figma(chj: Choongjang):
         "그날 비 소식이 있어서 옹심이를 권하는 답글로 썼어요.",
         "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요."]
 
+    # 2026-11-20: 밤사이 아쉬운 리뷰의 교정 카드를 알바생 할 일로 넣을지 묻는다 (jobs/staff_tasks.py).
+    # 퍼진 옹심이 리뷰도 같은 카드라 하나로 묶었다
+    d15 = chj.turn("다음")
+    assert d15["type"] == "ask_tasks" and d15["briefing"]["step_key"] == "staff_tasks" and d15["expects_reply"] is True
+    assert [s["text"] for s in d15["say"]] == ["어젯밤 면이 불어서 왔다는 리뷰 때문이에요.",
+                                               "알바생 할 일에 배달 칼국수 면·국물 따로 담기를 넣을까요?"]
+    assert [i["title"] for i in d15["cards"][0]["items"]] == ["1. 배달 칼국수 면·국물 따로 담기"]
     d16 = chj.turn("다음")
     assert d16["type"] == "end" and d16["cards"][0]["title"] == "오늘 아침에 한 것"
-    for response in (d08, d09, d10, d11, d12, d13, d16):
+    for response in (d08, d09, d10, d11, d12, d13, d15, d16):
         assert width.violations(response) == [], (response["headline"], width.violations(response))
         assert "suggestions" not in response
 
 
 def test_week_tab_shows_facts_and_what_was_done(chj: Choongjang):
     chj.turn("오늘 일정 브리핑해 줘")
-    for _ in range(5):
+    for _ in range(6):  # 마지막은 알바생 할 일 묻기 (2026-11-20)
         chj.turn("다음")
     week = chj.get("/v1/week")
     today = next(d for d in week["days"] if d["is_today"])

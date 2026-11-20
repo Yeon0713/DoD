@@ -28,8 +28,9 @@ def test_g5_made_up_compensation_is_replaced():
 
 def test_g5_agent_draft_with_refund_falls_back(monkeypatch):
     """에이전트가 보상을 쓴 초안을 내면 거절되고, 결국 원인별 템플릿 + 사장님 문장이 된다."""
-    donna = choongjang()  # 픽스처 준비(브리핑 답글)는 에이전트를 끈 채로
+    donna = choongjang(permission=None)  # 픽스처 준비(브리핑 답글)는 에이전트를 끈 채로. 묻는 가게 (자동 답글에는 보상 문장이 없다)
     donna.clock("2026-11-17T15:40:00+09:00")
+    monkeypatch.setenv("VOICE_AGENT_FIXCARD", "false")  # 교정 카드는 템플릿 (답글 에이전트만 본다)
     refund = call("submit_reply", {"text": "국물이 새서 정말 죄송합니다. 다음 주문은 전액 환불해 드릴게요.", "quoted_review_words": ["국물이 다 새서"],
                                    "menus_mentioned": [], "facts_used": []})
     monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")

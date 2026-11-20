@@ -1,7 +1,8 @@
 """L·E·T·G: 아쉬운 리뷰 → 알림 → 사장님 한마디 → 답글 + 알바생 교정 카드 → 알바생 확인 (닫힌 고리).
 
 번호는 donna-voice/docs/test-scenarios-closed-loop.md 와 같다. 에이전트는 꺼져 있어 답글은 원인별 템플릿이다.
-공통 준비: 초옹장 11/17, 허락 true, 15:35 하린 출근, 15:40 국물 샘 리뷰.
+공통 준비: 초옹장 11/17, 바로 답하기 안 켬(묻기), 15:35 하린 출근, 15:40 국물 샘 리뷰.
+바로 답하기를 켠 가게(자동 답글 → 할 일만 묻기 → 대답 없으면 다음 날 브리핑)는 A 묶음 (2026-11-20).
 """
 
 import re
@@ -15,7 +16,7 @@ LEAK_PRESET = "다음 주문 때 감자전 하나를 서비스로 드릴게요."
 MISSING_PRESET = "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요."
 
 
-def leak(permission=True) -> tuple[Choongjang, str]:
+def leak(permission=None) -> tuple[Choongjang, str]:
     donna = choongjang(permission=permission)
     donna.clock("2026-11-17T15:40:00+09:00")
     return donna, donna.demo_review("leak")
@@ -193,7 +194,7 @@ def test_e5_two_edits():
 
 
 def test_e6_no_preset():
-    donna = choongjang()
+    donna = choongjang(permission=None)
     donna.clock("2026-11-17T15:40:00+09:00")
     donna.demo_review("cold")
     asked = donna.open_notice()
@@ -204,7 +205,7 @@ def test_e6_no_preset():
 
 
 def test_e7_missing():
-    donna = choongjang()
+    donna = choongjang(permission=None)
     donna.clock("2026-11-17T15:40:00+09:00")
     rid = donna.demo_review("missing")
     asked = donna.open_notice()
@@ -221,29 +222,15 @@ def test_t1_remind():
     donna.clock("2026-11-17T15:55:00+09:00")
     assert alert_of(rid)["state"] == "reminded"
     asked = donna.open_notice()
-    assert [s["text"] for s in asked["say"]] == ["사장님, 아까 그 국물 리뷰요.", "10분 안에 대답이 없으시면 사과 답글만 먼저 올려 둘게요.",
+    assert [s["text"] for s in asked["say"]] == ["사장님, 아까 그 국물 리뷰요.", "10분 안에 대답이 없으시면 답글은 초안으로 남겨 둘게요.",
                                                 "서비스 안내와 할 일까지 넣어 올릴까요?"]
 
 
-def test_t2_fallback_posts():
+def test_t2_no_answer_leaves_draft():
     donna, rid = leak()
     donna.clock("2026-11-17T16:05:00+09:00")
-    posted = review(rid)
-    assert posted["reply_status"] == "posted" and posted["reply_trigger"] == "timeout" and posted["replied_in_minutes"] == 25
-    assert LEAK_PRESET not in posted["reply_text"] and "랩을" not in posted["reply_text"] and fix_cards(donna) == []
-    assert [(n["kind"], n["say"]) for n in donna.notices()] == [("reply_fallback", ["대답이 없으셔서 사과 답글만 먼저 올렸어요."])]
-
-
-def test_t3_next_briefing():
-    donna, rid = leak()
-    donna.clock("2026-11-17T16:05:00+09:00")
-    donna.clock("2026-11-18T10:00:00+09:00")
-    donna.session_id = "sess_20261118_s005"
-    assert donna.turn("오늘 일정 브리핑해 줘")["briefing"]
-    negative = next(s for s in (donna.turn("다음") for _ in range(3)) if (s.get("briefing") or {}).get("step_key") == "negative")
-    assert negative["headline"] == "25분 만에 답했어요"
-    assert [s["text"] for s in negative["say"]] == ["어제 배달로 드신 손님이 국물이 샜다는 리뷰를 남기셨어요.",
-                                                   "25분 만에 사과 답글만 먼저 달았어요.", "서비스 안내와 할 일은 넣지 않았어요."]
+    assert review(rid)["reply_status"] == "none" and alert_of(rid)["state"] == "left_draft" and fix_cards(donna) == []
+    assert [(n["kind"], n["say"]) for n in donna.notices()] == [("reply_fallback", ["대답이 없으셔서 답글은 올리지 않고 초안으로 남겨 뒀어요."])]
 
 
 def test_t4_no_permission():
@@ -259,21 +246,11 @@ def test_t4_no_permission():
     assert asked["permission"] == {"key": "negative_review_auto_reply"}
 
 
-def test_t5_yes_after_fallback():
-    donna, rid = leak()
-    donna.clock("2026-11-17T16:05:00+09:00")
-    donna.notices()
-    donna.clock("2026-11-17T16:06:00+09:00")
-    late = donna.turn("응, 진행해", addressed=True)
-    assert late["intent"] == "action.approve" and [s["text"] for s in late["say"]] == ["답글은 이미 올렸어요.", "알바생 할 일만 넣었어요."]
-    assert review(rid)["reply_posted_at"] == "2026-11-17T16:05:00+09:00" and [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
-
-
 def test_t6_clock_jump():
     donna, rid = leak()
     donna.clock("2026-11-17T17:00:00+09:00")
     assert [n["kind"] for n in donna.notices()] == ["reply_fallback"]
-    assert review(rid)["reply_posted_at"] == "2026-11-17T16:05:00+09:00"
+    assert alert_of(rid)["state"] == "left_draft"
 
 
 def test_t7_after_hours():
@@ -283,6 +260,12 @@ def test_t7_after_hours():
     assert alert_of(rid) is None and donna.notices() == []
     donna.clock("2026-11-17T21:55:00+09:00")
     assert review(rid)["reply_status"] == "posted" and review(rid)["reply_posted_at"] == "2026-11-17T21:50:00+09:00"
+    # 할 일은 바로 넣지 않고 다음 날 아침 브리핑에서 묻는다 (안 B). 답글은 같은 조치를 약속한다
+    from voice import proposals
+
+    found = proposals.for_review("s005", rid)
+    assert found["state"] == "proposed" and found["ask_on"] == "2026-11-18" and found["payload"]["title"] == "배달 용기 이중 실링"
+    assert "랩을 두 번" in review(rid)["reply_text"] and fix_cards(donna) == []
 
 
 # ── G 안전장치 ──
@@ -357,8 +340,8 @@ def test_answer_goes_to_the_review_being_asked_now():
     이 기기에서 "쿠폰 빼고 사과만 올려"라고 하면 새 리뷰에 적용돼야 한다 (앞 리뷰에 카드를 넣으면 안 된다)."""
     donna, first = leak()
     donna.open_notice()  # 이 기기가 첫 리뷰 알림을 엶
-    donna.clock("2026-11-17T16:05:00+09:00")  # 대답 없음 → 사과만
-    assert alert_of(first)["state"] == "fallback_posted"
+    donna.clock("2026-11-17T16:05:00+09:00")  # 대답 없음 → 초안으로
+    assert alert_of(first)["state"] == "left_draft"
     donna.notices()
     donna.clock("2026-11-17T16:10:00+09:00")
     second = donna.demo_review("leak")
@@ -368,4 +351,58 @@ def test_answer_goes_to_the_review_being_asked_now():
     done = donna.turn("쿠폰 빼고 사과만 올려", addressed=True)
     assert done["intent"] == "action.approve" and done["cards"][0]["id"] == second
     assert review(second)["reply_status"] == "posted" and LEAK_PRESET not in review(second)["reply_text"]
-    assert alert_of(first)["state"] == "fallback_posted" and alert_of(first)["task_id"] is None
+    assert alert_of(first)["state"] == "left_draft" and alert_of(first)["task_id"] is None
+
+
+# ── A 바로 답하기를 켠 가게 (2026-11-20) ──
+
+
+def test_a1_auto_posts_without_compensation_and_asks_only_the_task():
+    donna, rid = leak(permission=True)
+    posted = review(rid)
+    assert posted["reply_status"] == "posted" and posted["reply_trigger"] == "auto" and LEAK_PRESET not in posted["reply_text"]
+    assert "랩을 두 번" in posted["reply_text"]  # 교정 카드와 같은 조치를 약속한다
+    assert alert_of(rid)["state"] == "auto_posted" and jobs(donna, rid) == {"review_alert": "15:40", "review_fix_carry": "16:05"}
+    asked = donna.open_notice()
+    assert asked["type"] == "ask_action" and asked["action"]["kind"] == "review_fix_task"
+    assert [s["text"] for s in asked["say"]] == [
+        "사장님, 방금 배민에 국물이 샜다는 아쉬운 리뷰가 와서 사과 답글을 올렸어요.", "알바생 할 일에 배달 용기 이중 실링을 넣을까요?"]
+    done = donna.turn("응, 넣어")
+    assert done["headline"] == "할 일 넣었어요" and [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
+    assert alert_of(rid)["state"] == "card_pinned"
+
+
+def test_a2_no_answer_goes_to_next_morning():
+    from voice import proposals
+
+    donna, rid = leak(permission=True)
+    donna.clock("2026-11-17T16:05:00+09:00")
+    record = alert_of(rid)
+    assert record["state"] == "carried" and fix_cards(donna) == []
+    carried = proposals.get(record["proposal_id"])
+    assert carried["state"] == "proposed" and carried["ask_on"] == "2026-11-18"
+    donna.clock("2026-11-18T10:00:00+09:00")
+    donna.session_id = "sess_20261118_s005"
+    response = donna.turn("오늘 일정 브리핑해 줘")
+    for _ in range(8):
+        if response["type"] == "ask_tasks":
+            break
+        response = donna.turn("다음")
+    assert response["type"] == "ask_tasks" and "배달 용기 이중 실링" in response["say"][-1]["text"]
+
+
+def test_a3_no_means_no_task():
+    donna, rid = leak(permission=True)
+    donna.open_notice()
+    done = donna.turn("안 해")
+    assert done["headline"] == "할 일은 넣지 않을게요" and fix_cards(donna) == [] and alert_of(rid)["state"] == "closed"
+
+
+def test_a4_late_delivery_makes_no_card():
+    """배달 지연은 주문 기록이 생길 때까지 교정 카드를 만들지 않는다 (2026-11-20 결정)."""
+    donna = choongjang(permission=None)
+    donna.clock("2026-11-17T15:40:00+09:00")
+    rid = donna.client.post("/v1/dev/reviews", json={"store_id": "s005", "platform": "baemin", "rating": 2,
+                                                     "text": "배달이 한 시간 걸려서 다 식어서 왔어요."}).json()["review_id"]
+    record = alert_of(rid)
+    assert record["cause"]["detail"] == "late" and record["card"] is None and record["proposal_id"] is None

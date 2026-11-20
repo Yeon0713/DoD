@@ -2,12 +2,14 @@
 
 '올린다' = reply_status 를 posted 로 바꾸고 reply_posted_at 을 적는 것 (v0.2.0 은 실제 플랫폼에 올리지 않는다, 문서 9장).
 reply_summary(화면 폭 32 안)는 주제별 템플릿이다. 답글 본문을 줄이는 LLM 호출은 하지 않는다.
+밤사이 아쉬운 리뷰 (2026-11-20, 안 B): 교정 카드(부정 리뷰 사원)를 먼저 정해 답글이 같은 조치를 약속하게 하고,
+할 일은 바로 넣지 않고 다음 아침 브리핑에서 묻도록 제안으로 남긴다 (jobs/staff_tasks.py).
 """
 
 import datetime as dt
 
-from voice import clock, config, repo
-from voice.agents import voice_reply
+from voice import clock, config, proposals, repo
+from voice.agents import fix_card, voice_reply
 from voice.clock import parse
 from voice.context import load
 
@@ -37,7 +39,10 @@ def reply_now(store_id: str, review_id: str) -> dict | None:
     now = clock.now()
     if review is None or not eligible(review, now):
         return None
-    written = voice_reply.write(view, review, "AUTO")
+    found = fix_card.card_for(view, review)
+    fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
+    written = voice_reply.write(view, review, "AUTO", fix=fix)
+    propose_overnight(store_id, review, found, now)
     posted = clock.now()  # 에이전트가 도는 동안 흐른 시간까지 (실제 시계일 때)
     review.update({
         "reply_status": "posted", "reply_by": "donna", "reply_text": written["text"], "reply_source": written["source"],
@@ -45,6 +50,15 @@ def reply_now(store_id: str, review_id: str) -> dict | None:
         "reply_posted_at": clock.iso(posted), "replied_in_minutes": max(1, round((posted - parse(review["written_at"])).total_seconds() / 60)),
     })
     return repo.save_review(review)
+
+
+def propose_overnight(store_id: str, review: dict, found: dict, now: dt.datetime) -> dict | None:
+    """밤사이 아쉬운 리뷰의 교정 카드를 다음 아침 브리핑에서 묻도록 제안으로 남긴다. 같은 리뷰로는 한 번만."""
+    from voice.jobs import staff_tasks
+
+    if not found["card"] or proposals.for_review(store_id, review["id"]):
+        return None
+    return staff_tasks.propose_fix(store_id, review, found["card"], ask_on=staff_tasks.briefing_day(repo.store(store_id), now))
 
 
 def reply_pending(store_id: str) -> list[str]:

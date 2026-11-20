@@ -4,6 +4,7 @@
   auto_reply        아쉬운 리뷰가 들어오고 10분 뒤 (허락은 돌 때 다시 본다)
   post_scheduled    예약한 답글을 올릴 시각
   review_alert      영업 중 아쉬운 리뷰: 바로 알림 / review_remind 15분 뒤 다시 알림 / review_fallback 25분 대답 없음 처리
+                    (바로 답하기를 켠 가게는 review_fix_carry 25분: 할 일 질문에 대답이 없으면 다음 날 브리핑으로)
   instagram_publish 인스타 게시물을 올릴 시각 (지금 올릴 것은 instagram/posts.kick 이 바로 돌린다)
 
 run_due(지금까지) 는 예정 시각이 지난 작업을 시각 순서로 돌린다. 작업은 clock.at(예정 시각) 안에서 돌아서,
@@ -88,10 +89,11 @@ def run_job(job: dict) -> object:
         return reviewed is not None
     if job["kind"] == "post_scheduled":
         return auto_reply.post_scheduled(store_id)
-    if job["kind"] in ("review_alert", "review_remind", "review_fallback"):  # 영업 중 아쉬운 리뷰 (jobs/review_loop.py)
+    if job["kind"] in ("review_alert", "review_remind", "review_fallback", "review_fix_carry"):  # 영업 중 아쉬운 리뷰 (jobs/review_loop.py)
         from voice.jobs import review_loop
 
-        step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback}[job["kind"]]
+        step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback,
+                "review_fix_carry": review_loop.carry}[job["kind"]]
         return step(store_id, job["payload"]["review_id"]) is not None
     if job["kind"] == "instagram_publish":
         from voice.instagram import posts

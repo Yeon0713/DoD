@@ -21,14 +21,15 @@ import datetime as dt
 
 from app.core.seoul_time import at_time
 from voice import activity, clock, config, hours, notices, proposals, repo, speech
-from voice.agents import voice_reply
+from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import load
-from voice.jobs import cause, queue
+from voice.jobs import cause, queue, staff_tasks
 
 PENDING = {"alerted", "reminded"}
+ASKING = PENDING | {"auto_posted"}  # auto_posted: 자동 답글을 올리고 할 일만 묻는 중 (2026-11-20)
 REOPENABLE = {"alerted", "reminded", "canceled", "left_draft"}
-DONE = {"posted", "card_pinned", "closed"}
+DONE = {"posted", "card_pinned", "closed", "carried"}  # carried: 대답이 없어 할 일을 다음 날 브리핑으로 넘김
 LOOK_BACK = dt.timedelta(hours=2)  # "도나야, 진행해"가 가리킬 수 있는 알림
 PLATFORMS = {"baemin": "배민", "naver": "네이버", "coupang": "쿠팡이츠", "yogiyo": "요기요"}
 NOUNS = {"leak": "국물", "late": "배달", "swollen": "면", "missing": "누락", "cold": "국물", "taste": "맛", "hall": "응대"}
@@ -57,11 +58,18 @@ def on_new_review(review: dict) -> str:
     payload = {"review_id": review["id"]}
     if in_alert_hours(repo.store(store_id), written):
         queue.add(store_id, "review_alert", written, payload)
-        queue.add(store_id, "review_remind", written + config.ALERT_REMIND_AFTER, payload)
-        queue.add(store_id, "review_fallback", written + config.ALERT_FALLBACK_AFTER, payload)
+        if _auto(store_id):  # 바로 답하기를 켠 가게: 묻지 않고 올린다. 할 일만 묻고, 대답이 없으면 다음 날 브리핑으로
+            queue.add(store_id, "review_fix_carry", written + config.ALERT_FALLBACK_AFTER, payload)
+        else:
+            queue.add(store_id, "review_remind", written + config.ALERT_REMIND_AFTER, payload)
+            queue.add(store_id, "review_fallback", written + config.ALERT_FALLBACK_AFTER, payload)
         return "alert"
     queue.add(store_id, "auto_reply", written + config.AUTO_REPLY_DELAY, payload)
     return "auto_reply"
+
+
+def _auto(store_id: str) -> bool:
+    return repo.settings(store_id).get("negative_review_auto_reply") is True
 
 
 def _preset(store_id: str, kind: str) -> str | None:
@@ -76,16 +84,18 @@ def alert(store_id: str, review_id: str) -> dict | None:
     review = view.review(review_id) if view else None
     if review is None or review.get("reply_status", "none") != "none":
         return None
-    found = cause.classify(review)
+    found = fix_card.card_for(view, review)  # 부정 리뷰 사원: 교정 카드 (에이전트, 실패하면 원인별 템플릿)
     card = found["card"]
     fix = {"cause": found["summary"], "action": card["detail"], "reply": found["reply"]} if card else None
-    if config.ALERT_AGENT_REPLY:  # 기본은 꺼짐: 알림이 30초 늦어진다 (config 참고)
+    # 에이전트가 쓴 카드는 템플릿 답글에 그 조치가 없어서 답글도 에이전트가 같은 조치로 쓴다
+    if config.ALERT_AGENT_REPLY or found["card_source"] == "AGENT":  # 답글 에이전트는 기본 꺼짐: 알림이 30초 늦어진다
         written = voice_reply.write(view, review, "AUTO", fix=fix)
     else:
         written = {"text": found["reply"], "source": "TEMPLATE", "notes": []}
     base, notes = voice_reply.safe_reply(written["text"], None, found["reply"])  # 에이전트 글에는 보상이 없어야 한다
     now = clock.now()
-    preset = _preset(store_id, found["type"])
+    auto = _auto(store_id)
+    preset = None if auto else _preset(store_id, found["type"])  # 자동 답글에는 보상 문장을 붙이지 않는다 (2026-11-20)
     proposal = _propose(store_id, review, card) if card else None
     if proposal and proposal["state"] == "merged":  # 같은 할 일이 이미 알바생 화면에 있다. 다시 묻지 않는다
         card = None
@@ -100,8 +110,36 @@ def alert(store_id: str, review_id: str) -> dict | None:
     review.update({"reply_status": "proposed", "summary": found["summary"], "cause": found["type"]})
     repo.save_review(review)
     platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
+    if auto:
+        return _auto_post(record, platform)
     notices.push(store_id, "negative_review", f"{platform}에 아쉬운 리뷰가 올라왔어요", opens_turn=True, alert_id=record["id"])
     return record
+
+
+def _auto_post(record: dict, platform: str) -> dict:
+    """바로 답하기를 켠 가게: 사과 답글을 바로 올리고 알린다. 교정 카드가 있으면 넣을지만 묻는다 (2026-11-20 결정)."""
+    _post(record, "auto")
+    text = f"{platform} 아쉬운 리뷰에 사과 답글을 올렸어요"
+    if record["use_card"] and record["card"]:
+        record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "auto_posted"})
+        notices.push(record["store_id"], "negative_auto", text, opens_turn=True, alert_id=record["id"])
+    else:
+        record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "auto"})
+        notices.push(record["store_id"], "negative_auto", text, say=[f"{text}."])
+    return record
+
+
+def carry(store_id: str, review_id: str) -> str | None:
+    """작업 review_fix_carry (25분): 자동 답글 뒤 할 일 질문에 대답이 없으면 다음 날 아침 브리핑에서 묻는다."""
+    with repo._lock:
+        record = repo.get("alert", f"al_{review_id}")
+        if not record or record["state"] != "auto_posted":
+            return None
+        day = staff_tasks.briefing_day(repo.store(store_id), clock.now(), after_today=True)
+        if record.get("proposal_id"):
+            proposals.carry(record["proposal_id"], day)
+        repo.put("alert", record["id"], store_id, {**record, "state": "carried", "decided_by": "timeout", "decided_at": iso(clock.now())})
+    return day
 
 
 def remind(store_id: str, review_id: str) -> bool:
@@ -194,6 +232,15 @@ def ask(view, record: dict, *, lead: list[str] | None = None, headline: str | No
     review = repo.review(record["review_id"])
     summary = record["cause"]["summary"]
     offer = _offer(record)
+    if record["state"] == "auto_posted":  # 답글은 올렸다. 할 일만 묻는다
+        platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
+        ask_card = f"알바생 할 일에 {_obj(record['card']['title'])} 넣을까요?"
+        says = ([say(text) for text in lead] if lead is not None else
+                [say(f"사장님, 방금 {platform}에 {told(summary)} 아쉬운 리뷰가 와서 사과 답글을 올렸어요.", summary)]) + [say(ask_card)]
+        response = answer(headline or "할 일 넣을까요?", says, _cards(record, review, posted=True), kind="ask_action",
+                          action={**_action(record), "kind": "review_fix_task"})
+        response["expects_reply"] = True
+        return response
     if lead is not None:
         says = [say(text) for text in lead] + [say(offer)]
     elif record["state"] == "reminded":
@@ -203,7 +250,8 @@ def ask(view, record: dict, *, lead: list[str] | None = None, headline: str | No
                                   ("할 일", record["use_card"] and record["card"])) if on]
         third = f"{'와 '.join(extras)}까지 넣어 올릴까요?" if extras else "사과 답글을 올릴까요?"
         says = [say(f"사장님, 아까 그 {noun} 리뷰요.", summary),
-                say(f"{left}분 안에 대답이 없으시면 사과 답글만 먼저 올려 둘게요."),
+                say(f"{left}분 안에 대답이 없으시면 사과 답글만 먼저 올려 둘게요." if _auto(record["store_id"])
+                    else f"{left}분 안에 대답이 없으시면 답글은 초안으로 남겨 둘게요."),
                 say(third)]
     else:
         platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
@@ -221,7 +269,7 @@ def pending(store_id: str, *, include_decided: bool = False) -> dict | None:
     now = clock.now()
     recent = [a for a in repo.all_of("alert", store_id) if now - parse(a["created_at"]) <= LOOK_BACK]
     recent.sort(key=lambda a: a["created_at"], reverse=True)
-    for states in (PENDING, {"fallback_posted"}, REOPENABLE, DONE if include_decided else set()):
+    for states in (ASKING, {"fallback_posted"}, REOPENABLE, DONE if include_decided else set()):
         found = next((a for a in recent if a["state"] in states), None)
         if found:
             return found
@@ -246,12 +294,7 @@ def _post(record: dict, trigger: str) -> dict:
 
 def _propose(store_id: str, review: dict, card: dict) -> dict:
     """교정 카드를 제안으로 남긴다 (묻는 중). 넣는 것은 사장님이 "진행해" 한 뒤 proposals.apply 가 한다."""
-    return proposals.create(
-        store_id, dept="customer", by="negative_review", state="asked",
-        payload={"title": card["title"], "detail": card["detail"], "phase": "open", "days": 2, "must_confirm": True, "urgent": False},
-        reason={"type": "review", "review_id": review["id"]},
-        link={"type": "review", "review_id": review["id"], "alert_id": f"al_{review['id']}", "review_text": review["text"]},
-    )
+    return staff_tasks.propose_fix(store_id, review, card, state="asked")
 
 
 def _pin(record: dict, trigger: str) -> dict:
@@ -284,16 +327,18 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         # 어느 리뷰의 대답인가: 이 대화가 묻던 리뷰가 아직 묻는 중이면 그것, 아니면 지금 묻고 있는 가장 새 리뷰
         # (다른 기기에서 새 알림을 열었을 수 있다), 그것도 없으면 이 대화가 묻던 리뷰나 최근 리뷰 ("이미 올렸어요" 등)
         record = repo.get("alert", alert_id) if alert_id else None
-        if record is None or record["state"] not in PENDING:
+        if record is None or record["state"] not in ASKING:
             live = pending(view.store_id)
-            if live is not None and (live["state"] in PENDING or record is None):
+            if live is not None and (live["state"] in ASKING or record is None):
                 record = live
         if record is None:
             record = pending(view.store_id, include_decided=True)
         if record is None:
             return answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
         if intent_name == "notice.open":
-            return ask(view, record) if record["state"] in PENDING else answer("이미 처리했어요", [say("그 리뷰는 이미 처리했어요.")], [])
+            return ask(view, record) if record["state"] in ASKING else answer("이미 처리했어요", [say("그 리뷰는 이미 처리했어요.")], [])
+        if record["state"] == "auto_posted":
+            return _decide_task(view, record, intent_name, edits)
         if intent_name == "action.unclear":
             return ask(view, record, lead=["진행하시려면 '응, 진행해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
         if record["state"] in DONE:
@@ -343,6 +388,27 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         says = [say(first), say(f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
         return answer("답글 올리고 할 일 넣었어요", says, cards)
     return answer("사과 답글을 올렸어요", [say(first)], cards)
+
+
+def _decide_task(view, record: dict, intent_name: str, edits: dict | None) -> dict:
+    """자동 답글 뒤 '할 일에 넣을까요?'의 대답. 답글은 이미 올렸다."""
+    from voice.jobs.briefing import answer, say
+
+    if intent_name == "action.unclear":
+        return ask(view, record, lead=["넣으시려면 '응, 넣어'라고 말씀해 주세요."], headline="할 일 넣을까요?")
+    if intent_name == "action.cancel" or (edits or {}).get("no_card"):
+        if record.get("proposal_id"):
+            proposals.decline(record["proposal_id"], "owner_no")
+        repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "owner_no",
+                                                             "decided_at": iso(clock.now())})
+        return answer("할 일은 넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+    if intent_name == "action.approve":
+        task = _pin(record, "owner_yes")
+        record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "card_pinned", "task_id": task["id"],
+                                                                      "decided_by": "owner_yes", "decided_at": iso(clock.now())})
+        says = [say(f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
+        return answer("할 일 넣었어요", says, _cards(record, repo.review(record["review_id"]), posted=True))
+    return ask(view, record, lead=["넣을지 다시 말씀해 주세요."], headline="할 일 넣을까요?")
 
 
 # ── 알바생이 확인했을 때 ──

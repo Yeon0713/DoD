@@ -82,7 +82,7 @@ def test_i1_no_step(chj: Choongjang, ig_on, case):
     if case == "sunny":
         chj.clock("2026-11-18T09:02:00+09:00")  # 흐림, 비 30%
         chj.client.post("/v1/dev/run", json={"store_id": "s005", "job": "prepare_briefing"})
-    assert to_story_step(chj)["type"] == "end"
+    assert to_story_step(chj)["briefing"]["step_key"] != "story_event"  # 끝이나 알바생 할 일 묻기로 넘어간다
 
 
 def test_i1_settings_api(chj: Choongjang):
@@ -112,7 +112,7 @@ def test_i2_yes_draws_and_notifies(chj: Choongjang, ig_on):
         done = chj.turn("응, 좋아")
     finally:
         image_engine.generate = saved
-    assert done["intent"] == "instagram.post" and done["type"] == "end"
+    assert done["intent"] == "instagram.post" and done["type"] == "ask_tasks"  # 다음은 알바생 할 일 묻기 (2026-11-20)
     assert [s["text"] for s in done["say"]][:2] == ["네, 이벤트 포스터를 그릴게요.", "1~2분 걸려요. 다 되면 알려 드릴게요."]
 
     prompt, files = drawn[0]
@@ -257,6 +257,7 @@ def test_i7_engine_failure(chj: Choongjang, ig_on, monkeypatch):
 def test_i8_review_and_story_do_not_mix(chj: Choongjang, ig_on):
     ready(chj, ig_on)
     open_story(chj)  # 스토리 포스터를 묻는 중에
+    chj.settings(None)  # 묻는 가게 (바로 답하기를 켜면 답글은 묻지 않고 올린다)
     chj.clock("2026-11-17T15:40:00+09:00")
     rid = chj.demo_review("leak")  # 아쉬운 리뷰가 온다
     review_notice = [n for n in chj.notices() if n["kind"] == "negative_review"]

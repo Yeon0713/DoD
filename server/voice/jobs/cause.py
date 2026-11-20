@@ -7,7 +7,7 @@
 
 원인마다 정해 둔 것
   summary      "국물이 샜대요" (화면 폭 17 안. 도나가 말할 때 "국물이 샜다는 …"으로 바꿔 쓴다)
-  card_title   알바생 할 일 맨 위 교정 카드 제목 ("배달 용기 이중 실링")
+  card_title   알바생 교정 카드 제목 ("배달 용기 이중 실링")
   card_detail  카드 자세히에 보일 한 문장 (무엇을 어떻게)
   reply        원인과 실제로 할 조치를 적은 사과 (템플릿. 에이전트가 켜져 있으면 에이전트가 같은 조치로 쓴다)
   plain        조치를 빼고 사과만 한 글 (사장님이 "카드는 넣지 마" 했을 때, 대답이 없어 사과만 먼저 올릴 때)
@@ -25,9 +25,10 @@ TYPE_NAMES = {"packaging": "배달·포장", "missing": "메뉴 누락", "taste_
 RULES = [
     ("missing", "missing", re.compile(r"누락|빠졌|빠져|빠진|안\s?왔|안\s?와서|다른\s?(메뉴|음식)|잘못\s?(왔|온)|오배송")),
     ("packaging", "leak", re.compile(r"샜|새서|새어|새요|흘러|넘쳐|쏟아|터졌|흥건|뚜껑")),
+    # 늦어서 식었다·불었다는 배달 지연이 원인이다 (식음·불음보다 먼저 본다. 주문 기록 전에는 교정 카드를 만들지 않는다)
+    ("packaging", "late", re.compile(r"늦[게어었]|오래\s?걸|한\s?시간|기다렸")),
     ("taste_temp", "cold", re.compile(r"식어서|식었|미지근|차가")),
     ("packaging", "swollen", re.compile(r"불어서|불었|퍼져|퍼졌")),
-    ("packaging", "late", re.compile(r"늦[게어었]|오래\s?걸|한\s?시간|기다렸")),
     ("hall_service", "hall", re.compile(r"불친절|응대|태도|대답|무시|직원")),
     ("taste_temp", "taste", re.compile(r"싱거|짜[요서고]|짰|맛이\s?(없|별로|이상)|간이")),
 ]
@@ -77,6 +78,9 @@ PLAIN = {
     "other": "아쉬운 점을 남겨 주셔서 감사합니다. 말씀해 주신 부분을 꼭 살펴보겠습니다.",
 }
 STRONG_HALL = re.compile(r"불친절|응대|태도")
+# 배달 지연은 기사 탓인지 가게(조리·포장) 탓인지 주문 기록 없이 가를 수 없어 교정 카드를 만들지 않는다 (2026-11-20 결정).
+# TODO(주문 기록): 주문 시각·조리 시간이 연결되면 late 를 다시 교정 대상으로
+NO_CARD_YET = {"late"}
 FROM_TOPIC = {"delivery": ("packaging", "late"), "taste": ("taste_temp", "taste"), "service": ("hall_service", "hall")}
 
 
@@ -100,5 +104,7 @@ def classify(review: dict) -> dict:
     spec = DETAILS[detail]
     told = label.retell(text)  # 손님이 짧게 쓴 한 문장은 그대로 옮긴다 ("면이 불어서 왔대요")
     summary = told if told and width.fits(told, "review.summary") else spec["summary"]
+    if detail in NO_CARD_YET:  # 가게 탓인지 알 수 없다. 조치를 약속하지 않고 사과만 한다
+        return {"type": kind, "detail": detail, "summary": summary, "card": None, "reply": PLAIN[kind], "plain": PLAIN[kind]}
     return {"type": kind, "detail": detail, "summary": summary, "card": {"title": spec["card_title"], "detail": spec["card_detail"]},
             "reply": spec["reply"], "plain": PLAIN[kind]}

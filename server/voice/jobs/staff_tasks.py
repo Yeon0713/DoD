@@ -1,0 +1,141 @@
+"""아침 브리핑에서 알바생 할 일 묻기 (에이전트 조직 개편 3단계, donna-voice/docs/agent-org-plan.md 3-4).
+
+밤사이 아쉬운 리뷰 교정(고객 응대), 반복 → 매뉴얼(매뉴얼 코칭), 현장 변수(품질 관리) 제안을 한 단계에서 묶어 묻는다.
+  "알바생 할 일로 넣을 게 두 개 있어요. 첫째, 배달 용기 이중 실링. … 둘째, … 넣을까요?"
+대답: "응" → 모두 넣음 / "두 번째는 빼" → 그것만 빼고 다시 묻기 / "두 번째는 빼고 넣어" → 빼고 넣음 / "안 해" → 모두 안 넣음
+브리핑에서 묻지 못한 것은 그날 사장님이 다음에 "도나야"라고 부를 때 먼저 묻는다 (turn.handle). 그날 문 닫을 때까지 못 물으면
+다음 준비 때 버린다 (proposals.expire). 사장님 대답 없이는 넣지 않는다.
+"""
+
+import datetime as dt
+
+from app.core.seoul_time import at_time
+from voice import hours, proposals, speech, width
+from voice.clock import parse
+from voice.context import VoiceStore
+
+MAX_ASK = width.MAX_ITEMS["rows"]
+ORDINAL = ["첫째", "둘째", "셋째", "넷째"]
+
+
+def _obj(word: str) -> str:
+    return speech.josa(word, "을", "를")
+
+
+def briefing_day(store: dict, now: dt.datetime, *, after_today: bool = False) -> str:
+    """이 제안을 물을 아침 브리핑 날: 오늘 문 열기 전이면 오늘, 아니면 다음 여는 날."""
+    day = now.date()
+    today = hours.on(store, day)
+    if not after_today and today and now < at_time(day, today["open"]):
+        return day.isoformat()
+    for ahead in range(1, 15):
+        if hours.on(store, day + dt.timedelta(days=ahead)):
+            return (day + dt.timedelta(days=ahead)).isoformat()
+    return (day + dt.timedelta(days=1)).isoformat()
+
+
+def propose_fix(store_id: str, review: dict, card: dict, *, state: str = "proposed", ask_on: str | None = None) -> dict:
+    """아쉬운 리뷰 교정 카드 제안 (모두 확인, 이틀, 긴급 아님)."""
+    return proposals.create(
+        store_id, dept="customer", by="negative_review", state=state, ask_on=ask_on,
+        payload={"title": card["title"], "detail": card["detail"], "phase": "open", "days": 2, "must_confirm": True, "urgent": False},
+        reason={"type": "review", "review_id": review["id"]},
+        link={"type": "review", "review_id": review["id"], "alert_id": f"al_{review['id']}", "review_text": review["text"]},
+    )
+
+
+def _why(view: VoiceStore, p: dict, now: dt.datetime) -> str:
+    reason = p["reason"]
+    if reason["type"] == "review":
+        from voice.jobs.briefing import _when, told
+
+        review = view.review(reason["review_id"]) or {}
+        summary = review.get("summary") or "아쉽다는"
+        when = _when(parse(review["written_at"]), now) if review.get("written_at") else "최근"
+        return f"{when} {told(summary)} 리뷰 때문이에요."
+    if reason["type"] == "repeat":
+        return f"일주일에 {speech.count(reason['count'], '번')} 나와서 매일 할 일로 올려요."
+    return reason.get("why") or ""
+
+
+def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -> dict | None:
+    """물을 제안이 있으면 ask_tasks 응답. tasks 에 묻는 제안 id 가 순서대로 있다."""
+    from voice.jobs.briefing import answer, say
+
+    asking = proposals.for_briefing(view.store_id, now.date().isoformat())[:MAX_ASK]
+    if not asking:
+        return None
+    says = [say(text) for text in lead or []]
+    if len(asking) == 1:
+        p = asking[0]
+        says += [say(_why(view, p, now)), say(f"알바생 할 일에 {_obj(p['payload']['title'])} 넣을까요?")]
+    else:
+        says.append(say(f"알바생 할 일로 넣을 게 {speech.count(len(asking), '개')} 있어요."))
+        for i, p in enumerate(asking):
+            says.append(say(f"{ORDINAL[i]}, {p['payload']['title']}. {_why(view, p, now)}"))
+        says.append(say("넣을까요?"))
+    items = [{"id": p["id"], "title": f"{i + 1}. {p['payload']['title']}", "sub": p["payload"].get("detail") or "", "state": "todo",
+              **({"tone": "urgent"} if p["payload"].get("urgent") else {})} for i, p in enumerate(asking)]
+    response = answer("알바생 할 일 넣을까요?", says, [{"type": "checklist", "id": "staff_tasks", "title": "알바생 할 일에 넣을 것",
+                                                    "items": items}], kind="ask_tasks", tasks=[p["id"] for p in asking])
+    response["expects_reply"] = True
+    return response
+
+
+def unasked_today(view: VoiceStore, now: dt.datetime) -> bool:
+    """오늘 물을 제안이 남았고, 아직 문 닫기 전이다 (브리핑에서 못 물은 것을 다음 '도나야' 때 묻는다)."""
+    today = hours.on(view.store, now.date())
+    if not today or now >= at_time(now.date(), today["close"]):
+        return False
+    return bool(proposals.for_briefing(view.store_id, now.date().isoformat()))
+
+
+def decide(view: VoiceStore, name: str, edits: dict | None, session: dict) -> dict:
+    """ask_tasks 뒤의 대답. 묻던 제안 id 는 session['tasks_pending'] (말한 순서)."""
+    from voice.jobs.briefing import answer, say
+
+    asked = [p for p in (proposals.get(pid) for pid in session.get("tasks_pending") or []) if p and p["state"] == "asked"]
+    if not asked:
+        session.pop("tasks_pending", None)
+        return answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
+    drop = [asked[i - 1] for i in (edits or {}).get("drop_index") or [] if 1 <= i <= len(asked)]
+    keep = [p for p in asked if p not in drop]
+    if name in ("action.cancel",) or (edits or {}).get("no_card"):
+        for p in asked:
+            proposals.decline(p["id"], "owner_no")
+        session.pop("tasks_pending", None)
+        return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+    if name == "action.approve":
+        for p in drop:
+            proposals.decline(p["id"], "owner_edit")
+        for p in keep:
+            proposals.apply(p["id"], "owner_yes")
+        session.pop("tasks_pending", None)
+        if not keep:
+            return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+        titles = ", ".join(p["payload"]["title"] for p in keep)
+        return answer("할 일 넣었어요", [say(f"알바생 할 일에 {_obj(titles)} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")], [])
+    if name == "action.edit" and drop:
+        for p in drop:
+            proposals.decline(p["id"], "owner_edit")
+        session["tasks_pending"] = [p["id"] for p in keep]
+        if not keep:
+            session.pop("tasks_pending", None)
+            return answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], [])
+        dropped = ", ".join(ORDINAL[asked.index(p)] for p in drop)
+        titles = ", ".join(p["payload"]["title"] for p in keep)
+        response = answer("이렇게 넣을까요?", [say(f"{speech.josa(dropped, '은', '는')} 빼고, {_obj(titles)} 넣을까요?")], [],
+                          kind="ask_tasks", tasks=[p["id"] for p in keep])
+        response["expects_reply"] = True
+        return response
+    response = answer("알바생 할 일 넣을까요?", [say("넣으시려면 '응, 넣어'라고 말씀해 주세요.")], [], kind="ask_tasks",
+                      tasks=[p["id"] for p in asked])
+    response["expects_reply"] = True
+    return response
+
+
+def remember_asked(response: dict, session: dict) -> None:
+    """ask_tasks 응답을 돌려줄 때 묻는 중으로 적는다."""
+    if response.get("type") == "ask_tasks" and response.get("tasks"):
+        proposals.mark_asked(response["tasks"])
+        session["tasks_pending"] = list(response["tasks"])

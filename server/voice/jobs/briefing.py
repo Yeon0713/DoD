@@ -17,16 +17,17 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, repo, speech, width
-from voice.agents import voice_reply
+from voice import activity, clock, config, proposals, repo, speech, width
+from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import queue, schedule, strengths
+from voice.jobs import auto_reply, queue, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram", "story_event"]
-GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4, "end": 5}
+STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
+GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
+         "staff_tasks": 5, "end": 5}
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
 RAIN_CHANCE = 0.6
@@ -111,9 +112,12 @@ def draft_negative(view: VoiceStore) -> None:
     for review in view.reviews():
         if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
             continue
-        if not review.get("reply_ready"):
-            written = voice_reply.write(view, review, "DRAFT" if declined else "AUTO")
+        if not review.get("reply_ready"):  # 교정 카드를 먼저 정해 답글이 같은 조치를 약속하게 한다 (2026-11-20, 안 B)
+            found = fix_card.card_for(view, review)
+            fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
+            written = voice_reply.write(view, review, "DRAFT" if declined else "AUTO", fix=fix)
             review["reply_ready"] = written
+            auto_reply.propose_overnight(view.store_id, review, found, view.now)  # 할 일은 아침 브리핑에서 묻는다
         if declined:
             review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": review["reply_ready"]["text"],
                            "reply_source": review["reply_ready"]["source"]})
@@ -487,6 +491,8 @@ def prepare(store_id: str) -> dict | None:
     if view is None:
         return None
     now = clock.now()
+    proposals.expire(store_id, now.date().isoformat())  # 물을 날이 지난 할 일 제안은 버린다 (브리핑을 듣지 않으면 넣지 않는다)
+    proposals.promote_repeats(store_id)  # 매뉴얼 코칭: 일주일에 세 번 나온 할 일은 매일 할 일로 올리자고 묻는다
     newly_scheduled = schedule_replies(view, now)
     draft_negative(load(store_id))
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
@@ -498,6 +504,7 @@ def prepare(store_id: str) -> dict | None:
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
     steps["instagram"], instagram_detail = step_instagram(view)
     steps["story_event"] = story_event.step(view)  # 비 오는 날 스토리 이벤트 (instagram/story_event.py)
+    steps["staff_tasks"] = staff_tasks.step(view, now)  # 알바생 할 일 묻기 (jobs/staff_tasks.py, 2026-11-20)
     details = {key: plain_detail(step) for key, step in steps.items() if step and step["type"] == "answer"}
     if negative_detail:
         details["negative"] = negative_detail
@@ -521,6 +528,16 @@ def prepare(store_id: str) -> dict | None:
         "sources": {"replies": sorted({r.get("reply_source") for r in view.reviews() if r.get("reply_source")} - {None})},
     }
     return repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
+
+
+def refresh_staff_tasks(store_id: str) -> dict | None:
+    """알바생 할 일 묻기 단계만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
+    brief = current(store_id)
+    view = load(store_id)
+    if brief is None or view is None:
+        return brief
+    brief["steps"]["staff_tasks"] = staff_tasks.step(view, clock.now())
+    return repo.put("briefing", f"{store_id}:{brief['date']}", store_id, brief)
 
 
 def current(store_id: str) -> dict | None:

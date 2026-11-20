@@ -78,9 +78,13 @@ DONNA_CUE_RE = re.compile(r"그거|뭐|저기|도나|알려|말해|어떻게|왜
 
 # ask_action (아쉬운 리뷰 → 사과 답글 + 알바생 교정 카드)
 DROP_COMP_RE = re.compile(r"(쿠폰|서비스|보상|감자전|사이드|안내)(은|는|도|이|가)?(빼|없이|말고|넣지마|안넣|하지마|됐어)|사과만")
-NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|안넣|말고|하지마|됐어)|답글만|스토리만")
+NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에는)?(빼|넣지마|넣지말|안넣|말고|하지마|됐어)|답글만|스토리만")
+# ask_tasks (알바생 할 일 묶어 묻기, 2026-11-20): "두 번째는 빼", "1번이랑 3번은 빼고 넣어"
+ORDINAL_WORDS = {"첫": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4}
+ORDINAL_RE = re.compile(r"(첫|두|둘|세|셋|네|넷)번?째|([1-4])번째?")
+DROP_WORD_RE = re.compile(r"빼|말고|넣지마|넣지말|안넣|제외")
 REDO_RE = re.compile(r"다시(그려|그리|만들어|만들)")  # 스토리 이벤트 포스터 다시 그리기 (instagram/story_event.py)
-POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해")
+POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해|넣어|넣자")
 ACTION_CANCEL_RE = re.compile(r"^(아니|안해|안할래|하지마|됐어|취소|올리지마|놔둬|그냥둬|나중에|내가(할|쓸|볼|올릴|답할)게)")
 APPROVE_RE = re.compile(
     r"^(응|웅|그래|좋아|오케이|ㅇㅇ|네|예)?(그렇게|그대로|바로|빨리)?(진행|올려|올리|넣어|처리|등록)?(해|해줘|줘|요|하자|해요|해주세요|주세요|해라|할게)?$"
@@ -114,7 +118,7 @@ class Intent:
     owner_said: str
     jump_to: str | None = None
     by: str = "rule"  # rule | llm | heuristic
-    edits: dict | None = None  # action.*: {"drop_compensation": bool, "no_card": bool}
+    edits: dict | None = None  # action.*: {"drop_compensation": bool, "no_card": bool, "drop_index": [몇 번째, ...]}
     slots: dict | None = None  # staff.* 를 LLM 이 가른 때: {"staff_name", "task_title", "task_repeat", "task_kind"}
 
 
@@ -221,7 +225,7 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         if called and asks_donna(n, text, called):
             return found("question")  # "도나야 오늘 손님 많을까"는 손님에게 한 말이 아니다
         return found("not_for_donna")
-    if last_type == "ask_action":
+    if last_type in ("ask_action", "ask_tasks"):
         action = match_action(n, said, addressed)
         if action is not None:
             return action
@@ -324,7 +328,15 @@ def asks_donna(n: str, text: str, addressed: bool) -> bool:
 
 
 def edits_in(n: str) -> dict:
-    return {"drop_compensation": bool(DROP_COMP_RE.search(n)), "no_card": bool(NO_CARD_RE.search(n))}
+    return {"drop_compensation": bool(DROP_COMP_RE.search(n)), "no_card": bool(NO_CARD_RE.search(n)), "drop_index": drop_index(n)}
+
+
+def drop_index(n: str) -> list[int]:
+    """"두번째는빼" → [2]. 빼라는 말이 있을 때만 (몇 번째를 말한 순서대로, 겹치지 않게)."""
+    if not DROP_WORD_RE.search(n):
+        return []
+    found = [ORDINAL_WORDS[m.group(1)] if m.group(1) else int(m.group(2)) for m in ORDINAL_RE.finditer(n)]
+    return list(dict.fromkeys(found))
 
 
 def match_action(n: str, said: str, addressed: bool) -> Intent | None:
@@ -332,14 +344,14 @@ def match_action(n: str, said: str, addressed: bool) -> Intent | None:
     if REDO_RE.search(n):
         return Intent("action.redo", said)
     edits = edits_in(n)
-    if edits["drop_compensation"] or edits["no_card"]:
+    if edits["drop_compensation"] or edits["no_card"] or edits["drop_index"]:
         return Intent("action.approve" if POST_VERB_RE.search(n) else "action.edit", said, edits=edits)
     if ACTION_CANCEL_RE.search(n):
         return Intent("action.cancel", said)
     if n in BARE_YES and not addressed:
         return Intent("action.unclear", said)
     if APPROVE_RE.fullmatch(n) and n:
-        return Intent("action.approve", said, edits={"drop_compensation": False, "no_card": False})
+        return Intent("action.approve", said, edits={"drop_compensation": False, "no_card": False, "drop_index": []})
     if REPEAT_RE.search(n):
         return Intent("action.repeat", said)
     return None

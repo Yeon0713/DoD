@@ -12,7 +12,7 @@
   link     할 일 source 에 그대로 붙일 것 (리뷰 교정은 alert_id 등. jobs/review_loop.on_staff_confirm 이 읽는다)
 상태: proposed → asked → applied | declined,  같은 일이 이미 있으면 merged (same_as = 그 할 일·제안 id)
 
-같은 일 찾기 (2단계): 같은 출처(같은 리뷰)면 바로 묶는다. 아니면 바이그램 겹침(similar.dice)으로 후보를 고르고,
+같은 일 찾기 (2단계): 같은 출처(같은 리뷰)나 거의 같은 글이면 바로 묶는다. 아니면 바이그램 겹침(similar.dice)으로 후보를 고르고,
 후보가 있을 때만 좁은 LLM 질문(agents/same_task)에 묻는다. 묶이면 새로 넣지 않고 기존 할 일 source.merged 에 적는다.
 기존이 일반이고 새 것이 긴급이면 묶지 않는다 (긴급이 사라지지 않게).
 반복 → 매뉴얼 (2단계, 매뉴얼 코칭 사원): 한 할 일이 7일 안에 3번(처음 + 묶인 것) 나오면 매일 할 일로 올리자고 제안한다.
@@ -29,6 +29,7 @@ KIND = "proposal"
 ORIGIN = {"negative_review": "review", "manual_coach": "manual"}
 LIVE = ("proposed", "asked")
 SAME_SCORE = 0.35  # 이 이상 겹치는 할 일만 LLM 에 묻는다 (시작값. 시험으로 맞춘다)
+SAME_TEXT = 0.9  # 이 이상이면 글이 거의 같다. LLM 없이 묶는다
 LOOK_BACK = dt.timedelta(days=7)
 REPEAT = 3
 
@@ -38,11 +39,12 @@ def _text(payload_or_task: dict) -> str:
 
 
 def create(store_id: str, *, dept: str, by: str, payload: dict, reason: dict, link: dict | None = None,
-           state: str = "proposed", dedupe: bool = True) -> dict:
+           state: str = "proposed", dedupe: bool = True, ask_on: str | None = None) -> dict:
+    """ask_on: 아침 브리핑에서 물을 날 (YYYY-MM-DD). 없으면 부르는 쪽이 그 자리에서 묻는다 (영업 중 아쉬운 리뷰)."""
     pid = f"pr_{repo.next_number(f'proposal:{store_id}'):04d}"
     record = {
         "id": pid, "store_id": store_id, "dept": dept, "by": by, "payload": payload, "reason": reason, "link": link or {},
-        "state": state, "same_as": None, "merged": [], "task_id": None, "created_at": iso(clock.now()),
+        "state": state, "same_as": None, "merged": [], "task_id": None, "ask_on": ask_on, "created_at": iso(clock.now()),
         "decided_at": None, "decided_by": None,
     }
     same = _find_same(store_id, record) if dedupe else None
@@ -84,6 +86,49 @@ def decline(pid: str, trigger: str) -> None:
             repo.put(KIND, pid, found["store_id"], {**found, "state": "declined", "decided_at": iso(clock.now()), "decided_by": trigger})
 
 
+# ── 브리핑에서 묻기 (3단계) ──
+
+
+def for_review(store_id: str, review_id: str) -> dict | None:
+    """그 리뷰에서 나온 제안 (같은 리뷰로 다시 만들지 않게)."""
+    return next((p for p in repo.all_of(KIND, store_id) if p["reason"].get("review_id") == review_id), None)
+
+
+def for_briefing(store_id: str, day: str, *, include_asked: bool = False) -> list[dict]:
+    """그날 물을 제안: 아직 묻지 않은 것 (include_asked 면 물었는데 대답이 없는 것도). 긴급 먼저, 들어온 순서."""
+    states = LIVE if include_asked else ("proposed",)
+    found = [p for p in repo.all_of(KIND, store_id) if p.get("ask_on") and p["ask_on"] <= day and p["state"] in states
+             and p.get("lead", {}).get("verdict") != "drop"]
+    return sorted(found, key=lambda p: (not p["payload"].get("urgent"), p["created_at"]))
+
+
+def mark_asked(pids: list[str]) -> None:
+    with repo._lock:
+        for pid in pids:
+            found = get(pid)
+            if found and found["state"] == "proposed":
+                repo.put(KIND, pid, found["store_id"], {**found, "state": "asked"})
+
+
+def carry(pid: str, ask_on: str) -> None:
+    """대답이 없던 제안을 그날(ask_on) 아침 브리핑으로 넘긴다 (자동 답글 뒤 할 일, 2026-11-20 결정)."""
+    with repo._lock:
+        found = get(pid)
+        if found and found["state"] in LIVE:
+            repo.put(KIND, pid, found["store_id"], {**found, "state": "proposed", "ask_on": ask_on})
+
+
+def expire(store_id: str, today: str) -> int:
+    """물을 날이 지난 제안을 버린다 (브리핑을 듣지 않으면 넣지 않는다, 2026-11-20 결정)."""
+    gone = 0
+    with repo._lock:
+        for p in repo.all_of(KIND, store_id):
+            if p.get("ask_on") and p["ask_on"] < today and p["state"] in LIVE:
+                repo.put(KIND, p["id"], store_id, {**p, "state": "expired", "decided_by": "expired"})
+                gone += 1
+    return gone
+
+
 # ── 같은 일 찾기 ──
 
 
@@ -111,7 +156,10 @@ def _find_same(store_id: str, record: dict) -> dict | None:
     if same:
         return same
     text = _text(record["payload"])
-    close = [c for c in candidates if dice(text, c["text"]) >= SAME_SCORE]
+    scored = sorted(((dice(text, c["text"]), c) for c in candidates), key=lambda sc: -sc[0])
+    if scored and scored[0][0] >= SAME_TEXT:
+        return scored[0][1]
+    close = [c for score, c in scored if score >= SAME_SCORE]
     if not close:
         return None
     from voice.agents import same_task
@@ -162,7 +210,7 @@ def _propose_manual(store_id: str, task: dict, merged: list[dict], count: int) -
     manual = [t["title"] for t in staff.store_tasks(store_id) if t["repeat"] == "daily" and not t["canceled"]]
     line = manual_line.write(load(store_id), items, manual) or {"title": task["title"], "detail": task.get("detail")}
     return create(
-        store_id, dept="quality", by="manual_coach", dedupe=False,
+        store_id, dept="quality", by="manual_coach", dedupe=False, ask_on=clock.now().date().isoformat(),
         payload={"title": line["title"], "detail": line["detail"], "phase": task["phase"], "repeat": "daily", "must_confirm": False},
         reason={"type": "repeat", "task_id": task["id"], "count": count},
     )

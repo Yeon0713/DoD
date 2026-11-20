@@ -19,7 +19,7 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 import copy
 import datetime as dt
 
-from voice import activity, clock, repo, speech, staff_orders, width
+from voice import activity, clock, locks, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -288,6 +288,13 @@ def answer_question(view, text: str) -> dict:
 
 
 def handle(request: dict) -> dict:
+    """같은 가게의 말은 하나씩 처리한다. /v1/turn 은 스레드풀에서 동시에 돌 수 있는데, 세션을 읽고 → 뜻 판정(최대 3초)을
+    기다리고 → 세션을 쓰는 사이에 다른 말(auto_next, 겹친 말, 같은 request_id 재전송)이 끼면 단계가 두 번 넘어가거나 덮인다."""
+    with locks.lock("turn", request["store_id"]):
+        return _handle(request)
+
+
+def _handle(request: dict) -> dict:
     store_id = request["store_id"]
     view = load(store_id)
     if view is None:
@@ -321,12 +328,11 @@ def handle(request: dict) -> dict:
                 session.pop("story_id", None)
         if session.get("last_type") != "ask_action":
             session.pop("alert_id", None)
+            session.pop("story_id", None)
         if echo.is_echo(store_id, utterance["text"]):
             intent = Intent("echo", intent_rules.tidy(utterance["text"]))
         else:
             intent = understand(utterance["text"], session, view, addressed)
-            session.pop("story_id", None)
-        intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
     response = dispatch(intent, session, brief, view)

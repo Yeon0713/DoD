@@ -1,6 +1,6 @@
 """음성 백엔드 FastAPI 앱. 켜기: server/ 에서 python -m voice.run_voice (또는 uvicorn voice.main:app --port 8100)
 
-켜져 있는 동안 스레드 하나가 30초마다 작업 큐(jobs/queue.py)를 본다.
+켜져 있는 동안 스레드 두 개가 30초마다 작업 큐(jobs/queue.py)의 두 줄(아쉬운 리뷰 알림, 나머지)을 따로 본다.
 켤 때 시연 가게(config.DEMO_FIXTURE, 기본 초옹장)가 없으면 넣고, 시계를 그 데이터의 demo.now 로 맞추고, 브리핑을 준비한다.
 가게 로고와 메뉴 사진은 /static 에서 준다 (voice/static). 인스타에 올릴 사진은 /media 에서 준다 (instagram/media.py).
 """
@@ -25,12 +25,13 @@ from voice.jobs import queue
 logger = logging.getLogger(__name__)
 
 
-def _tick(stop: threading.Event) -> None:
+def _tick(stop: threading.Event, lane: str) -> None:
+    """줄 하나(jobs/queue.py LANES)를 30초마다 돌린다. 아쉬운 리뷰 알림 줄은 브리핑 준비가 오래 걸려도 기다리지 않는다."""
     while not stop.wait(config.TICK_SECONDS):
         try:
-            queue.run_due()
+            queue.run_due(lane=lane)
         except Exception:
-            logger.exception("작업 큐 실패")
+            logger.exception("작업 큐 실패 (%s)", lane)
 
 
 def seed_demo() -> None:
@@ -47,7 +48,8 @@ def seed_demo() -> None:
 async def lifespan(app: FastAPI):
     stop = threading.Event()
     threading.Thread(target=seed_demo, daemon=True, name="voice-seed").start()
-    threading.Thread(target=_tick, args=(stop,), daemon=True, name="voice-queue").start()
+    for lane in queue.LANES:
+        threading.Thread(target=_tick, args=(stop, lane), daemon=True, name=f"voice-queue-{lane}").start()
     yield
     stop.set()
 

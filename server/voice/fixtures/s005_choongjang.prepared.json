@@ -1,7 +1,7 @@
 {
  "version": 1,
  "fixture": "s005_choongjang",
- "fixture_sha": "01b837838237b770",
+ "fixture_sha": "c9db27e65dbd1ebb",
  "store_id": "s005",
  "demo_now": "2026-11-17T09:02:00+09:00",
  "counters": {
@@ -457,24 +457,6 @@
     "sentiment": "positive",
     "topic": "taste",
     "summary": "국물 맛이 좋았대요"
-   }
-  },
-  {
-   "kind": "settings",
-   "id": "s005",
-   "data": {
-    "negative_review_auto_reply": null,
-    "compensation": {
-     "packaging": "다음 주문 때 감자전 하나를 서비스로 드릴게요.",
-     "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
-     "taste_temp": null,
-     "hall_service": null
-    },
-    "story_event": {
-     "headline": "비 오는 날 이벤트",
-     "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
-     "staff_task": "스토리 태그 손님 음료 1캔 드리기"
-    }
    }
   },
   {
@@ -938,10 +920,240 @@
    }
   },
   {
+   "kind": "proposal",
+   "id": "pr_0001",
+   "data": {
+    "id": "pr_0001",
+    "store_id": "s005",
+    "dept": "customer",
+    "by": "negative_review",
+    "payload": {
+     "title": "면 불지 않게 배달하기",
+     "detail": "배달 주문 시 면을 따로 포장해 배달 시 면이 불지 않도록 합니다.",
+     "phase": "open",
+     "days": 2,
+     "must_confirm": true,
+     "urgent": false
+    },
+    "reason": {
+     "type": "review",
+     "review_id": "rv_0412"
+    },
+    "link": {
+     "type": "review",
+     "review_id": "rv_0412",
+     "alert_id": "al_rv_0412",
+     "review_text": "면이 불어서 왔어요."
+    },
+    "state": "proposed",
+    "same_as": null,
+    "merged": [],
+    "task_id": null,
+    "ask_on": "2026-11-17",
+    "created_at": "2026-11-17T09:02:00+09:00",
+    "decided_at": null,
+    "decided_by": null
+   }
+  },
+  {
+   "kind": "activity",
+   "id": "s005:2026-11-17:reviews_read",
+   "data": {
+    "id": "s005:2026-11-17:reviews_read",
+    "actor": "donna",
+    "text": "리뷰 3개를 읽고 나눴어요",
+    "at": "2026-11-17T09:02:00+09:00"
+   }
+  },
+  {
+   "kind": "activity",
+   "id": "s005:2026-11-17:replies_scheduled",
+   "data": {
+    "id": "s005:2026-11-17:replies_scheduled",
+    "actor": "donna",
+    "text": "좋은 리뷰 답글 3개를 예약했어요",
+    "at": "2026-11-17T09:02:00+09:00"
+   }
+  },
+  {
+   "kind": "activity",
+   "id": "s005:2026-11-17:briefing_prepared",
+   "data": {
+    "id": "s005:2026-11-17:briefing_prepared",
+    "actor": "donna",
+    "text": "오늘 일정 브리핑을 준비했어요",
+    "at": "2026-11-17T09:02:00+09:00"
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:negative_reply",
+   "data": {
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank": "intern",
+    "cap": "assistant",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "intern",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:positive_reply",
+   "data": {
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank": "staff",
+    "cap": "manager",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "staff",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:instagram_post",
+   "data": {
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank": "intern",
+    "cap": "assistant",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "intern",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:story_poster",
+   "data": {
+    "store_id": "s005",
+    "job": "story_poster",
+    "agent": "story_event",
+    "rank": "staff",
+    "cap": "assistant",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "staff",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:review_fix_task",
+   "data": {
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank": "staff",
+    "cap": "staff",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "staff",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:field_task",
+   "data": {
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank": "staff",
+    "cap": "staff",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "staff",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "hr_rank",
+   "id": "s005:manual_task",
+   "data": {
+    "store_id": "s005",
+    "job": "manual_task",
+    "agent": "manual_coach",
+    "rank": "staff",
+    "cap": "staff",
+    "since": "2026-11-17T09:02:00+09:00",
+    "changed_by": "start",
+    "history": [
+     {
+      "at": "2026-11-17T09:02:00+09:00",
+      "from": null,
+      "to": "staff",
+      "by": "start"
+     }
+    ]
+   }
+  },
+  {
+   "kind": "settings",
+   "id": "s005",
+   "data": {
+    "compensation": {
+     "packaging": "다음 주문 때 감자전 하나를 서비스로 드릴게요.",
+     "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
+     "taste_temp": null,
+     "hall_service": null
+    },
+    "story_event": {
+     "headline": "비 오는 날 이벤트",
+     "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
+     "staff_task": "스토리 태그 손님 음료 1캔 드리기"
+    }
+   }
+  },
+  {
    "kind": "review",
    "id": "rv_0405",
    "data": {
-    "reply_status": "scheduled",
+    "reply_status": "awaiting",
     "id": "rv_0405",
     "platform": "naver",
     "rating": 5,
@@ -969,26 +1181,15 @@
       "rain_menu": "옹심이"
      },
      "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
-    }
-   }
-  },
-  {
-   "kind": "job",
-   "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
-   "data": {
-    "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
-    "store_id": "s005",
-    "kind": "post_scheduled",
-    "due_at": "2026-11-17T11:00:00+09:00",
-    "payload": {},
-    "done": false
+    },
+    "reply_trigger": null
    }
   },
   {
    "kind": "review",
    "id": "rv_0401",
    "data": {
-    "reply_status": "scheduled",
+    "reply_status": "awaiting",
     "id": "rv_0401",
     "platform": "naver",
     "rating": 5,
@@ -1016,14 +1217,15 @@
       "rain_menu": "옹심이"
      },
      "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
-    }
+    },
+    "reply_trigger": null
    }
   },
   {
    "kind": "review",
    "id": "rv_0409",
    "data": {
-    "reply_status": "scheduled",
+    "reply_status": "awaiting",
     "id": "rv_0409",
     "platform": "baemin",
     "rating": 4,
@@ -1051,7 +1253,20 @@
       "rain_menu": "옹심이"
      },
      "explanation": "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요"
-    }
+    },
+    "reply_trigger": null
+   }
+  },
+  {
+   "kind": "job",
+   "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
+   "data": {
+    "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
+    "store_id": "s005",
+    "kind": "post_scheduled",
+    "due_at": "2026-11-17T11:00:00+09:00",
+    "payload": {},
+    "done": true
    }
   },
   {
@@ -1063,7 +1278,7 @@
     "kind": "post_scheduled",
     "due_at": "2026-11-21T11:00:00+09:00",
     "payload": {},
-    "done": false
+    "done": true
    }
   },
   {
@@ -1111,42 +1326,6 @@
    }
   },
   {
-   "kind": "proposal",
-   "id": "pr_0001",
-   "data": {
-    "id": "pr_0001",
-    "store_id": "s005",
-    "dept": "customer",
-    "by": "negative_review",
-    "payload": {
-     "title": "면 불지 않게 배달하기",
-     "detail": "배달 주문 시 면을 따로 포장해 배달 시 면이 불지 않도록 합니다.",
-     "phase": "open",
-     "days": 2,
-     "must_confirm": true,
-     "urgent": false
-    },
-    "reason": {
-     "type": "review",
-     "review_id": "rv_0412"
-    },
-    "link": {
-     "type": "review",
-     "review_id": "rv_0412",
-     "alert_id": "al_rv_0412",
-     "review_text": "면이 불어서 왔어요."
-    },
-    "state": "proposed",
-    "same_as": null,
-    "merged": [],
-    "task_id": null,
-    "ask_on": "2026-11-17",
-    "created_at": "2026-11-17T09:02:00+09:00",
-    "decided_at": null,
-    "decided_by": null
-   }
-  },
-  {
    "kind": "dept_report",
    "id": "s005:2026-11-17:customer",
    "data": {
@@ -1159,36 +1338,6 @@
      "pr_0001"
     ],
     "source": "code"
-   }
-  },
-  {
-   "kind": "activity",
-   "id": "s005:2026-11-17:reviews_read",
-   "data": {
-    "id": "s005:2026-11-17:reviews_read",
-    "actor": "donna",
-    "text": "리뷰 3개를 읽고 나눴어요",
-    "at": "2026-11-17T09:02:00+09:00"
-   }
-  },
-  {
-   "kind": "activity",
-   "id": "s005:2026-11-17:replies_scheduled",
-   "data": {
-    "id": "s005:2026-11-17:replies_scheduled",
-    "actor": "donna",
-    "text": "좋은 리뷰 답글 3개를 예약했어요",
-    "at": "2026-11-17T09:02:00+09:00"
-   }
-  },
-  {
-   "kind": "activity",
-   "id": "s005:2026-11-17:briefing_prepared",
-   "data": {
-    "id": "s005:2026-11-17:briefing_prepared",
-    "actor": "donna",
-    "text": "오늘 일정 브리핑을 준비했어요",
-    "at": "2026-11-17T09:02:00+09:00"
    }
   },
   {
@@ -1210,9 +1359,9 @@
       "value": "밤사이 리뷰 5개 읽어 둠"
      },
      {
-      "id": "p_replies",
+      "id": "p_replies_ask",
       "kind": "scheduled_replies",
-      "value": "좋은 리뷰 답글 3개 예약"
+      "value": "좋은 리뷰 답글 3개 써 둠"
      }
     ],
     "steps": {
@@ -1321,54 +1470,52 @@
       "expects_reply": false
      },
      "negative": {
-      "type": "ask_permission",
-      "headline": "제가 바로 답할까요?",
+      "type": "ask_action",
+      "headline": "사과 답글 올릴까요?",
       "say": [
        {
-        "text": "아쉬운 리뷰는 빨리 답할수록 좋아요.",
-        "caption": "아쉬운 리뷰는 빨리 답할수록 좋아요.",
-        "focus": []
-       },
-       {
-        "text": "영업 중에 오면 바로 여쭤볼게요.",
+        "text": "어젯밤 배달로 드신 손님이 면이 불어서 왔다는 리뷰를 남기셨어요.",
         "caption": null,
         "focus": []
        },
        {
-        "text": "문 닫은 뒤에 왔거나 대답이 없으실 때는, 제가 30분 안에 사과 답글을 달고 브리핑 때 알려 드릴까요?",
+        "text": "써 둔 사과 답글을 올릴까요?",
         "caption": null,
-        "focus": [
-         "pm_reply",
-         "pm_brief"
-        ]
+        "focus": []
        }
       ],
       "cards": [
        {
-        "type": "rows",
-        "id": "permission",
-        "rows": [
-         {
-          "id": "pm_reply",
-          "kind": "reply",
-          "value": "30분 안에 사과 답글"
-         },
-         {
-          "id": "pm_brief",
-          "kind": "briefing",
-          "value": "브리핑 때 알려 드려요"
-         },
-         {
-          "id": "pm_off",
-          "kind": "off",
-          "value": "언제든 말로 끌 수 있어요"
-         }
-        ]
+        "type": "review",
+        "id": "rv_0412",
+        "variant": "full",
+        "rating": 2,
+        "text": "면이 불어서 왔어요.",
+        "written_at": "2026-11-16T21:40:00+09:00",
+        "reply": {
+         "text": "면이 퍼지지 않게 잘 포장해서 보내드리겠습니다. 죄송합니다.",
+         "posted_at": null,
+         "by": "donna",
+         "scheduled_label": "올리기 전 답글"
+        }
        }
       ],
       "expects_reply": true,
-      "permission": {
-       "key": "negative_review_auto_reply"
+      "action": {
+       "kind": "batch",
+       "items": [
+        {
+         "job": "negative_reply",
+         "ref": "rv_0412"
+        }
+       ],
+       "rest": [
+        {
+         "job": "negative_reply",
+         "ref": "rv_0410"
+        }
+       ],
+       "mode": "each"
       }
      },
      "positive": {
@@ -1428,74 +1575,82 @@
       "expects_reply": false
      },
      "scheduling": {
-      "type": "answer",
-      "headline": "답글은 예약해 뒀어요",
+      "type": "ask_action",
+      "headline": "답글 예약할까요?",
       "say": [
        {
-        "text": "좋은 리뷰 답글은 손님이 외식을 고민할 때 올리려고 예약해 뒀어요.",
+        "text": "좋은 리뷰 답글이 세 개 있어요.",
         "caption": null,
         "focus": []
        },
        {
-        "text": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요.",
+        "text": "첫째, 화요일 오전 11시에 올릴 답글이에요.",
         "caption": null,
-        "focus": [
-         "sr_1"
-        ]
+        "focus": []
        },
        {
-        "text": "그날 비 소식이 있어서 옹심이를 권하는 답글로 썼어요.",
+        "text": "둘째, 화요일 오전 11시에 올릴 답글이에요.",
         "caption": null,
-        "focus": [
-         "sr_1"
-        ]
+        "focus": []
        },
        {
-        "text": "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요.",
+        "text": "셋째, 토요일 오전 11시에 올릴 답글이에요.",
         "caption": null,
-        "focus": [
-         "sr_2"
-        ]
+        "focus": []
+       },
+       {
+        "text": "이렇게 예약할까요?",
+        "caption": null,
+        "focus": []
        }
       ],
       "cards": [
        {
-        "type": "scheduled",
-        "id": "scheduled_replies",
+        "type": "checklist",
+        "id": "batch",
+        "title": "여쭤볼 것",
         "items": [
          {
-          "id": "sr_1",
-          "day_label": "화",
-          "time_label": "오전 11시",
-          "post_at": "2026-11-17T11:00:00+09:00",
-          "reason": {
-           "kind": "weekend_next_peak",
-           "label": "점심 한 시간 전"
-          },
-          "text": "비 오는 날 옹심이 권하기",
-          "review_ids": [
-           "rv_0405",
-           "rv_0401"
-          ]
+          "id": "rv_0405",
+          "title": "1. 화요일 오전 11시",
+          "sub": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+          "state": "todo"
          },
          {
-          "id": "sr_2",
-          "day_label": "토",
-          "time_label": "오전 11시",
-          "post_at": "2026-11-21T11:00:00+09:00",
-          "reason": {
-           "kind": "weekday_to_weekend",
-           "label": "주말 점심 전"
-          },
-          "text": "주말에 리뷰를 많이 봐요",
-          "review_ids": [
-           "rv_0409"
-          ]
+          "id": "rv_0401",
+          "title": "2. 화요일 오전 11시",
+          "sub": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
+          "state": "todo"
+         },
+         {
+          "id": "rv_0409",
+          "title": "3. 토요일 오전 11시",
+          "sub": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
+          "state": "todo"
          }
         ]
        }
       ],
-      "expects_reply": false
+      "expects_reply": true,
+      "action": {
+       "kind": "batch",
+       "items": [
+        {
+         "job": "positive_reply",
+         "ref": "rv_0405"
+        },
+        {
+         "job": "positive_reply",
+         "ref": "rv_0401"
+        },
+        {
+         "job": "positive_reply",
+         "ref": "rv_0409"
+        }
+       ],
+       "rest": [],
+       "mode": "batch"
+      }
      },
      "instagram": null,
      "story_event": null,
@@ -1812,10 +1967,10 @@
        "expects_reply": false
       }
      },
-     "scheduling": {
+     "negative": {
       "show": {
        "type": "show_detail",
-       "headline": "예약한 답글이에요",
+       "headline": "리뷰와 답글이에요",
        "say": [
         {
          "text": "화면에 띄웠어요.",
@@ -1826,44 +1981,15 @@
        "cards": [
         {
          "type": "review",
-         "id": "rv_0405",
+         "id": "rv_0412",
          "variant": "full",
-         "rating": 5,
-         "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
-         "written_at": "2026-11-15T12:30:00+09:00",
+         "rating": 2,
+         "text": "면이 불어서 왔어요.",
+         "written_at": "2026-11-16T21:40:00+09:00",
          "reply": {
-          "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+          "text": "면이 퍼지지 않게 잘 포장해서 보내드리겠습니다. 죄송합니다.",
           "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "화요일 오전 11시에 올릴 답글"
-         }
-        },
-        {
-         "type": "review",
-         "id": "rv_0401",
-         "variant": "full",
-         "rating": 5,
-         "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
-         "written_at": "2026-11-15T20:05:00+09:00",
-         "reply": {
-          "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
-          "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "화요일 오전 11시에 올릴 답글"
-         }
-        },
-        {
-         "type": "review",
-         "id": "rv_0409",
-         "variant": "full",
-         "rating": 4,
-         "text": "양이 넉넉해서 든든했어요.",
-         "written_at": "2026-11-16T19:45:00+09:00",
-         "reply": {
-          "text": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
-          "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "토요일 오전 11시에 올릴 답글"
+          "by": "donna"
          }
         }
        ],
@@ -1871,97 +1997,45 @@
       },
       "read": {
        "type": "answer",
-       "headline": "예약한 답글이에요",
+       "headline": "리뷰와 답글이에요",
        "say": [
         {
-         "text": "예약한 답글을 읽어 드릴게요.",
+         "text": "손님 리뷰예요.",
          "caption": null,
          "focus": []
         },
         {
-         "text": "화요일 오전 11시에 올릴 답글이에요.",
+         "text": "면이 불어서 왔어요.",
          "caption": null,
          "focus": [
-          "rv_0405"
+          "rv_0412"
          ]
         },
         {
-         "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+         "text": "제가 써 둔 답글 초안이에요.",
          "caption": null,
-         "focus": [
-          "rv_0405"
-         ]
+         "focus": []
         },
         {
-         "text": "화요일 오전 11시에 올릴 답글이에요.",
+         "text": "면이 퍼지지 않게 잘 포장해서 보내드리겠습니다. 죄송합니다.",
          "caption": null,
          "focus": [
-          "rv_0401"
-         ]
-        },
-        {
-         "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
-         "caption": null,
-         "focus": [
-          "rv_0401"
-         ]
-        },
-        {
-         "text": "토요일 오전 11시에 올릴 답글이에요.",
-         "caption": null,
-         "focus": [
-          "rv_0409"
-         ]
-        },
-        {
-         "text": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
-         "caption": null,
-         "focus": [
-          "rv_0409"
+          "rv_0412"
          ]
         }
        ],
        "cards": [
         {
          "type": "review",
-         "id": "rv_0405",
+         "id": "rv_0412",
          "variant": "full",
-         "rating": 5,
-         "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
-         "written_at": "2026-11-15T12:30:00+09:00",
+         "rating": 2,
+         "text": "면이 불어서 왔어요.",
+         "written_at": "2026-11-16T21:40:00+09:00",
          "reply": {
-          "text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+          "text": "면이 퍼지지 않게 잘 포장해서 보내드리겠습니다. 죄송합니다.",
           "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "화요일 오전 11시에 올릴 답글"
-         }
-        },
-        {
-         "type": "review",
-         "id": "rv_0401",
-         "variant": "full",
-         "rating": 5,
-         "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
-         "written_at": "2026-11-15T20:05:00+09:00",
-         "reply": {
-          "text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
-          "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "화요일 오전 11시에 올릴 답글"
-         }
-        },
-        {
-         "type": "review",
-         "id": "rv_0409",
-         "variant": "full",
-         "rating": 4,
-         "text": "양이 넉넉해서 든든했어요.",
-         "written_at": "2026-11-16T19:45:00+09:00",
-         "reply": {
-          "text": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
-          "posted_at": null,
-          "by": "donna",
-          "scheduled_label": "토요일 오전 11시에 올릴 답글"
+          "by": "donna"
          }
         }
        ],

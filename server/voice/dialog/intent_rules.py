@@ -63,7 +63,7 @@ WAKE_RE = re.compile(r"^(도나|또나|돈아|토나)야")
 # 물건 자리를 묻는 말은 직원끼리 한 말이다 ("매출 장부 어디 뒀니?"). 탭을 열지 않는다
 WHERE_RE = re.compile(r"어디(뒀|있|놨)")
 NOT_FOR_DONNA_RE = re.compile(
-    r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모|삼촌|사장님|불좀|접시|앞치마"
+    r"테이블|어서오세요|몇분이세요|손님|치워|포장이세요|포장해|계산|주문하시|자리|드릴까요|맛있게드세요|감사합니다|안녕히|여기요|이모(?!티콘)|삼촌|사장님|불좀|접시|앞치마"
 )
 # 인스타 (D-14, D-15). INSTA_* 는 "인스타에 올릴까요?"를 물은 뒤에만 본다
 INSTA_NEXT_RE = re.compile(r"다음사진|다음장|다른사진|옆사진|사진넘겨|넘겨")
@@ -83,7 +83,9 @@ NO_CARD_RE = re.compile(r"(카드|할일|알바생?|교정)(은|는|도|에|에�
 ORDINAL_WORDS = {"첫": 1, "두": 2, "둘": 2, "세": 3, "셋": 3, "네": 4, "넷": 4}
 ORDINAL_RE = re.compile(r"(첫|두|둘|세|셋|네|넷)번?째|([1-4])번째?")
 DROP_WORD_RE = re.compile(r"빼|말고|넣지마|넣지말|안넣|제외")
-REDO_RE = re.compile(r"다시(그려|그리|만들어|만들)")  # 스토리 이벤트 포스터 다시 그리기 (instagram/story_event.py)
+REDO_RE = re.compile(r"다시(그려|그리|만들어|만들)")
+# 자유로운 수정 (인사과 6단계): 정해진 고침(edits: 쿠폰·카드·번호 빼기)으로 안 잡히는 "좀 더 …하게", "…는 쓰지 마"
+REVISE_RE = re.compile(r"더[가-힣]*게|짧게|길게|부드럽게|정중하게|친근하게|공손하게|쓰지마|쓰지말|이모티콘|느낌표|말투|딱딱")  # 스토리 이벤트 포스터 다시 그리기 (instagram/story_event.py)
 POST_VERB_RE = re.compile(r"올려|올리|진행|등록|그대로해|해줘|처리해|넣어|넣자|예약")  # 예약: 칭찬 답글 "이렇게 예약할까요?" (인사과 4-b)
 ACTION_CANCEL_RE = re.compile(r"^(아니|안해|안할래|하지마|됐어|취소|올리지마|예약안해|예약하지마|놔둬|그냥둬|나중에|내가(할|쓸|볼|올릴|답할)게)")
 APPROVE_RE = re.compile(
@@ -238,6 +240,8 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         if action is not None:
             return action
     if instagram:
+        if REVISE_RE.search(n):
+            return found("instagram.revise")  # 인스타 글 고치기 (인사과 6단계)
         if INSTA_NEXT_RE.search(n):
             return found("instagram.next_photo")
         if INSTA_LATER_RE.search(n):
@@ -365,6 +369,8 @@ def match_action(n: str, said: str, addressed: bool) -> Intent | None:
     edits = edits_in(n)
     if edits["drop_compensation"] or edits["no_card"] or edits["drop_index"]:
         return Intent("action.approve" if POST_VERB_RE.search(n) else "action.edit", said, edits=edits)
+    if REVISE_RE.search(n):
+        return Intent("action.revise", said)
     if ACTION_CANCEL_RE.search(n):
         return Intent("action.cancel", said)
     if n in BARE_YES and not addressed:

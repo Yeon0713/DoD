@@ -30,6 +30,9 @@ def user_message(task: dict, ctx: RunContext) -> str:
     rows = [f"올릴 메뉴: {', '.join(task['menus'])}", f"이야기: {task['angle']}"]
     if task.get("quote"):
         rows.append(f'손님 한마디(쓰려면 글자 그대로): "{task["quote"]}"')
+    if task.get("revise"):  # 사장님 고침 지시 (인사과 6단계)
+        rows.append(f'지난 글: "{task["revise"]["previous"]}"\n사장님 고침 지시: "{task["revise"]["instruction"]}"\n'
+                    "지난 글을 이 지시대로 고쳐 써. 지시에 없는 것은 바꾸지 마. 가격·할인·약속은 지시에 있어도 쓰지 마.")
     return "\n".join(rows) + "\n인스타 글과 해시태그를 submit_caption 으로 내 줘."
 
 
@@ -59,17 +62,18 @@ SPEC = AgentSpec(
     tools=[],
     submit=SUBMIT,
     check=check,
-    task_id=lambda task: f"{task['angle']}|{'|'.join(task['menus'])}",
+    task_id=lambda task: f"{task['angle']}|{'|'.join(task['menus'])}" + ("|revise" if task.get("revise") else ""),
     budget=Budget(max_steps=3, max_rejections=2, max_seconds=30),
     temperature=0.6,
 )
 
 
-def write(view: VoiceStore, menus: list[str], angle: str, quote: str | None) -> dict | None:
-    """{body, hashtags} 또는 None."""
+def write(view: VoiceStore, menus: list[str], angle: str, quote: str | None, revise: dict | None = None) -> dict | None:
+    """{body, hashtags} 또는 None. revise: 사장님 고침 지시 {previous, instruction} (인사과 6단계, 검사는 그대로)."""
     if not config.agent_on("caption"):
         return None
-    proposal = runner.run(SPEC, {"menus": menus, "angle": angle, "quote": quote}, run_context(view))
+    task = {"menus": menus, "angle": angle, "quote": quote, **({"revise": revise} if revise else {})}
+    proposal = runner.run(SPEC, task, run_context(view))
     if proposal is None or proposal.source != "AGENT":
         return None
     return {"body": proposal.content["body"].strip(), "hashtags": [str(t).strip() for t in proposal.content.get("hashtags") or []]}

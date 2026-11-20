@@ -252,6 +252,8 @@ def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | 
             return ask(view, record, lead=[], headline="이렇게 올릴까요?")
     elif intent_name == "action.edit":
         return ask(view, record, lead=["무엇을 바꿀지 다시 말씀해 주세요."], headline="이렇게 올릴까요?")
+    elif intent_name != "action.approve":  # "좀 더 …하게" 등 모르는 대답을 승인으로 보고 올리지 않는다 (포스터 문장은 설정에서 바꾼다)
+        return ask(view, record, lead=["올리시려면 '응, 올려'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
 
     # action.approve
     with repo._lock:

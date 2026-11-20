@@ -407,6 +407,11 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             response["say"] = [say(f"{_dropped(changed)}, {_offer(record)}")]
             return response
 
+        if intent_name == "action.revise":  # "좀 더 부드럽게" (인사과 6단계)
+            return _revise(view, record, said)
+        if intent_name != "action.approve":  # 모르는 대답을 승인으로 보고 올리지 않는다
+            return ask(view, record, lead=["진행하시려면 '응, 진행해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
+
         # action.approve
         was = record["state"]
         record = _finish(record, "owner_yes")
@@ -429,6 +434,21 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         says = [say(first), say(f"알바생 할 일에 {_obj(record['card']['title'])} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")]
         return answer("답글 올리고 할 일 넣었어요", says, cards)
     return answer("사과 답글을 올렸어요", [say(first)], cards)
+
+
+def _revise(view, record: dict, said: str | None) -> dict:
+    """사장님 고침 지시대로 답글을 다시 써서 다시 묻는다. 인사과에는 '조금 수정'(edited)으로 남는다."""
+    review = repo.review(record["review_id"])
+    key = "reply_base" if record["use_card"] and record["card"] else "reply_plain"
+    fix = {"cause": record["cause"]["summary"], "action": record["card"]["detail"], "reply": record["reply_base"]} if key == "reply_base" else None
+    written = voice_reply.revise(view, review, "AUTO", record[key], said or "", fix=fix)
+    text, notes = voice_reply.safe_reply(written["text"], None, record[key]) if written else (None, [])  # 고친 글에도 보상은 없어야 한다
+    if written is None or notes:  # 못 고쳤거나, 고친 글이 보상 검사에 걸려 예전 글로 돌아갔다
+        return ask(view, record, lead=["지금은 고치지 못했어요.", "이대로 올릴지 다시 말씀해 주세요."], headline="이렇게 올릴까요?")
+    record = repo.put("alert", record["id"], record["store_id"], {**record, key: text, "reply_source": written["source"],
+                                                                 "notes": record["notes"] + written["notes"]})
+    hr.record(record["store_id"], "negative_reply", record["review_id"], "edited", said)
+    return ask(view, record, lead=["이렇게 고쳤어요."], headline="이렇게 올릴까요?")
 
 
 def _decide_task(view, record: dict, intent_name: str, edits: dict | None, said: str | None = None) -> dict:

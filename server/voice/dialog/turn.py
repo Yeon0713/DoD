@@ -158,6 +158,8 @@ def instagram_reply(name: str, session: dict, brief: dict, view, said: str | Non
         slide = session.get("insta_slide", 0) % len(slides) + 1
         session.update(insta_slide=slide, mode="detail")
         return {**copy.deepcopy(slides[slide - 1]), "briefing": _gauge("instagram")}
+    if name == "instagram.revise":
+        return _instagram_revise(session, brief, view, said)
     if name == "instagram.later":
         if not LATER_RE.search(intent_rules.normalize(said or "")):  # "나중에·다음에·내일"은 세지 않고, "안 해·올리지 마"는 반려 (9-0 n)
             hr.record(view.store_id, "instagram_post", f"instagram:{view.store_id}:{view.now.date().isoformat()}", "rejected", said)
@@ -168,10 +170,36 @@ def instagram_reply(name: str, session: dict, brief: dict, view, said: str | Non
         return _prefixed(_go(brief, session, _after(brief, "instagram")), "올릴 메뉴 사진이 모자라요.")
     post = posts.create(view.store_id, built)
     posts.queue_publish(view.store_id, post)
-    hr.record(view.store_id, "instagram_post", post["id"], "approved", said)
+    hr.record(view.store_id, "instagram_post", f"instagram:{view.store_id}:{view.now.date().isoformat()}", "approved", said)
     activity.log(view.store_id, "owner", "인스타에 인기 메뉴를 올리라고 했어요", "instagram_ok")
     brief = briefing_job.refresh_instagram(view.store_id) or brief  # 오늘은 다시 묻지 않는다
     return _prefixed(_go(brief, session, _after(brief, "instagram")), "네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요.")
+
+
+def _instagram_revise(session: dict, brief: dict, view, said: str | None) -> dict:
+    """"좀 더 짧게 써 줘": 오늘 인스타 글을 지시대로 다시 써서 다시 묻는다 (인사과 6단계). 인사과에는 '조금 수정'으로."""
+    from voice import marketing
+    from voice.agents import caption_writer
+
+    built = posts.build_feed(view)
+    if built is None:
+        return empty("not_understood")
+    plan = marketing.today(view)
+    top = built["menus"]
+    previous = (plan or {}).get("body") or built["caption"].split("\n\n")[0]
+    written = caption_writer.write(view, [m["name"] for m in top["items"]], (plan or {}).get("angle") or f"{top['period']} 많이 나간 메뉴",
+                                   built["quote"], revise={"previous": previous, "instruction": said or ""})
+    if written is None:
+        return _prefixed(_step(brief, "instagram"), "지금은 고치지 못했어요.")
+    day = view.now.date().isoformat()
+    base = plan or {"store_id": view.store_id, "date": day, "menu_ids": [m["id"] for m in top["items"]], "angle": None,
+                    "sources": {"topic": "RULE"}, "lead": None, "created_at": clock.iso(clock.now())}
+    repo.put(marketing.KIND, marketing.plan_id(view.store_id, day), view.store_id,
+             {**base, "body": written["body"], "hashtags": written["hashtags"], "sources": {**base["sources"], "caption": "REVISED"}})
+    hr.record(view.store_id, "instagram_post", f"instagram:{view.store_id}:{day}", "edited", said)
+    brief = briefing_job.refresh_instagram(view.store_id) or brief
+    session["insta_slide"] = 0
+    return _prefixed(_step(brief, "instagram"), "이렇게 고쳤어요.")
 
 
 def story_reply(name: str, session: dict, brief: dict, view) -> dict:

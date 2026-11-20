@@ -34,6 +34,7 @@ class Kind:
     headline: str
     done: Callable[[int], str]  # 승인한 뒤: n건 → "사과 답글 2개를 올렸어요."
     none: tuple[str, ...]  # 모두 반려한 뒤 (say 한 줄에 한 문장)
+    revise: Callable[[VoiceStore, str, str], bool] | None = None  # 고침 지시대로 다시 쓰기 (인사과 6단계). 고쳤으면 True
 
 
 # ── 아쉬운 리뷰 답글 (negative_reply) ──
@@ -82,6 +83,21 @@ def _neg_approve(view: VoiceStore, ref: str) -> None:
     activity.log(view.store_id, "donna", "아쉬운 리뷰에 사과 답글을 올렸어요", f"fix:{ref}:reply", at=now)
 
 
+def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
+    from voice.agents import voice_reply
+
+    review = view.review(ref)
+    ready = review["reply_ready"]
+    written = voice_reply.revise(view, review, "AUTO", ready["text"], instruction)
+    if written is None:
+        return False
+    text, notes = voice_reply.safe_reply(written["text"], None, ready.get("plain") or ready["text"])
+    if notes:  # 고친 글이 보상 검사에 걸렸다: 고치지 않은 것으로
+        return False
+    repo.save_review({**review, "reply_ready": {**ready, "text": text, "plain": text, "source": written["source"]}})
+    return True
+
+
 def _neg_reject(view: VoiceStore, ref: str) -> None:
     review = view.review(ref)
     ready = review["reply_ready"]
@@ -127,6 +143,18 @@ def _pos_approve(view: VoiceStore, ref: str) -> None:
     queue.add(view.store_id, "post_scheduled", post_at)
 
 
+def _pos_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
+    from voice.agents import voice_reply
+
+    review = view.review(ref)
+    occasion = {**(review.get("reply_reason") or {}), "post_at": review["reply_post_at"]}
+    written = voice_reply.revise(view, review, "SCHEDULED", review["reply_text"], instruction, occasion=occasion)
+    if written is None:
+        return False
+    repo.save_review({**review, "reply_text": written["text"], "reply_source": written["source"]})
+    return True
+
+
 def _pos_reject(view: VoiceStore, ref: str) -> None:
     repo.save_review({**view.review(ref), "reply_status": "drafted"})
 
@@ -168,11 +196,13 @@ KINDS: dict[str, Kind] = {
     "negative_reply": Kind(
         pending=_neg_pending, line=_neg_line, one=_neg_one, item=_neg_item, approve=_neg_approve, reject=_neg_reject,
         many="아쉬운 리뷰가 {n} 있어요.", question="써 둔 사과 답글을 올릴까요?", headline="사과 답글 올릴까요?",
-        done=lambda n: "사과 답글을 올렸어요." if n == 1 else f"사과 답글 {n}개를 올렸어요.", none=("네, 올리지 않을게요.", "초안은 남겨 둘게요.")),
+        done=lambda n: "사과 답글을 올렸어요." if n == 1 else f"사과 답글 {n}개를 올렸어요.", none=("네, 올리지 않을게요.", "초안은 남겨 둘게요."),
+        revise=_neg_revise),
     "positive_reply": Kind(
         pending=_pos_pending, line=_pos_line, one=_pos_one, item=_pos_item, approve=_pos_approve, reject=_pos_reject,
         many="좋은 리뷰 답글이 {n} 있어요.", question="이렇게 예약할까요?", headline="답글 예약할까요?",
-        done=lambda n: "답글을 예약했어요." if n == 1 else f"답글 {n}개를 예약했어요.", none=("네, 예약하지 않을게요.", "초안은 남겨 둘게요.")),
+        done=lambda n: "답글을 예약했어요." if n == 1 else f"답글 {n}개를 예약했어요.", none=("네, 예약하지 않을게요.", "초안은 남겨 둘게요."),
+        revise=_pos_revise),
     "review_fix_task": TASK, "field_task": TASK, "manual_task": TASK,
 }
 
@@ -258,6 +288,12 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
         _settle(view, drop, False, said)
         _settle(view, keep, True, said)
         texts = _done_says(view, keep, drop)
+    elif name == "action.revise":  # "좀 더 부드럽게": 묻는 글을 모두 지시대로 다시 써서 다시 묻는다
+        revised = [i for i in asked if KINDS[i["job"]].revise and KINDS[i["job"]].revise(view, i["ref"], said or "")]
+        for i in revised:
+            hr.record(view.store_id, i["job"], i["ref"], "edited", said)
+        lead = ["이렇게 고쳤어요."] if revised else ["지금은 고치지 못했어요."]
+        return ask(load_view(view), asked + rest, mode, lead=lead) or answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
     elif name == "action.edit" and drop:
         _settle(view, drop, False, said)
         if not keep:

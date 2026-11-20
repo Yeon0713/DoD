@@ -108,6 +108,12 @@ def _run_fixcard(args: argparse.Namespace) -> object:
     return staff_eval.run_fixcard(args)
 
 
+def _run_revise(args: argparse.Namespace) -> object:
+    from Harness.evals import revise_eval
+
+    return revise_eval.run_revise(args)
+
+
 def _run_dedupe(args: argparse.Namespace) -> object:
     from Harness.evals import staff_eval
 
@@ -207,6 +213,9 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("fixcard", "부정 리뷰 사원(알바생 교정 카드): 조치 가능 판정 정밀도·재현율, 알바생이 할 수 없는 일이 들어간 비율, "
                      "템플릿으로 물러난 비율. 세트 Harness/evals/data/fix_cases.json (2026-11-20)",
           _run_fixcard, needs_clova=lambda args: not args.dry_run),
+    Suite("revise", "사장님 고침 지시(\"좀 더 짧게\"): 코드로 보는 조건을 지킨 비율, 검사를 통과해 고친 글이 나온 비율. "
+                    "세트 Harness/evals/data/revise_cases.json (2026-11-21, 인사과 6단계)",
+          _run_revise, needs_clova=lambda args: not args.dry_run),
     Suite("dedupe", "같은 알바생 할 일 묶기: 정확도, 잘못 묶음, 놓침 (--systems dice 는 CLOVA 없이, dice+judge 는 좁은 LLM 질문까지). "
                     "세트 Harness/evals/data/dedupe_cases.json (2026-11-20)",
           _run_dedupe, uses_systems=True, parse_systems=_dedupe_systems, default_systems="dice,dice+judge",

@@ -130,6 +130,9 @@ def user_message(task: dict, ctx: RunContext) -> str:
     if task.get("fix"):
         rows.append(f"\n원인: {task['fix']['cause']}. 가게가 오늘부터 할 조치: {task['fix']['action']}. "
                     "사과와 함께 이 조치를 한 문장으로 적어. 보상은 쓰지 마 (보상 문장은 사장님이 정한 것을 따로 붙여).")
+    if task.get("revise"):  # 사장님 고침 지시 (인사과 6단계). 지시에 보상 말이 있어도 보상은 쓰지 않는다 (코드가 붙인다)
+        rows.append(f'\n지난 답글: "{task["revise"]["previous"]}"\n사장님 고침 지시: "{task["revise"]["instruction"]}"\n'
+                    "지난 답글을 이 지시대로 고쳐 써. 지시에 없는 것은 바꾸지 마. 보상·할인은 지시에 있어도 쓰지 마.")
     return "\n".join(rows)
 
 
@@ -189,12 +192,26 @@ SPEC = AgentSpec(
     tools=[MENU_LIST, STORE_FACTS, REPLY_OCCASION],
     submit=SUBMIT,
     check=check,
-    task_id=lambda task: f"{task['kind']}:{task['review_id']}",
+    task_id=lambda task: f"{task['kind']}:{task['review_id']}" + (":revise" if task.get("revise") else ""),
     fallback=fallback,
     finalize=finalize,
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.5,
 )
+
+
+def revise(view: VoiceStore, review: dict, kind: str, previous: str, instruction: str, occasion: dict | None = None,
+           fix: dict | None = None) -> dict | None:
+    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes}. 에이전트가 끄였거나 실패하면 None (템플릿으로 바꾸면 지시를 무시하게 되므로).
+    검사는 처음 쓸 때와 같다 (보상·가격 금지, reply_critic). 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
+    if not config.agent_on("reply"):
+        return None
+    task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix,
+            "revise": {"previous": previous, "instruction": instruction}}
+    proposal = runner.run(SPEC, task, run_context(view))
+    if proposal is None or proposal.source != "AGENT":
+        return None
+    return {"text": proposal.content["text"], "source": "AGENT", "notes": proposal.notes}
 
 
 def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:

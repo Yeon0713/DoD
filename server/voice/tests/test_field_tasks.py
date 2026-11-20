@@ -80,6 +80,14 @@ def test_today_impact_becomes_urgent_when_applied(agent):
     assert shown["source"]["by"] == "field_variable"
 
 
+def test_today_impact_is_asked_first(agent):
+    """today_impact 는 팀장 없이 그대로 긴급이다 (2026-11-21 팀장 없앰). 브리핑에서도 먼저 묻는다."""
+    agent(LOOK, submit(UMBRELLA, ALLERGY), judged(), judged())
+    field_tasks.propose_today(load("s005"))
+    asked = [p["payload"]["title"] for p in proposals.for_briefing("s005", "2026-11-17") if p["by"] == "field_variable"]
+    assert asked == ["땅콩 알레르기 확인", "우산꽂이 내놓기"]
+
+
 def test_allergy_cannot_ride_on_the_weather(agent):
     """알레르기 손님 정보는 그 예약 메모를 근거로 한 할 일에만 (날씨를 근거로 한 할 일에 섞으면 거절)."""
     mixed = {**UMBRELLA, "title": "땅콩 알레르기 손님 우산 준비", "detail": "땅콩 알레르기 손님이 비를 맞지 않게 우산을 준비하세요"}

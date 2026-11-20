@@ -36,9 +36,9 @@ def test_fixed_clock_runs_only_fixture_stores():
 
 
 def test_dotenv_switch_turns_an_agent_off(monkeypatch, clova_on):  # clova_on: CLOVA 키가 있는 상태
-    monkeypatch.delenv("VOICE_AGENT_LEAD", raising=False)
-    assert config.agent_on("lead") is True
-    monkeypatch.setattr(config, "_DOTENV", {"VOICE_AGENT_LEAD": "false"})  # server/.env 에 적은 것
-    assert config.agent_on("lead") is False
-    monkeypatch.setenv("VOICE_AGENT_LEAD", "true")  # 셸에서 준 값이 먼저다
-    assert config.agent_on("lead") is True
+    monkeypatch.delenv("VOICE_AGENT_FIXCARD", raising=False)
+    assert config.agent_on("fixcard") is True
+    monkeypatch.setattr(config, "_DOTENV", {"VOICE_AGENT_FIXCARD": "false"})  # server/.env 에 적은 것
+    assert config.agent_on("fixcard") is False
+    monkeypatch.setenv("VOICE_AGENT_FIXCARD", "true")  # 셸에서 준 값이 먼저다
+    assert config.agent_on("fixcard") is True

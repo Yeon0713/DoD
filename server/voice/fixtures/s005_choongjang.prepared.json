@@ -1143,13 +1143,7 @@
     "ask_on": "2026-11-17",
     "created_at": "2026-11-17T09:02:00+09:00",
     "decided_at": null,
-    "decided_by": null,
-    "lead": {
-     "verdict": "keep",
-     "reason": "",
-     "rank": 0,
-     "source": "FALLBACK"
-    }
+    "decided_by": null
    }
   },
   {
@@ -1161,18 +1155,10 @@
     "items": [
      "pr_0001"
     ],
-    "verdicts": {
-     "pr_0001": {
-      "verdict": "keep",
-      "reason": ""
-     }
-    },
     "order": [
      "pr_0001"
     ],
-    "summary": null,
-    "source": "FALLBACK",
-    "at": "2026-11-17T09:02:00+09:00"
+    "source": "code"
    }
   },
   {

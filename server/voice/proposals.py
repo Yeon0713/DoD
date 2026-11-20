@@ -32,6 +32,12 @@ SAME_SCORE = 0.35  # 이 이상 겹치는 할 일만 LLM 에 묻는다 (시작�
 SAME_TEXT = 0.9  # 이 이상이면 글이 거의 같다. LLM 없이 묶는다
 LOOK_BACK = dt.timedelta(days=7)
 REPEAT = 3
+DEPT_ORDER = ("customer", "quality", "marketing")  # 사장님께 말할 부서 순서 (2026-11-21 팀장 없앰, agent-structure.md 5장)
+
+
+def urgent(found: dict) -> bool:
+    """긴급: 사원이 긴급이라 했거나, 현장 변수의 '오늘 손님이 바로 겪는 일'(today_impact)."""
+    return bool(found["payload"].get("urgent") or found["payload"].get("today_impact"))
 
 
 def _text(payload_or_task: dict) -> str:
@@ -65,11 +71,9 @@ def apply(pid: str, trigger: str) -> dict:
         if found["state"] == "applied":
             return next(t for t in staff.store_tasks(found["store_id"]) if t["id"] == found["task_id"])
         p = found["payload"]
-        # 현장 변수의 '오늘 손님이 바로 겪는 일'은 팀장이 유지했을 때(팀장이 없으면 그대로) 긴급으로 넣는다
-        urgent = p.get("urgent", False) or (p.get("today_impact", False) and (found.get("lead") or {}).get("verdict", "keep") == "keep")
         task = staff.add_task(
             found["store_id"], p["title"], p["phase"], repeat=p.get("repeat", "today"), must_confirm=p.get("must_confirm", False),
-            urgent=urgent, detail=p.get("detail"), days=p.get("days", 1), origin=ORIGIN[found["by"]],
+            urgent=urgent(found), detail=p.get("detail"), days=p.get("days", 1), origin=ORIGIN[found["by"]],
             source={**found["link"], "by": found["by"], "dept": found["dept"], "proposal_id": pid, "reason": found["reason"]},
         )
         repo.put(KIND, pid, found["store_id"], {**found, "state": "applied", "task_id": task["id"],
@@ -97,12 +101,10 @@ def for_review(store_id: str, review_id: str) -> dict | None:
 
 
 def for_briefing(store_id: str, day: str, *, include_asked: bool = False) -> list[dict]:
-    """그날 물을 제안: 아직 묻지 않은 것 (include_asked 면 물었는데 대답이 없는 것도). 긴급 먼저, 들어온 순서."""
+    """그날 물을 제안: 아직 묻지 않은 것 (include_asked 면 물었는데 대답이 없는 것도). 긴급 → 부서 순서 → 들어온 순서."""
     states = LIVE if include_asked else ("proposed",)
-    found = [p for p in repo.all_of(KIND, store_id) if p.get("ask_on") and p["ask_on"] <= day and p["state"] in states
-             and p.get("lead", {}).get("verdict") != "drop"]
-    # 긴급 먼저, 그다음 팀장이 정한 순서, 그다음 들어온 순서 (voice/departments.py)
-    return sorted(found, key=lambda p: (not p["payload"].get("urgent"), (p.get("lead") or {}).get("rank", 99), p["created_at"]))
+    found = [p for p in repo.all_of(KIND, store_id) if p.get("ask_on") and p["ask_on"] <= day and p["state"] in states]
+    return sorted(found, key=lambda p: (not urgent(p), DEPT_ORDER.index(p["dept"]), p["created_at"]))
 
 
 def mark_asked(pids: list[str]) -> None:

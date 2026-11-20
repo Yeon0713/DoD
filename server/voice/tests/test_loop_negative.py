@@ -357,6 +357,19 @@ def test_answer_goes_to_the_review_being_asked_now():
 # ── A 바로 답하기를 켠 가게 (2026-11-20) ──
 
 
+def test_alert_does_not_go_through_a_team_lead(clova_on, monkeypatch):
+    """팀장을 없앴다 (2026-11-21, agent-structure.md 5장). 다른 에이전트를 꺼 두면 알림까지 CLOVA 를 한 번도 부르지 않는다."""
+    from Harness.tests.fakes import FakeClova
+    from voice import config, proposals
+
+    monkeypatch.setattr(config, "agent_on", lambda name: name == "lead")
+    fake = clova_on(FakeClova())
+    _, rid = leak()
+    record = alert_of(rid)
+    assert fake.requests == [] and record["use_card"] is True
+    assert proposals.get(record["proposal_id"])["state"] == "asked"  # 팀장이 빼지 않고 그대로 묻는다
+
+
 def test_a1_auto_posts_without_compensation_and_asks_only_the_task():
     donna, rid = leak(permission=True)
     posted = review(rid)

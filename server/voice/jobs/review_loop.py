@@ -20,7 +20,7 @@
 import datetime as dt
 
 from app.core.seoul_time import at_time
-from voice import activity, clock, config, departments, hours, notices, proposals, repo, speech
+from voice import activity, clock, config, hours, notices, proposals, repo, speech
 from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import load
@@ -98,8 +98,6 @@ def alert(store_id: str, review_id: str) -> dict | None:
     preset = None if auto else _preset(store_id, found["type"])  # 자동 답글에는 보상 문장을 붙이지 않는다 (2026-11-20)
     proposal = _propose(store_id, review, card) if card else None
     if proposal and proposal["state"] == "merged":  # 같은 할 일이 이미 알바생 화면에 있다. 다시 묻지 않는다
-        card = None
-    elif proposal and not departments.lead_one(view, proposal):  # 고객 응대 팀장이 짧게 본다 (실시간 길도 팀장을 거친다)
         card = None
     record = repo.put("alert", f"al_{review_id}", store_id, {
         "id": f"al_{review_id}", "store_id": store_id, "review_id": review_id, "state": "alerted",

@@ -277,8 +277,8 @@ class Choongjang(Donna):
         return self.turn(event="notice", notice_id=found[-1]["id"])
 
 
-# 2026-11-20 에이전트 조직 개편으로 더한 사원·팀장 (VOICE_AGENT_<이름>). 예전 에이전트만 가짜 CLOVA 로 보는 시험은 이들을 끈다
-NEW_AGENTS = ("FIXCARD", "FIELD", "SAME", "MANUAL", "LEAD", "TOPIC", "CAPTION", "HOLIDAY")
+# 2026-11-20 에이전트 조직 개편으로 더한 사원 (VOICE_AGENT_<이름>). 예전 에이전트만 가짜 CLOVA 로 보는 시험은 이들을 끈다
+NEW_AGENTS = ("FIXCARD", "FIELD", "SAME", "MANUAL", "TOPIC", "CAPTION", "HOLIDAY")
 
 
 def new_agents_off(monkeypatch) -> None:

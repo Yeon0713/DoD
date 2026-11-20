@@ -81,5 +81,7 @@ def post_scheduled(store_id: str) -> list[str]:
         if review.get("reply_status") == "scheduled" and parse(review["reply_post_at"]) <= now:
             review.update({"reply_status": "posted", "reply_posted_at": review["reply_post_at"]})
             repo.save_review(review)
+            if review.get("reply_trigger") == "auto":  # 묻지 않고 예약한 칭찬 답글 (대리·과장, 인사과 4-b)
+                hr.record(store_id, "positive_reply", review["id"], "done")
             posted.append(review["id"])
     return posted

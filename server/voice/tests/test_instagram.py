@@ -38,7 +38,7 @@ def run_publish(chj: Choongjang) -> dict:
 
 
 def to_instagram_step(chj: Choongjang) -> dict:
-    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (아쉬운 리뷰 허락은 "응")."""
+    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (묻는 단계는 대답하지 않고 넘긴다)."""
     response = chj.turn("오늘 일정 브리핑해 줘")
     for _ in range(10):
         if response["briefing"] and response["briefing"]["step_key"] == "instagram" or response["type"] == "end":

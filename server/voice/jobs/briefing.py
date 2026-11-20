@@ -87,8 +87,14 @@ def recent_positive(view: VoiceStore, now: dt.datetime) -> list[dict]:
 
 def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
     """답글 기다리는 좋은 리뷰마다 올릴 때(schedule.occasion_for: 평일 리뷰 → 토요일 오전, 주말 리뷰 → 24~48시간 안 식사 피크
-    한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다."""
-    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and r.get("reply_status", "none") == "none"]
+    한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다.
+    칭찬 리뷰 답글 직급 (인사과 4-b): 대리·과장은 지금처럼 예약한다. 인턴·사원은 써 두기만 하고(awaiting) 브리핑에서 "이렇게
+    예약할까요?"로 묻는다. 대답이 없어 올릴 날이 지난 awaiting 은 다음 날 준비 때 때와 글을 새로 정해 다시 묻는다 (9-0 b).
+    같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않는다 (영업 중에 LLM 을 부르지 않게)."""
+    asks = hr.asks(view.store_id, "positive_reply") is not None
+    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and (
+        r.get("reply_status", "none") == "none"
+        or (r.get("reply_status") == "awaiting" and parse(r["reply_post_at"]).date() < now.date()))]
     if not waiting:
         return 0
     for review in sorted(waiting, key=lambda r: r["written_at"]):
@@ -96,13 +102,15 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
         occasion = {**slot, "post_at": iso(slot["post_at"])}
         written = voice_reply.write(view, review, "SCHEDULED", occasion)
         review.update({
-            "reply_status": "scheduled", "reply_by": "donna", "reply_text": written["text"], "reply_source": written["source"],
-            "reply_notes": written["notes"], "reply_post_at": occasion["post_at"],
+            "reply_status": "awaiting" if asks else "scheduled", "reply_by": "donna", "reply_text": written["text"],
+            "reply_source": written["source"], "reply_notes": written["notes"], "reply_post_at": occasion["post_at"],
             "reply_reason": {key: slot[key] for key in ("kind", "label", "meal", "context", "explanation")},
+            "reply_trigger": None if asks else "auto",  # auto: 묻지 않고 예약 → 올릴 때 인사과에 done
         })
         repo.save_review(review)
-        queue.add(view.store_id, "post_scheduled", slot["post_at"])
-    return len(waiting)
+        if not asks:
+            queue.add(view.store_id, "post_scheduled", slot["post_at"])
+    return 0 if asks else len(waiting)
 
 
 def draft_negative(view: VoiceStore) -> None:
@@ -297,6 +305,15 @@ def step_positive(view: VoiceStore, now: dt.datetime) -> dict | None:
 
 
 def step_scheduling(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, dict | None]:
+    """예약 답글 단계. 칭찬 리뷰 답글 인턴·사원은 써 둔 답글을 "이렇게 예약할까요?"로 묻는다 (jobs/batch_ask.py).
+    대리·과장은 묻지 않고 예약했으므로 단계를 보이지 않는다 (올린 것은 사후 보고, 9-0 c)."""
+    mode = hr.asks(view.store_id, "positive_reply")
+    if mode is None:
+        return None, None
+    waiting = sorted((r for r in view.reviews() if r.get("reply_status") == "awaiting"), key=lambda r: r["reply_post_at"])
+    asked = batch_ask.ask(view, [{"job": "positive_reply", "ref": r["id"]} for r in waiting], mode)
+    if asked is not None:
+        return asked, None
     scheduled = [r for r in view.reviews() if r.get("reply_status") == "scheduled"]
     rows = schedule.rows(scheduled, view.menus, now, view.store.get("rain_menu"))
     if not rows:
@@ -324,9 +341,25 @@ def step_scheduling(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, di
     return response, detail
 
 
+def auto_instagram(view: VoiceStore, now: dt.datetime) -> dict | None:
+    """인스타 게시가 대리면 브리핑 준비 때 만든 게시물을 그날 첫 식사 피크 한 시간 전에 올린다 (9-0 d). 사원·인턴은 묻는다 (9-0 e)."""
+    if hr.asks(view.store_id, "instagram_post") is not None or not posts.connection(view.store_id)["connected"]:
+        return None
+    if posts.posted_on(view.store_id, "feed", now.date()):
+        return None
+    built = posts.build_feed(view)
+    if built is None:
+        return None
+    due = next((at for at, _ in schedule.slots(view.store, now.date(), 1) if at > now), now)
+    post = posts.save({**posts.create(view.store_id, built), "auto": True})  # auto: 올라가면 인사과에 done
+    return posts.queue_publish(view.store_id, post, due)
+
+
 def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
-    """인스타에 올릴까요 (D-14). 연결 안 됨, 오늘 이미 올림, 메뉴 사진이 3개보다 적으면 건너뛴다.
+    """인스타에 올릴까요 (D-14). 연결 안 됨, 오늘 이미 올림, 메뉴 사진이 3개보다 적으면 건너뛴다. 대리면 묻지 않는다 (auto_instagram).
     자세히 보기는 올라갈 모양 그대로 한 장씩 (D-15, '다음 사진'으로 넘긴다)."""
+    if hr.asks(view.store_id, "instagram_post") is None:
+        return None, None
     connection = posts.connection(view.store_id)
     if not connection["connected"] or posts.posted_on(view.store_id, "feed", view.now.date()):
         return None, None
@@ -433,6 +466,9 @@ def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n
         rows.append({"id": "p_reviews", "kind": "reviews", "value": f"밤사이 리뷰 {len(waiting)}개 읽어 둠"})
     if scheduled_n:
         rows.append({"id": "p_replies", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {scheduled_n}개 예약"})
+    drafted_n = sum(1 for r in view.reviews() if r.get("reply_status") == "awaiting")  # 칭찬 답글 인턴·사원: 써 두고 묻는다
+    if drafted_n:
+        rows.append({"id": "p_replies_ask", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {drafted_n}개 써 둠"})
     if instagram:
         rows.append(INSTAGRAM_ROW)
     return rows
@@ -452,6 +488,7 @@ def prepare(store_id: str) -> dict | None:
     field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
     holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
     marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)
+    auto_instagram(load(store_id), now)  # 인스타 게시 대리: 묻지 않고 첫 식사 피크 한 시간 전에 올린다 (9-0 d)
     departments.run_reports(load(store_id))  # 부서 보고를 남기고, 부서 사이 충돌을 거른다 (voice/departments.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)
@@ -471,7 +508,7 @@ def prepare(store_id: str) -> dict | None:
         details["scheduling"] = scheduling_detail
     if instagram_detail:
         details["instagram"] = instagram_detail
-    scheduled_n = sum(len(i["review_ids"]) for i in (steps["scheduling"] or {"cards": [{"items": []}]})["cards"][0]["items"])
+    scheduled_n = sum(1 for r in view.reviews() if r.get("reply_status") == "scheduled" and parse(r["reply_post_at"]) > now)
 
     overnight = [r for r in view.reviews() if now - dt.timedelta(days=1) <= parse(r["written_at"]) <= now]
     if overnight:
@@ -497,6 +534,7 @@ def refresh_steps(store_id: str) -> dict | None:
         return brief
     brief["steps"]["staff_tasks"] = staff_tasks.step(view, clock.now())
     brief["steps"]["holiday"] = holidays.step(view)
+    brief["steps"]["scheduling"], _ = step_scheduling(view, clock.now())
     brief["steps"]["negative"], negative_detail = step_negative(view, clock.now(), awaiting(view))
     if negative_detail:
         brief["details"]["negative"] = negative_detail

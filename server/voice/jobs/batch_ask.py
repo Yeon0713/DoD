@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from voice import activity, clock, hr, repo, speech, width
+from voice.jobs import queue
 from voice.clock import iso, parse
 from voice.context import VoiceStore
 
@@ -85,11 +86,57 @@ def _neg_reject(view: VoiceStore, ref: str) -> None:
     repo.save_review(review)
 
 
+# ── 좋은 리뷰 예약 답글 (positive_reply, 9-0 b) ──
+
+
+def _when_label(review: dict) -> str:
+    at = parse(review["reply_post_at"])
+    return f"{speech.weekday(at.date())}요일 {speech.clock_label(at)}"
+
+
+def _pos_pending(view: VoiceStore, ref: str) -> bool:
+    review = view.review(ref)
+    return bool(review and review.get("reply_status") == "awaiting")
+
+
+def _pos_line(view: VoiceStore, ref: str) -> str:
+    return f"{_when_label(view.review(ref))}에 올릴 답글이에요."
+
+
+def _pos_one(view: VoiceStore, ref: str) -> tuple[list[str], list[dict]]:
+    from voice.jobs.briefing import review_card
+
+    review = view.review(ref)
+    draft = {"text": review["reply_text"], "posted_at": None, "by": "donna", "scheduled_label": f"{_when_label(review)}에 올릴 답글"}
+    why = (review.get("reply_reason") or {}).get("explanation")
+    return (["좋은 리뷰 답글을 써 뒀어요."] + ([f"{why}."] if why else []), [review_card(review, draft)])
+
+
+def _pos_item(view: VoiceStore, ref: str) -> dict:
+    review = view.review(ref)
+    return {"title": _when_label(review), "sub": review["reply_text"]}
+
+
+def _pos_approve(view: VoiceStore, ref: str) -> None:
+    review = view.review(ref)
+    post_at = max(parse(review["reply_post_at"]), clock.now())  # 올릴 때가 이미 지났으면 바로 올린다
+    repo.save_review({**review, "reply_status": "scheduled", "reply_trigger": "owner_yes", "reply_post_at": iso(post_at)})
+    queue.add(view.store_id, "post_scheduled", post_at)
+
+
+def _pos_reject(view: VoiceStore, ref: str) -> None:
+    repo.save_review({**view.review(ref), "reply_status": "drafted"})
+
+
 KINDS: dict[str, Kind] = {
     "negative_reply": Kind(
         pending=_neg_pending, line=_neg_line, one=_neg_one, item=_neg_item, approve=_neg_approve, reject=_neg_reject,
         many="아쉬운 리뷰가 {n} 있어요.", question="써 둔 사과 답글을 올릴까요?", headline="사과 답글 올릴까요?",
         done=lambda n: "사과 답글을 올렸어요." if n == 1 else f"사과 답글 {n}개를 올렸어요.", none=("네, 올리지 않을게요.", "초안은 남겨 둘게요.")),
+    "positive_reply": Kind(
+        pending=_pos_pending, line=_pos_line, one=_pos_one, item=_pos_item, approve=_pos_approve, reject=_pos_reject,
+        many="좋은 리뷰 답글이 {n} 있어요.", question="이렇게 예약할까요?", headline="답글 예약할까요?",
+        done=lambda n: "답글을 예약했어요." if n == 1 else f"답글 {n}개를 예약했어요.", none=("네, 예약하지 않을게요.", "초안은 남겨 둘게요.")),
 }
 
 

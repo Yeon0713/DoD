@@ -7,7 +7,7 @@ import json
 
 import pytest
 
-from voice import config, tts, width
+from voice import config, repo, tts, width
 from voice.tests.conftest import Choongjang
 
 FIXTURE = config.FIXTURES / "s005_choongjang.json"
@@ -27,7 +27,7 @@ def test_home_header_and_status(chj: Choongjang):
     home = chj.get("/v1/home")
     assert home["store"]["name"] == "초옹장" and home["store"]["logo_url"] == "/static/logos/s005.png"
     assert home["store_status"] == {"state": "before_open", "label": "영업 전", "detail": "오전 10시 반에 열어요"}
-    assert [r["value"] for r in home["cards"][0]["rows"]] == ["단체 12명, 오후 비", "밤사이 리뷰 5개 읽어 둠", "좋은 리뷰 답글 3개 예약"]
+    assert [r["value"] for r in home["cards"][0]["rows"]] == ["단체 12명, 오후 비", "밤사이 리뷰 5개 읽어 둠", "좋은 리뷰 답글 3개 써 둠"]
     assert chj.client.get("/static/logos/s005.png").status_code == 200
 
 
@@ -59,36 +59,38 @@ def test_briefing_follows_figma(chj: Choongjang):
     assert d12["cards"][1]["text"] == "들깨는 지금처럼 그날 아침에 갈아 주세요"
 
     d13 = chj.turn("다음")
-    items = d13["cards"][0]["items"]
-    # P10: 일요일 리뷰 둘은 화요일 점심 한 시간 전(11시)에, 월요일 리뷰는 토요일 오전 11시에. 화요일 비는 글에만 들어간다
-    assert [(i["day_label"], i["time_label"], i["reason"]["kind"], i["text"]) for i in items] == [
-        ("화", "오전 11시", "weekend_next_peak", "비 오는 날 옹심이 권하기"),
-        ("토", "오전 11시", "weekday_to_weekend", "주말에 리뷰를 많이 봐요")]
-    assert [i["review_ids"] for i in items] == [["rv_0405", "rv_0401"], ["rv_0409"]]
+    # 인사과 4-b: 칭찬 답글 사원이라 써 둔 답글을 묶어서 "이렇게 예약할까요?"로 묻는다 (예전 D-13 은 이미 예약한 것을 알림).
+    # P10 때는 그대로: 일요일 리뷰 둘은 화요일 점심 한 시간 전(11시)에, 월요일 리뷰는 토요일 오전 11시에
+    assert d13["type"] == "ask_action" and d13["headline"] == "답글 예약할까요?" and d13["action"]["mode"] == "batch"
     assert [s["text"] for s in d13["say"]] == [
-        "좋은 리뷰 답글은 손님이 외식을 고민할 때 올리려고 예약해 뒀어요.",
-        "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요.",
-        "그날 비 소식이 있어서 옹심이를 권하는 답글로 썼어요.",
-        "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요."]
+        "좋은 리뷰 답글이 세 개 있어요.", "첫째, 화요일 오전 11시에 올릴 답글이에요.", "둘째, 화요일 오전 11시에 올릴 답글이에요.",
+        "셋째, 토요일 오전 11시에 올릴 답글이에요.", "이렇게 예약할까요?"]
+    assert [i["ref"] for i in d13["action"]["items"]] == ["rv_0405", "rv_0401", "rv_0409"]
+    d14 = chj.turn("두 번째는 빼고 예약해")
+    assert d14["intent"] == "action.approve" and d14["say"][0]["text"] == "답글 2개를 예약했어요."
+    status = {r["id"]: r["reply_status"] for r in repo.reviews("s005") if r["id"] in ("rv_0401", "rv_0405", "rv_0409")}
+    assert status == {"rv_0401": "drafted", "rv_0405": "scheduled", "rv_0409": "scheduled"}
 
     # 2026-11-20: 밤사이 아쉬운 리뷰의 교정 카드를 알바생 할 일로 넣을지 묻는다 (jobs/staff_tasks.py).
     # 퍼진 옹심이 리뷰도 같은 카드라 하나로 묶었다
-    d15 = chj.turn("다음")
+    d15 = d14  # 정하면 다음 단계(알바생 할 일)로 이어 간다
     assert d15["type"] == "ask_tasks" and d15["briefing"]["step_key"] == "staff_tasks" and d15["expects_reply"] is True
-    assert [s["text"] for s in d15["say"]] == ["어젯밤 면이 불어서 왔다는 리뷰 때문이에요.",
+    assert [s["text"] for s in d15["say"]][1:] == ["어젯밤 면이 불어서 왔다는 리뷰 때문이에요.",
                                                "알바생 할 일에 배달 칼국수 면·국물 따로 담기를 넣을까요?"]
     assert [i["title"] for i in d15["cards"][0]["items"]] == ["1. 배달 칼국수 면·국물 따로 담기"]
     d16 = chj.turn("다음")
     assert d16["type"] == "end" and d16["cards"][0]["title"] == "오늘 아침에 한 것"
-    for response in (d08, d09, d10, d11, d12, d13, d15, d16):
+    for response in (d08, d09, d10, d11, d12, d13, d14, d16):
         assert width.violations(response) == [], (response["headline"], width.violations(response))
         assert "suggestions" not in response
 
 
 def test_week_tab_shows_facts_and_what_was_done(chj: Choongjang):
-    chj.turn("오늘 일정 브리핑해 줘")
-    for _ in range(6):  # 마지막은 알바생 할 일 묻기 (2026-11-20)
-        chj.turn("다음")
+    response = chj.turn("오늘 일정 브리핑해 줘")
+    for _ in range(8):  # 마지막은 알바생 할 일 묻기 (2026-11-20)
+        if (response["briefing"] or {}).get("step_key") == "scheduling":
+            response = chj.turn("응, 예약해")  # 칭찬 답글 사원: 예약할까요? (인사과 4-b)
+        response = chj.turn("다음")
     week = chj.get("/v1/week")
     today = next(d for d in week["days"] if d["is_today"])
     assert today["title"] == "단체 예약이 있어요" and [p["kind"] for p in today["plans"]] == ["group_reservation", "weather"]

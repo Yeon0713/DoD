@@ -262,6 +262,10 @@ def publish(store_id: str, post_id: str) -> dict | None:
 
         story_event.on_post_done(store_id, post)
         return post
+    if post.get("auto"):  # 묻지 않고 올린 게시물 (인스타 게시 대리, 인사과 4-b)
+        from voice import hr
+
+        hr.record(store_id, "instagram_post", post["id"], "done")
     text = f"인스타에 {what} 올렸어요"
     activity.log(store_id, "donna", text, f"instagram_{post['kind']}")
     notices.push(store_id, "instagram", text)

@@ -58,19 +58,14 @@ def test_scenario_a_full_flow(donna: Donna):
     assert tip["type"] == "tip" and tip["kind"] == "keep"
     assert a5["headline"] == "국물 맛을 좋아하세요"
 
-    a6 = donna.turn("다음")
-    assert a6["type"] == "answer" and a6["briefing"] == {"step": 3, "total": 5, "step_key": "scheduling"}
-    items = a6["cards"][0]["items"]
-    # P12 (test-scenarios-closed-loop.md): 주말 리뷰는 24~48시간 안 식사 피크 한 시간 전, 평일 리뷰는 토요일 오전.
-    # 그날 강남 페스티벌은 시각을 바꾸지 않고 글에만 들어간다.
-    assert [i["reason"]["kind"] for i in items] == ["weekend_next_peak", "weekday_to_weekend"]
-    assert [(i["day_label"], i["time_label"], i["text"]) for i in items] == [
-        ("화", "오전 11시", "행사 가기 전에 들르시게"), ("토", "오전 11시", "주말에 리뷰를 많이 봐요")]
-    assert [i["reason"]["label"] for i in items] == ["점심 한 시간 전", "주말 점심 전"]
-    assert [i["review_ids"] for i in items] == [["rv_0408"], ["rv_0409", "rv_0410"]]
-    assert all("explanation" not in i for i in items)  # 말할 때만 쓰는 칸은 카드에 넣지 않는다
+    # 칭찬 답글 과장(이미 쓰던 가게): 묻지 않고 예약했으므로 예약 답글 단계를 보이지 않는다 (인사과 4-b, 9-0 c).
+    # P12 (test-scenarios-closed-loop.md): 주말 리뷰는 24~48시간 안 식사 피크 한 시간 전, 평일 리뷰는 토요일 오전
+    post_at = {r["id"]: r["reply_post_at"] for r in repo.reviews("s001") if r.get("reply_status") == "scheduled"}
+    assert post_at == {"rv_0408": "2026-11-17T11:00:00+09:00", "rv_0409": "2026-11-21T11:00:00+09:00",
+                       "rv_0410": "2026-11-21T11:00:00+09:00"}
+    a6 = a5
 
-    a7 = donna.turn("다음")
+    a7 = donna.turn("다음")  # 좋은 리뷰 다음은 바로 끝
     assert a7["type"] == "end" and a7["headline"] == "브리핑은 여기까지예요" and a7["briefing"]["step"] == 5
     assert a7["cards"][0]["title"] == "오늘 아침에 한 것"
     assert [r["value"] for r in a7["cards"][0]["rows"]] == ["좋은 리뷰 답글 예약"]  # 사장님이 "응"한 답글은 이미 아신다

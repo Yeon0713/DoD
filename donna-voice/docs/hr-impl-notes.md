@@ -21,6 +21,7 @@ jiho/feat-evals-docs
    └ jiho/feat-hr-base          2단계
      └ jiho/feat-hr-record      3단계
        └ jiho/feat-hr-negative  4-a
+         └ jiho/feat-hr-positive  4-b
 ```
 
 | 단계 | 브랜치 | 상태 | 전체 시험 (`cd server && .venv/bin/python -m pytest`) |
@@ -30,6 +31,7 @@ jiho/feat-evals-docs
 | 2 인사과 바탕 | `jiho/feat-hr-base` | 끝 | 1370 통과, 2 건너뜀 |
 | 3 반응 기록 | `jiho/feat-hr-record` | 끝 (버그 2 고침 포함) | 1371 통과, 2 건너뜀 |
 | 4-a 부정 리뷰 답글·설정 없애기 | `jiho/feat-hr-negative` | 끝. **시연 저장본은 아직 못 씀** (5장) | 1370 통과, 2 건너뜀 · 앱 `tsc` 통과 |
+| 4-b 칭찬 답글·인스타·포스터 | `jiho/feat-hr-positive` | 끝 | 1375 통과, 2 건너뜀 |
 
 푸시와 PR은 아직 하지 않았습니다.
 
@@ -73,6 +75,14 @@ jiho/feat-evals-docs
 | 4-a | 아침 묻기에도 자세히 보기·읽어 주기를 둠 (지금 묻는 첫 리뷰와 초안) | "아쉬운 리뷰 읽어 줘"가 계속 되게 |
 | 4-a | `draft_negative`는 늘 AUTO 글로 써 둠 (DRAFT 글 쓰지 않음), 허락 거절 때 `drafted`로 바꾸던 것은 지움. "안 해"라고 하면 그때 `drafted` | 허락 설정이 없어져서 |
 | 4-a | 허락 질문 뒤에만 쓰던 `briefing.post_ready_negatives`를 지움 | 이 변경으로 쓰는 곳이 없어짐 |
+| 4-b | 칭찬 답글 인턴·사원의 써 둔 답글은 `reply_status: "awaiting"`. "응" → `scheduled`(+ `post_scheduled` 작업), "안 해" → `drafted`. 답글에 `reply_trigger`를 적어 묻지 않고 예약한 것(`auto`)만 올릴 때 `done` | 9-0 b·c |
+| 4-b | 대답 없는 `awaiting`은 **다음 날** 준비 때만 때와 글을 새로 정함. 같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않음 | 영업 중에 LLM 답글을 다시 부르지 않게 (시험 g5 에서 드러남) |
+| 4-b | "응"했는데 올릴 때가 이미 지났으면 바로 올림 | 오전 11시 답글을 오후에 승인한 경우 |
+| 4-b | 사원 묶음 묻기는 `scheduled` 카드(때·이유) 대신 번호 붙은 `checklist`("1. 화요일 오전 11시" + 답글). 한 줄 말은 "첫째, 화요일 오전 11시에 올릴 답글이에요." | 묻기 모양을 하나로. Figma D-13(예약해 뒀어요)은 대리·과장이 아닐 때 이 모양이 됨 |
+| 4-b | 홈 줄: 써 두고 묻는 답글이 있으면 "좋은 리뷰 답글 N개 써 둠"(kind 는 `scheduled_replies` 그대로) | 앱 줄 종류를 늘리지 않으려고 |
+| 4-b | 뜻 판정: "예약해"를 승인 말로, "예약 안 해"를 반려 말로 더함 (`intent_rules` POST_VERB_RE, APPROVE_RE, ACTION_CANCEL_RE) | "두 번째는 빼고 예약해"가 고쳐 묻기로 갈리던 것 |
+| 4-b | 인스타 대리: 브리핑 준비 때 게시물을 만들어(`auto: true`) 그날 첫 식사 피크 한 시간 전(지났으면 바로)에 올리고, 올라가면 `done` | 9-0 d |
+| 4-b | 포스터: `hr.asks(..., offer=혜택 있음)`이 None 이면 단계를 내지 않음 (혜택 없는 포스터 길은 아직 없음, 9-0 f). 지금 포스터는 늘 혜택이 있어 동작은 그대로 | 9장 4-b |
 
 ---
 
@@ -87,6 +97,7 @@ jiho/feat-evals-docs
 | 4-a | 앱 설정 화면의 "아쉬운 리뷰 바로 답하기" 토글 (`settings.tsx`). 서버가 이 칸을 주지 않고 보내도 무시하므로 **지금은 늘 꺼진 채로 보이고 눌러도 아무 일이 없음** | 앱 담당 (9장 4-a). `api.ts`의 `SettingsView.negative_review_auto_reply` 타입도 그때 지움 |
 | 4-a | 쓰이지 않게 된 것: 뜻 판정의 `ask_permission` 갈래(`intent_rules.match`), `turn.SITUATIONS["ask_permission"]`, 앱 `TurnType`의 `'ask_permission'`, `review_loop._decide_task`·`carry`(`auto_posted` 상태) | 이미 저장된 옛 알림·세션이 있을 수 있어 남김. 정리할 때 함께 지움 |
 | 4-a | 인수인계 23-5, `operating-scenarios.md`, 점검 문서의 "바로 답하기" 설명 | 8단계 문서 정리에서 |
+| 4-b | 브리핑 중 "다음"이라고 하면 묻던 답글을 정하지 않고 넘어감 → 그 답글은 무응답(다음 날 다시 묻기) | 지금 알바생 할 일 묻기와 같은 동작. 바꾸려면 정해야 함 |
 
 ---
 

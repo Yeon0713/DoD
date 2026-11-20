@@ -80,6 +80,8 @@ def step(view: VoiceStore) -> dict | None:
     event = preset(view.store_id)
     if not (rain and event and posts.connection(view.store_id)["connected"]):
         return None
+    if hr.asks(view.store_id, "story_poster", offer=bool(event.get("offer"))) is None:
+        return None  # 혜택 없는 포스터를 묻지 않고 올리는 길은 아직 없다 (9-0 f). 지금 포스터는 늘 혜택이 있어 사원 상한
     if get(event_id(view.store_id, today)) or not posts.top_menus(view, 1)["items"]:
         return None
     says = [say(f"오늘은 {rain_text(rain, today)} 소식이 있어요."),

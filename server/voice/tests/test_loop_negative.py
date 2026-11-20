@@ -88,7 +88,8 @@ def test_l4_approve():
     assert alert_of(rid)["state"] == "card_pinned"
     assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
     assert hr_log() == [("negative_reply", "approved"), ("review_fix_task", "approved")]
-    assert [e["said"] for e in hr.events("s005")] == ["응, 진행해"] * 2 and hr.events("s005")[0]["ref"] == rid
+    mine = [e for e in hr.events("s005") if not e["ref"].startswith("hist_")]  # 시나리오 파일의 지난 기록은 뺀다
+    assert [e["said"] for e in mine] == ["응, 진행해"] * 2 and mine[0]["ref"] == rid
 
 
 def test_l6_confirm_closes():

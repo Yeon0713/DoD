@@ -41,6 +41,7 @@ def load_fixtures(payload: dict) -> dict:
     if "settings" in payload:
         repo.save_settings(store_id, payload["settings"])
     hr.set_ranks(store_id, payload.get("hr") or {})  # 업무별 출발 직급 (없는 업무는 인턴, voice/hr.py)
+    hr.seed_history(store_id, payload.get("hr_history") or [])  # 지난 반응 기록 (시연 가게)
     _put_pos_data(store_id, payload)
     for item in payload.get("activity", []):  # 지난 날 한 일 (일정 탭)
         repo.put("activity", f"{store_id}:{item['at'][:10]}:{item['id']}", store_id, item)

@@ -132,3 +132,13 @@ def test_briefing_prepare_runs_the_review():
     briefing.prepare("s005")
     assert repo.get(hr.REVIEW_KIND, "s005:2026-11-30")["period"] == ["2026-11-16", "2026-11-30"]
     assert config.HR_EPOCH.weekday() == 0  # 월요일
+
+
+def test_fixture_history_backs_the_demo_ranks():
+    """s005 시나리오 파일의 지난 2주 기록 (9-2의 1). 직급은 파일의 hr 칸이 정하고, 기록은 그 근거다."""
+    choongjang(at=None)
+    history = [e for e in hr.events("s005") if e["ref"].startswith("hist_")]
+    by_job = {job: [e["reaction"] for e in history if e["job"] == job] for job in hr.JOBS}
+    assert len(by_job["positive_reply"]) == 22 and by_job["positive_reply"].count("approved") / 22 >= config.HR_PROMOTE_RATIO
+    assert by_job["negative_reply"].count("approved") / len(by_job["negative_reply"]) < config.HR_PROMOTE_RATIO
+    assert min(e["at"] for e in history) == "2026-11-03T12:00:00+09:00" and max(e["at"] for e in history) <= "2026-11-16T12:00:00+09:00"

@@ -327,7 +327,7 @@ def choongjang(*, permission=None, at: str | None = "2026-11-17T15:35:00+09:00",
 
 
 def hr_log(store_id: str = "s005") -> list[tuple[str, str]]:
-    """인사과에 남은 반응 (업무, 반응) 순서대로 (voice/hr.py, 9장 3단계)."""
+    """인사과에 남은 반응 (업무, 반응) 순서대로 (voice/hr.py, 9장 3단계). 시나리오 파일의 지난 기록(hist_)은 뺀다."""
     from voice import hr
 
-    return [(e["job"], e["reaction"]) for e in hr.events(store_id)]
+    return [(e["job"], e["reaction"]) for e in hr.events(store_id) if not e["ref"].startswith("hist_")]

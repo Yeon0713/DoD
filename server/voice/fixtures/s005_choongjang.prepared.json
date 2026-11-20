@@ -1,12 +1,13 @@
 {
  "version": 1,
  "fixture": "s005_choongjang",
- "fixture_sha": "c9db27e65dbd1ebb",
+ "fixture_sha": "be22892899ab627f",
  "store_id": "s005",
  "demo_now": "2026-11-17T09:02:00+09:00",
  "counters": {
   "task:s005": 6,
-  "proposal:s005": 1
+  "proposal:s005": 1,
+  "hr_event:s005": 49
  },
  "docs": [
   {
@@ -986,6 +987,138 @@
    }
   },
   {
+   "kind": "review",
+   "id": "rv_0405",
+   "data": {
+    "reply_status": "awaiting",
+    "id": "rv_0405",
+    "platform": "naver",
+    "rating": 5,
+    "order_channel": "hall",
+    "written_at": "2026-11-15T12:30:00+09:00",
+    "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
+    "store_id": "s005",
+    "sentiment": "positive",
+    "topic": "other",
+    "summary": "좋게 봐 주셨어요",
+    "reply_by": "donna",
+    "reply_text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
+    "reply_source": "FALLBACK",
+    "reply_notes": [],
+    "reply_post_at": "2026-11-17T11:00:00+09:00",
+    "reply_reason": {
+     "kind": "weekend_next_peak",
+     "label": "점심 한 시간 전",
+     "meal": "lunch",
+     "context": {
+      "rain": true,
+      "cold": false,
+      "event": null,
+      "game": null,
+      "rain_menu": "옹심이"
+     },
+     "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
+    },
+    "reply_trigger": null
+   }
+  },
+  {
+   "kind": "review",
+   "id": "rv_0401",
+   "data": {
+    "reply_status": "awaiting",
+    "id": "rv_0401",
+    "platform": "naver",
+    "rating": 5,
+    "order_channel": "hall",
+    "written_at": "2026-11-15T20:05:00+09:00",
+    "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
+    "store_id": "s005",
+    "sentiment": "positive",
+    "topic": "taste",
+    "summary": "국물 맛이 좋았대요",
+    "reply_by": "donna",
+    "reply_text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
+    "reply_source": "AGENT",
+    "reply_notes": [],
+    "reply_post_at": "2026-11-17T11:00:00+09:00",
+    "reply_reason": {
+     "kind": "weekend_next_peak",
+     "label": "점심 한 시간 전",
+     "meal": "lunch",
+     "context": {
+      "rain": true,
+      "cold": false,
+      "event": null,
+      "game": null,
+      "rain_menu": "옹심이"
+     },
+     "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
+    },
+    "reply_trigger": null
+   }
+  },
+  {
+   "kind": "review",
+   "id": "rv_0409",
+   "data": {
+    "reply_status": "awaiting",
+    "id": "rv_0409",
+    "platform": "baemin",
+    "rating": 4,
+    "order_channel": "delivery",
+    "written_at": "2026-11-16T19:45:00+09:00",
+    "text": "양이 넉넉해서 든든했어요.",
+    "store_id": "s005",
+    "sentiment": "positive",
+    "topic": "portion",
+    "summary": "양이 넉넉했대요",
+    "reply_by": "donna",
+    "reply_text": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
+    "reply_source": "AGENT",
+    "reply_notes": [],
+    "reply_post_at": "2026-11-21T11:00:00+09:00",
+    "reply_reason": {
+     "kind": "weekday_to_weekend",
+     "label": "주말 점심 전",
+     "meal": "lunch",
+     "context": {
+      "rain": false,
+      "cold": false,
+      "event": null,
+      "game": null,
+      "rain_menu": "옹심이"
+     },
+     "explanation": "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요"
+    },
+    "reply_trigger": null
+   }
+  },
+  {
+   "kind": "job",
+   "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
+   "data": {
+    "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
+    "store_id": "s005",
+    "kind": "post_scheduled",
+    "due_at": "2026-11-17T11:00:00+09:00",
+    "payload": {},
+    "done": true
+   }
+  },
+  {
+   "kind": "job",
+   "id": "s005:post_scheduled:2026-11-21T11:00:00+09:00:",
+   "data": {
+    "id": "s005:post_scheduled:2026-11-21T11:00:00+09:00:",
+    "store_id": "s005",
+    "kind": "post_scheduled",
+    "due_at": "2026-11-21T11:00:00+09:00",
+    "payload": {},
+    "done": true
+   }
+  },
+  {
    "kind": "hr_rank",
    "id": "s005:negative_reply",
    "data": {
@@ -1133,6 +1266,790 @@
    }
   },
   {
+   "kind": "hr_event",
+   "id": "hr_s005_0001",
+   "data": {
+    "id": "hr_s005_0001",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0002",
+   "data": {
+    "id": "hr_s005_0002",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0003",
+   "data": {
+    "id": "hr_s005_0003",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_3",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-04T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0004",
+   "data": {
+    "id": "hr_s005_0004",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_4",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-04T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0005",
+   "data": {
+    "id": "hr_s005_0005",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_5",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-05T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0006",
+   "data": {
+    "id": "hr_s005_0006",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_6",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-06T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0007",
+   "data": {
+    "id": "hr_s005_0007",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_7",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-06T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0008",
+   "data": {
+    "id": "hr_s005_0008",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_8",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-07T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0009",
+   "data": {
+    "id": "hr_s005_0009",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_9",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-08T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0010",
+   "data": {
+    "id": "hr_s005_0010",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_10",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-08T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0011",
+   "data": {
+    "id": "hr_s005_0011",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_11",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-09T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0012",
+   "data": {
+    "id": "hr_s005_0012",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_12",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-10T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0013",
+   "data": {
+    "id": "hr_s005_0013",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_13",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-10T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0014",
+   "data": {
+    "id": "hr_s005_0014",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_14",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-11T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0015",
+   "data": {
+    "id": "hr_s005_0015",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_15",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-11T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0016",
+   "data": {
+    "id": "hr_s005_0016",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_16",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-12T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0017",
+   "data": {
+    "id": "hr_s005_0017",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_17",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-13T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0018",
+   "data": {
+    "id": "hr_s005_0018",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_18",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-13T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0019",
+   "data": {
+    "id": "hr_s005_0019",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_19",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-14T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0020",
+   "data": {
+    "id": "hr_s005_0020",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_20",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-15T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0021",
+   "data": {
+    "id": "hr_s005_0021",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_21",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-15T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0022",
+   "data": {
+    "id": "hr_s005_0022",
+    "store_id": "s005",
+    "job": "positive_reply",
+    "agent": "revisit",
+    "rank_at": "staff",
+    "ref": "hist_positive_reply_22",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-16T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0023",
+   "data": {
+    "id": "hr_s005_0023",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0024",
+   "data": {
+    "id": "hr_s005_0024",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-04T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0025",
+   "data": {
+    "id": "hr_s005_0025",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_3",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-06T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0026",
+   "data": {
+    "id": "hr_s005_0026",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_4",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-07T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0027",
+   "data": {
+    "id": "hr_s005_0027",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_5",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-09T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0028",
+   "data": {
+    "id": "hr_s005_0028",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_6",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-10T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0029",
+   "data": {
+    "id": "hr_s005_0029",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_7",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-12T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0030",
+   "data": {
+    "id": "hr_s005_0030",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_8",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-13T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0031",
+   "data": {
+    "id": "hr_s005_0031",
+    "store_id": "s005",
+    "job": "negative_reply",
+    "agent": "negative_review",
+    "rank_at": "intern",
+    "ref": "hist_negative_reply_9",
+    "reaction": "rejected",
+    "said": null,
+    "at": "2026-11-15T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0032",
+   "data": {
+    "id": "hr_s005_0032",
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank_at": "intern",
+    "ref": "hist_instagram_post_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0033",
+   "data": {
+    "id": "hr_s005_0033",
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank_at": "intern",
+    "ref": "hist_instagram_post_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-05T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0034",
+   "data": {
+    "id": "hr_s005_0034",
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank_at": "intern",
+    "ref": "hist_instagram_post_3",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-08T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0035",
+   "data": {
+    "id": "hr_s005_0035",
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank_at": "intern",
+    "ref": "hist_instagram_post_4",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-11T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0036",
+   "data": {
+    "id": "hr_s005_0036",
+    "store_id": "s005",
+    "job": "instagram_post",
+    "agent": "marketing",
+    "rank_at": "intern",
+    "ref": "hist_instagram_post_5",
+    "reaction": "edited",
+    "said": null,
+    "at": "2026-11-14T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0037",
+   "data": {
+    "id": "hr_s005_0037",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0038",
+   "data": {
+    "id": "hr_s005_0038",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-05T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0039",
+   "data": {
+    "id": "hr_s005_0039",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_3",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-07T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0040",
+   "data": {
+    "id": "hr_s005_0040",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_4",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-10T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0041",
+   "data": {
+    "id": "hr_s005_0041",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_5",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-12T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0042",
+   "data": {
+    "id": "hr_s005_0042",
+    "store_id": "s005",
+    "job": "review_fix_task",
+    "agent": "negative_review",
+    "rank_at": "staff",
+    "ref": "hist_review_fix_task_6",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-14T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0043",
+   "data": {
+    "id": "hr_s005_0043",
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank_at": "staff",
+    "ref": "hist_field_task_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0044",
+   "data": {
+    "id": "hr_s005_0044",
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank_at": "staff",
+    "ref": "hist_field_task_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-05T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0045",
+   "data": {
+    "id": "hr_s005_0045",
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank_at": "staff",
+    "ref": "hist_field_task_3",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-08T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0046",
+   "data": {
+    "id": "hr_s005_0046",
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank_at": "staff",
+    "ref": "hist_field_task_4",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-11T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0047",
+   "data": {
+    "id": "hr_s005_0047",
+    "store_id": "s005",
+    "job": "field_task",
+    "agent": "field_variable",
+    "rank_at": "staff",
+    "ref": "hist_field_task_5",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-14T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0048",
+   "data": {
+    "id": "hr_s005_0048",
+    "store_id": "s005",
+    "job": "manual_task",
+    "agent": "manual_coach",
+    "rank_at": "staff",
+    "ref": "hist_manual_task_1",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-03T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
+   "kind": "hr_event",
+   "id": "hr_s005_0049",
+   "data": {
+    "id": "hr_s005_0049",
+    "store_id": "s005",
+    "job": "manual_task",
+    "agent": "manual_coach",
+    "rank_at": "staff",
+    "ref": "hist_manual_task_2",
+    "reaction": "approved",
+    "said": null,
+    "at": "2026-11-10T12:00:00+09:00",
+    "reported_at": null
+   }
+  },
+  {
    "kind": "settings",
    "id": "s005",
    "data": {
@@ -1147,138 +2064,6 @@
      "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
      "staff_task": "스토리 태그 손님 음료 1캔 드리기"
     }
-   }
-  },
-  {
-   "kind": "review",
-   "id": "rv_0405",
-   "data": {
-    "reply_status": "awaiting",
-    "id": "rv_0405",
-    "platform": "naver",
-    "rating": 5,
-    "order_channel": "hall",
-    "written_at": "2026-11-15T12:30:00+09:00",
-    "text": "점심에 먹기 딱 좋아요. 옹심이가 쫀득해요.",
-    "store_id": "s005",
-    "sentiment": "positive",
-    "topic": "other",
-    "summary": "좋게 봐 주셨어요",
-    "reply_by": "donna",
-    "reply_text": "좋게 봐 주셔서 감사해요! 비 오는 날엔 따뜻한 옹심이도 잘 어울려요. 또 들러 주세요.",
-    "reply_source": "FALLBACK",
-    "reply_notes": [],
-    "reply_post_at": "2026-11-17T11:00:00+09:00",
-    "reply_reason": {
-     "kind": "weekend_next_peak",
-     "label": "점심 한 시간 전",
-     "meal": "lunch",
-     "context": {
-      "rain": true,
-      "cold": false,
-      "event": null,
-      "game": null,
-      "rain_menu": "옹심이"
-     },
-     "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
-    },
-    "reply_trigger": null
-   }
-  },
-  {
-   "kind": "review",
-   "id": "rv_0401",
-   "data": {
-    "reply_status": "awaiting",
-    "id": "rv_0401",
-    "platform": "naver",
-    "rating": 5,
-    "order_channel": "hall",
-    "written_at": "2026-11-15T20:05:00+09:00",
-    "text": "들깨 국물이 정말 고소해요. 비 오는 날 또 올게요.",
-    "store_id": "s005",
-    "sentiment": "positive",
-    "topic": "taste",
-    "summary": "국물 맛이 좋았대요",
-    "reply_by": "donna",
-    "reply_text": "들깨 국물의 고소함을 알아봐 주셔서 정말 기뻐요. 비 오는 날, 따뜻한 국물 드시러 오세요!",
-    "reply_source": "AGENT",
-    "reply_notes": [],
-    "reply_post_at": "2026-11-17T11:00:00+09:00",
-    "reply_reason": {
-     "kind": "weekend_next_peak",
-     "label": "점심 한 시간 전",
-     "meal": "lunch",
-     "context": {
-      "rain": true,
-      "cold": false,
-      "event": null,
-      "game": null,
-      "rain_menu": "옹심이"
-     },
-     "explanation": "주말에 오신 손님 리뷰는 점심 한 시간 전인 화요일 오전 11시에 올려요"
-    },
-    "reply_trigger": null
-   }
-  },
-  {
-   "kind": "review",
-   "id": "rv_0409",
-   "data": {
-    "reply_status": "awaiting",
-    "id": "rv_0409",
-    "platform": "baemin",
-    "rating": 4,
-    "order_channel": "delivery",
-    "written_at": "2026-11-16T19:45:00+09:00",
-    "text": "양이 넉넉해서 든든했어요.",
-    "store_id": "s005",
-    "sentiment": "positive",
-    "topic": "portion",
-    "summary": "양이 넉넉했대요",
-    "reply_by": "donna",
-    "reply_text": "양이 넉넉해서 든든하게 드셨다니 정말 기뻐요. 다음에도 든든하게 드시고 가세요!",
-    "reply_source": "AGENT",
-    "reply_notes": [],
-    "reply_post_at": "2026-11-21T11:00:00+09:00",
-    "reply_reason": {
-     "kind": "weekday_to_weekend",
-     "label": "주말 점심 전",
-     "meal": "lunch",
-     "context": {
-      "rain": false,
-      "cold": false,
-      "event": null,
-      "game": null,
-      "rain_menu": "옹심이"
-     },
-     "explanation": "평일에 오신 손님 리뷰는 주말 외식을 고민하는 토요일 오전 11시에 올려요"
-    },
-    "reply_trigger": null
-   }
-  },
-  {
-   "kind": "job",
-   "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
-   "data": {
-    "id": "s005:post_scheduled:2026-11-17T11:00:00+09:00:",
-    "store_id": "s005",
-    "kind": "post_scheduled",
-    "due_at": "2026-11-17T11:00:00+09:00",
-    "payload": {},
-    "done": true
-   }
-  },
-  {
-   "kind": "job",
-   "id": "s005:post_scheduled:2026-11-21T11:00:00+09:00:",
-   "data": {
-    "id": "s005:post_scheduled:2026-11-21T11:00:00+09:00:",
-    "store_id": "s005",
-    "kind": "post_scheduled",
-    "due_at": "2026-11-21T11:00:00+09:00",
-    "payload": {},
-    "done": true
    }
   },
   {
@@ -1469,6 +2254,7 @@
       ],
       "expects_reply": false
      },
+     "done_report": null,
      "negative": {
       "type": "ask_action",
       "headline": "사과 답글 올릴까요?",

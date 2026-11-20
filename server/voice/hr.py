@@ -85,6 +85,25 @@ def set_ranks(store_id: str, ranks: dict[str, str]) -> None:
         _start(store_id, job, rank_)
 
 
+def seed_history(store_id: str, history: list[dict]) -> int:
+    """시나리오 파일의 지난 반응 기록 (시연 가게, 9-2의 1): [{job, from, to, approved, edited, rejected, done}].
+    기간 안 날짜에 고르게 나눠 hr_event 로 넣는다 (ref hist_<업무>_<번호>). 스위치와 상관없이 넣는다. 넣은 수."""
+    count = 0
+    for row in history:
+        start, end = dt.date.fromisoformat(row["from"]), dt.date.fromisoformat(row["to"])
+        days = (end - start).days + 1
+        reactions = [r for r in REACTIONS for _ in range(row.get(r, 0))]
+        for n, reaction in enumerate(reactions):
+            day = start + dt.timedelta(days=n * days // max(len(reactions), 1))
+            eid = f"hr_{store_id}_{repo.next_number(f'hr_event:{store_id}'):04d}"
+            repo.put(EVENT_KIND, eid, store_id, {
+                "id": eid, "store_id": store_id, "job": row["job"], "agent": JOBS[row["job"]]["agent"], "rank_at": stored(store_id, row["job"])["rank"],
+                "ref": f"hist_{row['job']}_{n + 1}", "reaction": reaction, "said": None, "at": f"{day.isoformat()}T12:00:00+09:00",
+                "reported_at": f"{day.isoformat()}T12:00:00+09:00" if reaction == "done" else None})
+            count += 1
+    return count
+
+
 def stored(store_id: str, job: str) -> dict:
     """저장된 직급 문서. 없으면 인턴으로 만든다 (새 가게, 4-9)."""
     return repo.get(RANK_KIND, rank_id(store_id, job)) or _start(store_id, job, "intern")

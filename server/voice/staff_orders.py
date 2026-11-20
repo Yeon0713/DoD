@@ -332,10 +332,10 @@ def _remove_now(store_id: str, session: dict, staff_id: str) -> dict:
 
 
 def _sent_today(store_id: str) -> list[dict]:
-    """오늘 보이는, 사장님이 시킨 일과 교정 카드 (매뉴얼은 빼고). 오래된 것부터."""
+    """오늘 보이는, 사장님이 시킨 일과 교정 카드, 이벤트 카드 (매뉴얼은 빼고). 오래된 것부터."""
     today = clock.now().date().isoformat()
     return [t for t in staff.store_tasks(store_id)
-            if not t["canceled"] and t["origin"] in ("owner", "review") and t["repeat"] == "today" and t["date"] <= today <= t["until"]]
+            if not t["canceled"] and t["origin"] in ("owner", "review", "story_event") and t["repeat"] == "today" and t["date"] <= today <= t["until"]]
 
 
 def status(store_id: str) -> dict:

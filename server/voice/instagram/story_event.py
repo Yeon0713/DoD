@@ -280,7 +280,7 @@ def on_post_done(store_id: str, post: dict) -> None:
         notices.push(store_id, KIND, "이벤트 스토리를 올렸어요", say=["이벤트 스토리를 올렸어요."])
         return
     title = staff_title(record)
-    task = staff.add_task(store_id, title, "open", urgent=True, detail=record["offer"],
+    task = staff.add_task(store_id, title, "open", urgent=True, detail=record["offer"], origin="story_event",
                           source={"type": KIND, "id": record["id"], "post_id": post["id"], "permalink": post.get("permalink")})
     save({**record, "state": "card_pinned", "task_id": task["id"], "permalink": post.get("permalink")})
     activity.log(store_id, "donna", f"알바생 할 일에 {_obj(title)} 넣었어요", "story_event_card")

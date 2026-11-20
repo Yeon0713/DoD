@@ -40,7 +40,7 @@ STAFF_TABLES = {
         code TEXT PRIMARY KEY, store_id TEXT NOT NULL, staff_id TEXT NOT NULL,
         created_at TEXT NOT NULL, shared_at TEXT, used_at TEXT, revoked_at TEXT""",
     # 할 일 하나. repeat: daily(매뉴얼) | today(오늘만), kind: do(할 것) | dont(하지 말 것),
-    # to_staff: all(오늘 나온 사람 모두) | everyone(알바생 모두) | 알바생 번호, origin: manual | owner(사장님 말) | review(교정 카드)
+    # to_staff: all(오늘 나온 사람 모두) | everyone(알바생 모두) | 알바생 번호, origin: manual | owner(사장님 말) | review(교정 카드) | story_event(이벤트 카드)
     "staff_tasks": """
         task_id TEXT PRIMARY KEY, store_id TEXT NOT NULL, title TEXT NOT NULL, phase TEXT NOT NULL,
         repeat TEXT NOT NULL, kind TEXT NOT NULL, must_confirm INTEGER NOT NULL, urgent INTEGER NOT NULL,

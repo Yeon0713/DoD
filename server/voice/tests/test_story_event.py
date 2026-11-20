@@ -9,7 +9,7 @@ from PIL import Image
 
 from app.poster_ai import image_engine
 from app.poster_ai.image_engine import PosterEngineError
-from voice import repo, width
+from voice import repo, staff, staff_orders, width
 from voice.instagram import media
 from voice.tests.conftest import FakeGraph
 from voice.tests.test_instagram import Choongjang, chj, connect, run_publish, to_instagram_step  # noqa: F401 (chj 는 fixture)
@@ -167,6 +167,9 @@ def test_i3_i4_preview_post_and_card(chj: Choongjang, ig_on):
     assert card["title"] == TITLE and card["detail"] == OFFER
     saved = record()
     assert saved["state"] == "card_pinned" and saved["task_id"] == card["id"]
+    [pinned] = [t for t in staff.store_tasks("s005") if t["id"] == card["id"]]
+    assert pinned["origin"] == "story_event"  # 리뷰에서 나온 일(review)로 적지 않는다
+    assert card["id"] in [t["id"] for t in staff_orders._sent_today("s005")]  # "시킨 거 다 했대?"에는 들어간다
     told = chj.notices()
     assert [(n["text"], n["say"]) for n in told] == [("이벤트 스토리를 올렸어요", ["이벤트 스토리를 올렸어요.", f"알바생 할 일 맨 위에 {TITLE}를 넣었어요."])]
 

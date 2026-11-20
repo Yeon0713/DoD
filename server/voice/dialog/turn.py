@@ -21,7 +21,7 @@ v0.2.1: 칩(suggestions)이 없다. "도나야"로 부른 말(addressed)은 가�
 import copy
 import datetime as dt
 
-from voice import activity, clock, repo, speech, staff_orders, width
+from voice import activity, clock, holidays, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -45,9 +45,10 @@ SITUATIONS = {
     "ask_story": "도나가 비 오는 날 이벤트 포스터를 보여 주며 '스토리에 올리고, 알바생 할 일 맨 위에 이벤트 안내를 넣을까요?' 하고 물었어요",
     "ask_story_event": "도나가 '비 오는 날 이벤트 포스터를 만들어 스토리에 올릴까요?' 하고 물었어요",
     "ask_tasks": "도나가 '알바생 할 일로 첫째 …, 둘째 …를 넣을까요?' 하고 물었어요",
+    "ask_holiday": "도나가 '○월 ○일을 쉬는 날로 적을게요. 맞아요?' 하고 물었어요",
 }
 # 이 질문들을 묻는 중에는 놓친 알바생 할 일 질문으로 끼어들지 않는다
-ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask", "show_detail")
+ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask_holiday", "ask", "show_detail")
 
 
 class StoreNotFound(Exception):
@@ -198,8 +199,14 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
     if session.get("last_type") == "ask_tasks" and (name.startswith("action.") or name in ("permission.yes", "permission.no")):
         name = {"permission.yes": "action.approve", "permission.no": "action.cancel"}.get(name, name)
         response = staff_tasks.decide(view, name, intent.edits, session)
-        briefing_job.refresh_staff_tasks(view.store_id)
+        briefing_job.refresh_steps(view.store_id)
         return {**response, "answered_tasks": True, **({"keep_context": "ask_tasks"} if response["type"] == "ask_tasks" else {})}
+    if name in ("store.holiday", "store.holiday_cancel"):  # 쉬는 날 (voice/holidays.py)
+        return holidays.from_words(view, name, intent.owner_said)
+    if name in ("holiday.yes", "holiday.no"):
+        response = holidays.decide(view, name, session)
+        briefing_job.refresh_steps(view.store_id)
+        return response
     if session.get("story_id") and (name.startswith("action.") or name == "notice.open"):  # 스토리 이벤트 포스터를 묻는 중
         return {**story_event.decide(view, name, intent.edits, session["story_id"]), "keep_context": "ask_action"}
     if name.startswith("action.") or name == "notice.open":  # 아쉬운 리뷰 고리. 브리핑과 상관없이
@@ -355,6 +362,8 @@ def handle(request: dict) -> dict:
             later = dispatch(understand(session.pop("deferred_text"), session, view, True), session, briefing_job.current(store_id), view)
             response = {**later, "say": response["say"] + later["say"], "cards": response["cards"] + later["cards"]}
     staff_tasks.remember_asked(response, session)
+    if response.get("holiday"):  # 쉬는 날을 묻는 중 (holiday.yes / holiday.no 가 본다)
+        session["holiday_pending"] = response["holiday"]
     response.setdefault("briefing", None)
     if response["type"] not in ("ignore", "not_understood"):
         session["last_type"] = response.get("keep_context") or response["type"]

@@ -109,6 +109,10 @@ STAFF_LIST_RE = re.compile(r"알바(생)?(들)?(은|는)?(누구|몇명|누가|�
 STAFF_MANUAL_RE = re.compile(r"매뉴얼")
 STAFF_TODAY_RE = re.compile(r"^(응|어|그래|네|예)?(오늘만|오늘하루만?|오늘)(해|해줘|보내|보내줘|요|이요)?$")  # 문장 전체가 대답일 때만
 STAFF_DAILY_RE = re.compile(r"^(응|어|그래|네|예)?(매일|앞으로|맨날|항상|계속|매뉴얼)")
+# 쉬는 날 (2026-11-20, voice/holidays.py): "다음 주 수요일 쉬어", "26일 쉬는 거 취소해". 날짜를 말해야 한다
+HOLIDAY_RE = re.compile(r"쉬어|쉴게|쉴거|쉬자|쉬는날로|휴무(야|할게|로|해|예요|에요)|문(을)?닫아|안열어|영업안해")
+HOLIDAY_CANCEL_RE = re.compile(r"(쉬는거|쉬는날|휴무)(는|를|은)?(취소|안쉬|없던걸로|빼)")
+HOLIDAY_DATE_RE = re.compile(r"오늘|내일|모레|\d{1,2}일|[월화수목금토일]요일")
 STAFF_SEND_RE = re.compile(r"^(응|어|그래|좋아|네|예)?(카톡|카카오톡)?(으로|로)?(보내|보내줘|보내요|공유해|공유해줘)")
 
 
@@ -265,6 +269,15 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
             return found("staff.yes")  # "오늘만 할까요, 매일 할까요?" 에 "오늘만"
         if (YES_RE.search(n) or STAFF_SEND_RE.search(n) or STAFF_SHARE_RE.search(n)) and "아니" not in n and not STAFF_ORDER_RE.search(n):
             return found("staff.yes")
+    if last_type == "ask_holiday":
+        if NO_RE.search(n):
+            return found("holiday.no")
+        if YES_RE.search(n) or APPROVE_RE.fullmatch(n):
+            return found("holiday.yes")
+    if HOLIDAY_DATE_RE.search(n) and HOLIDAY_CANCEL_RE.search(n):  # "취소"가 알바생 일 취소로 가기 전에 본다
+        return found("store.holiday_cancel")
+    if HOLIDAY_DATE_RE.search(n) and HOLIDAY_RE.search(n) and not STAFF_ORDER_RE.search(n):
+        return found("store.holiday")
     staff = match_staff(n)
     if staff:
         return found(staff)

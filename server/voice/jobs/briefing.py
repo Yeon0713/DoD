@@ -17,7 +17,7 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, proposals, repo, speech, width
+from voice import activity, clock, config, holidays, marketing, proposals, repo, speech, width
 from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
@@ -25,8 +25,8 @@ from voice.instagram import posts, story_event
 from voice.jobs import auto_reply, queue, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
-GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
+STEP_KEYS = ["schedule", "holiday", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
+GAUGE = {"schedule": 1, "holiday": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
          "staff_tasks": 5, "end": 5}
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
@@ -386,8 +386,12 @@ def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
         return None, None
     top = built["menus"]
     names = [m["name"] for m in top["items"]]
-    says = [say(f"{top['period']} 가장 많이 나간 메뉴는 {', '.join(names[:-1])}, {speech.josa(names[-1], '이에요', '예요')}.", None, ["top_menus"])]
-    cards = [{"type": "menus", "id": "top_menus", "title": f"{top['period']} 많이 나간 메뉴", "items": top["items"]}]
+    if top.get("angle"):  # 마케팅 소재 사원이 고른 메뉴와 이야기 (voice/marketing.py)
+        says = [say(f"오늘은 {speech.josa(top['angle'], '이라는', '라는')} 이야기로 {', '.join(names)} 사진을 골랐어요.", None, ["top_menus"])]
+        cards = [{"type": "menus", "id": "top_menus", "title": "오늘 올릴 메뉴", "items": top["items"]}]
+    else:
+        says = [say(f"{top['period']} 가장 많이 나간 메뉴는 {', '.join(names[:-1])}, {speech.josa(names[-1], '이에요', '예요')}.", None, ["top_menus"])]
+        cards = [{"type": "menus", "id": "top_menus", "title": f"{top['period']} 많이 나간 메뉴", "items": top["items"]}]
     if built["quote"]:
         says.append(say(f"손님 리뷰 “{built['quote']}”{'을' if speech.has_batchim(built['quote']) else '를'} 글에 넣었어요.", None, ["insta_quote"]))
         cards.append({"type": "quote", "id": "insta_quote", "label": "글에 넣을 손님 리뷰", "text": f"“{built['quote']}”"})
@@ -496,10 +500,13 @@ def prepare(store_id: str) -> dict | None:
     newly_scheduled = schedule_replies(view, now)
     draft_negative(load(store_id))
     field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
+    holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
+    marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)
 
-    steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "reviews": step_reviews(waiting)}
+    steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "holiday": holidays.step(view),
+                                     "reviews": step_reviews(waiting)}
     steps["negative"], negative_detail = step_negative(view, now, waiting)
     steps["positive"] = step_positive(view, now)
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
@@ -531,14 +538,16 @@ def prepare(store_id: str) -> dict | None:
     return repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
 
 
-def refresh_staff_tasks(store_id: str) -> dict | None:
-    """알바생 할 일 묻기 단계만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
+def refresh_steps(store_id: str) -> dict | None:
+    """대답으로 바뀌는 묻는 단계(알바생 할 일, 쉬는 날)만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
     brief = current(store_id)
     view = load(store_id)
     if brief is None or view is None:
         return brief
     brief["steps"]["staff_tasks"] = staff_tasks.step(view, clock.now())
+    brief["steps"]["holiday"] = holidays.step(view)
     return repo.put("briefing", f"{store_id}:{brief['date']}", store_id, brief)
+
 
 
 def current(store_id: str) -> dict | None:

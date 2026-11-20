@@ -284,7 +284,7 @@ def no_morning_tasks(store_id: str = "s005") -> None:
 
     for found in proposals.for_briefing(store_id, clock.now().date().isoformat()):
         proposals.decline(found["id"], "test")
-    briefing.refresh_staff_tasks(store_id)
+    briefing.refresh_steps(store_id)
 
 
 def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00", keep_tasks: bool = False) -> Choongjang:

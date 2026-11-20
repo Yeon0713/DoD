@@ -126,13 +126,25 @@ def record(store_id: str, job: str, ref: str, reaction: str, said: str | None = 
         same = next((e for e in events(store_id, job) if e["ref"] == ref and e["reaction"] in kinds), None)
         if same is not None:
             if reaction in DECISIONS and DECISIONS.index(reaction) > DECISIONS.index(same["reaction"]):
+                _notebook(store_id, job, reaction, said)
                 return repo.put(EVENT_KIND, same["id"], store_id, {**same, "reaction": reaction, "said": said or same["said"],
                                                                    "at": iso(clock.now())})
+            if reaction == "edited" and said and said != same["said"]:  # 같은 글을 두 번 고쳤다: 두 번째 지시도 수첩 판정
+                _notebook(store_id, job, reaction, said)
             return same
+        _notebook(store_id, job, reaction, said)
         eid = f"hr_{store_id}_{repo.next_number(f'hr_event:{store_id}'):04d}"  # repo 키는 가게를 가리지 않으므로 가게 id 를 넣는다
         return repo.put(EVENT_KIND, eid, store_id, {
             "id": eid, "store_id": store_id, "job": job, "agent": JOBS[job]["agent"], "rank_at": stored(store_id, job)["rank"],
             "ref": ref, "reaction": reaction, "said": said, "at": iso(clock.now()), "reported_at": None})
+
+
+def _notebook(store_id: str, job: str, reaction: str, said: str | None) -> None:
+    """고침·반려에 사장님 말이 있으면 업무 수첩 규칙인지 뒤에서 판정한다 (voice/notebook.py, 9장 7단계)."""
+    if reaction in ("edited", "rejected") and said:
+        from voice import notebook
+
+        notebook.judge_later(store_id, job, said)
 
 
 # ── 평가 (4-5) ──

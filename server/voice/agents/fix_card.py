@@ -17,7 +17,7 @@ from Harness.agents import quote_judge
 from Harness.grounding import Evidence
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, obj, string
-from voice import config, staff, width
+from voice import config, notebook, staff, width
 from voice.agents import load_prompt
 from voice.agents.voice_reply import MENU_LIST
 from voice.context import VoiceStore, run_context
@@ -84,7 +84,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
 
 SPEC = AgentSpec(
     name="voice_fix_card",
-    system_prompt=lambda task, ctx: load_prompt("fix_card.txt", ctx.store),
+    system_prompt=lambda task, ctx: load_prompt("fix_card.txt", ctx.store) + notebook.section(ctx.store_id, "negative_review"),
     user_message=user_message,
     tools=[MENU_LIST, MANUAL],
     submit=SUBMIT,

@@ -21,7 +21,7 @@ from Harness.agents.reply_agent import SUBMIT
 from Harness.grounding import Evidence
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS
-from voice import config, speech
+from voice import config, notebook, speech
 from voice.agents import load_prompt
 from voice.clock import parse
 from voice.context import VoiceStore, run_context
@@ -109,9 +109,15 @@ REPLY_OCCASION = Tool("get_reply_occasion", "이 답글을 언제, 왜 올리는
 # ── 프롬프트 ──
 
 
+def _agent(task: dict, ctx: RunContext) -> str:
+    """업무 수첩 칸: 아쉬운 리뷰면 부정 리뷰 담당, 아니면 재방문 유도 담당 (voice/hr.py JOBS)."""
+    review = _view(ctx).review(task["review_id"]) or {}
+    return "negative_review" if review.get("sentiment") == "negative" else "revisit"
+
+
 def system_prompt(task: dict, ctx: RunContext) -> str:
     base = writer.load_prompt("review_reply_prompt.txt", ctx.store)  # 팀이 다듬어 온 답글 말투 프롬프트를 그대로 쓴다
-    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}"
+    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}{notebook.section(ctx.store_id, _agent(task, ctx))}"
 
 
 def user_message(task: dict, ctx: RunContext) -> str:
@@ -155,6 +161,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
         guards.price_or_discount(text),
         guards.not_in(menus, [m["name"] for m in view.menus], "메뉴 이름"),
         guards.not_in(facts, ctx.store_facts, "가게 사실(get_store_facts 에 있는 문장만 쓸 수 있어요)"),
+        notebook.checks(ctx.store_id, _agent(task, ctx), text),  # 사장님 수첩의 금지 낱말·이모티콘
     )
     if reason:
         return reason

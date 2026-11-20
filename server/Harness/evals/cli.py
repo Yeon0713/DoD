@@ -114,6 +114,12 @@ def _run_revise(args: argparse.Namespace) -> object:
     return revise_eval.run_revise(args)
 
 
+def _run_notebook(args: argparse.Namespace) -> object:
+    from Harness.evals import notebook_eval
+
+    return notebook_eval.run_notebook(args)
+
+
 def _run_dedupe(args: argparse.Namespace) -> object:
     from Harness.evals import staff_eval
 
@@ -216,6 +222,9 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("revise", "사장님 고침 지시(\"좀 더 짧게\"): 코드로 보는 조건을 지킨 비율, 검사를 통과해 고친 글이 나온 비율. "
                     "세트 Harness/evals/data/revise_cases.json (2026-11-21, 인사과 6단계)",
           _run_revise, needs_clova=lambda args: not args.dry_run),
+    Suite("notebook", "업무 수첩 규칙 판정(계속 지킬 규칙인가): 정확도·정밀도·재현율, 칸 정확도. "
+                      "세트 Harness/evals/data/notebook_cases.json (2026-11-21, 인사과 7단계)",
+          _run_notebook, needs_clova=lambda args: not args.dry_run),
     Suite("dedupe", "같은 알바생 할 일 묶기: 정확도, 잘못 묶음, 놓침 (--systems dice 는 CLOVA 없이, dice+judge 는 좁은 LLM 질문까지). "
                     "세트 Harness/evals/data/dedupe_cases.json (2026-11-20)",
           _run_dedupe, uses_systems=True, parse_systems=_dedupe_systems, default_systems="dice,dice+judge",

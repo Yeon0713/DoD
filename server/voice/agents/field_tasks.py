@@ -16,7 +16,7 @@ from Harness.agents import quote_judge
 from Harness.grounding import Evidence, ungrounded_numbers
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, array, obj, string
-from voice import clock, config, proposals, repo, staff, width
+from voice import clock, config, notebook, proposals, repo, staff, width
 from voice.agents import load_prompt
 from voice.context import VoiceStore, run_context
 
@@ -129,7 +129,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
 
 SPEC = AgentSpec(
     name="voice_field_tasks",
-    system_prompt=lambda task, ctx: load_prompt("field_tasks.txt", ctx.store),
+    system_prompt=lambda task, ctx: load_prompt("field_tasks.txt", ctx.store) + notebook.section(ctx.store_id, "field_variable"),
     user_message=user_message,
     tools=[WEATHER, RESERVATIONS, TASKS],
     submit=SUBMIT,

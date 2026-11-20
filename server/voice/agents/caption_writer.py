@@ -11,7 +11,7 @@ from Harness import guards, runner
 from Harness.grounding import Evidence, ungrounded_numbers
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import array, obj, string
-from voice import config
+from voice import config, notebook
 from voice.agents import load_prompt
 from voice.context import VoiceStore, run_context
 
@@ -43,7 +43,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
         return f"본문은 {MIN_BODY}~{MAX_BODY}자로 써 주세요 (지금 {len(body)}자)"
     if len(tags) > MAX_TAGS or any(not TAG_RE.match(t) for t in tags):
         return f"해시태그는 #으로 시작하는 한 낱말로 {MAX_TAGS}개까지만 써 주세요"
-    reason = guards.first(guards.price_or_discount(body), guards.promise(body))
+    reason = guards.first(guards.price_or_discount(body), guards.promise(body), notebook.checks(ctx.store_id, "marketing", body))
     if reason:
         return reason
     loose = ungrounded_numbers(body, evidence)
@@ -57,7 +57,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
 
 SPEC = AgentSpec(
     name="voice_caption_writer",
-    system_prompt=lambda task, ctx: load_prompt("caption_writer.txt", ctx.store),
+    system_prompt=lambda task, ctx: load_prompt("caption_writer.txt", ctx.store) + notebook.section(ctx.store_id, "marketing"),
     user_message=user_message,
     tools=[],
     submit=SUBMIT,

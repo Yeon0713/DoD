@@ -22,7 +22,7 @@ import copy
 import datetime as dt
 import re
 
-from voice import activity, clock, holidays, hr, repo, speech, staff_orders, width
+from voice import activity, clock, holidays, hr, notebook, repo, speech, staff_orders, width
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -265,6 +265,10 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         if name == "action.repeat":
             name = "notice.open"
         return {**review_loop.decide(view, name, intent.edits, session.get("alert_id"), intent.owner_said), "keep_context": "ask_action"}
+    if name == "notebook.read":  # 업무 수첩 (voice/notebook.py, 인사과 7단계)
+        return notebook.read(view.store_id)
+    if name == "notebook.remove" or (name == "report.undo" and session.get("notebook_pending")):
+        return notebook.remove_by_words(view.store_id, intent.owner_said, session)
     if name == "report.undo":  # 사후 취소 (jobs/done_report.py)
         return done_report.undo(view, intent.owner_said)
     if name.startswith("staff."):  # 알바생 일 (voice/staff_orders.py). 브리핑과 상관없이

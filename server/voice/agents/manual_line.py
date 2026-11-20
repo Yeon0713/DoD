@@ -8,7 +8,7 @@ from Harness import guards, runner
 from Harness.grounding import Evidence
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import obj, string
-from voice import config, width
+from voice import config, notebook, width
 from voice.agents import load_prompt
 from voice.context import VoiceStore, run_context
 from voice.similar import dice
@@ -43,7 +43,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
 
 SPEC = AgentSpec(
     name="voice_manual_line",
-    system_prompt=lambda task, ctx: load_prompt("manual_line.txt", ctx.store),
+    system_prompt=lambda task, ctx: load_prompt("manual_line.txt", ctx.store) + notebook.section(ctx.store_id, "manual_coach"),
     user_message=user_message,
     tools=[],
     submit=SUBMIT,

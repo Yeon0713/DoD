@@ -111,6 +111,9 @@ STAFF_CANCEL_RE = re.compile(r"취소|없던걸로|지워줘|보내지마")
 UNDO_RE = re.compile(r"취소|지워|지우|내려")
 UNDO_TARGET_RE = re.compile(r"답글|인스타|게시물|올린")
 STAFF_WORD_RE = re.compile(r"할일|알바|시킨")
+# 업무 수첩 (인사과 7단계, voice/notebook.py): "수첩에 뭐 적혀 있어?", "이모티콘 규칙 지워"
+NOTEBOOK_RE = re.compile(r"수첩|규칙")
+NOTEBOOK_REMOVE_RE = re.compile(r"지워|지우|빼|삭제|없애|취소")
 STAFF_LIST_RE = re.compile(r"알바(생)?(들)?(은|는)?(누구|몇명|누가|명단)|누구(누구)?나왔|누가나왔|오늘나온(사람|알바)|출근한(사람|알바)")
 STAFF_MANUAL_RE = re.compile(r"매뉴얼")
 STAFF_TODAY_RE = re.compile(r"^(응|어|그래|네|예)?(오늘만|오늘하루만?|오늘)(해|해줘|보내|보내줘|요|이요)?$")  # 문장 전체가 대답일 때만
@@ -286,6 +289,8 @@ def match(text: str, last_type: str | None, addressed: bool = False, instagram: 
         return found("store.holiday_cancel")
     if HOLIDAY_DATE_RE.search(n) and HOLIDAY_RE.search(n) and not STAFF_ORDER_RE.search(n):
         return found("store.holiday")
+    if NOTEBOOK_RE.search(n) and not STAFF_WORD_RE.search(n):
+        return found("notebook.remove" if NOTEBOOK_REMOVE_RE.search(n) else "notebook.read")
     if UNDO_RE.search(n) and (UNDO_TARGET_RE.search(n) or ORDINAL_RE.search(n)) and not STAFF_WORD_RE.search(n):
         return found("report.undo")
     staff = match_staff(n)

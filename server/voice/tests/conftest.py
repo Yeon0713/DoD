@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from app.core import clova_usage_log
 from app.core.config import settings
 from Harness import cache, limiter, runner, trace
-from voice import clock, config, context, prepared_snapshot, tts
+from voice import clock, config, context, notebook, prepared_snapshot, tts
 from voice.dialog import echo
 from voice.instagram import graph, media, posts, story_event
 
@@ -115,6 +115,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(posts, "kick", lambda: None)  # 게시 작업은 시험에서 /v1/dev/run 으로 돌린다
     monkeypatch.setattr(settings, "poster_image_engine", "mock")  # Codex 로 그리지 않는다
     monkeypatch.setattr(story_event, "spawn", lambda target, *args: target(*args))  # 이벤트 포스터를 뒤에서 그리지 않고 바로
+    monkeypatch.setattr(notebook, "spawn", lambda target, *args: target(*args))  # 수첩 규칙 판정을 뒤에서 하지 않고 바로
     cache.clear()
     echo.forget()  # 도나가 한 말 기억 (시험마다 새로)
     clock.set_now(None)
@@ -289,7 +290,7 @@ class Choongjang(Donna):
 
 
 # 2026-11-20 에이전트 조직 개편으로 더한 사원 (VOICE_AGENT_<이름>). 예전 에이전트만 가짜 CLOVA 로 보는 시험은 이들을 끈다
-NEW_AGENTS = ("FIXCARD", "FIELD", "SAME", "MANUAL", "TOPIC", "CAPTION", "HOLIDAY")
+NEW_AGENTS = ("FIXCARD", "FIELD", "SAME", "MANUAL", "TOPIC", "CAPTION", "HOLIDAY", "NOTEBOOK")
 
 
 def new_agents_off(monkeypatch) -> None:

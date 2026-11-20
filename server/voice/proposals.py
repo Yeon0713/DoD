@@ -101,7 +101,8 @@ def for_briefing(store_id: str, day: str, *, include_asked: bool = False) -> lis
     states = LIVE if include_asked else ("proposed",)
     found = [p for p in repo.all_of(KIND, store_id) if p.get("ask_on") and p["ask_on"] <= day and p["state"] in states
              and p.get("lead", {}).get("verdict") != "drop"]
-    return sorted(found, key=lambda p: (not p["payload"].get("urgent"), p["created_at"]))
+    # 긴급 먼저, 그다음 팀장이 정한 순서, 그다음 들어온 순서 (voice/departments.py)
+    return sorted(found, key=lambda p: (not p["payload"].get("urgent"), (p.get("lead") or {}).get("rank", 99), p["created_at"]))
 
 
 def mark_asked(pids: list[str]) -> None:

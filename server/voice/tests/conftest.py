@@ -276,6 +276,15 @@ class Choongjang(Donna):
         return self.turn(event="notice", notice_id=found[-1]["id"])
 
 
+# 2026-11-20 에이전트 조직 개편으로 더한 사원·팀장 (VOICE_AGENT_<이름>). 예전 에이전트만 가짜 CLOVA 로 보는 시험은 이들을 끈다
+NEW_AGENTS = ("FIXCARD", "FIELD", "SAME", "MANUAL", "LEAD", "TOPIC", "CAPTION", "HOLIDAY")
+
+
+def new_agents_off(monkeypatch) -> None:
+    for name in NEW_AGENTS:
+        monkeypatch.setenv(f"VOICE_AGENT_{name}", "false")
+
+
 def no_morning_tasks(store_id: str = "s005") -> None:
     """밤사이 리뷰에서 나온 오늘 알바생 할 일 제안을 사장님이 '안 해'라고 한 것으로 둔다. 그대로 두면 그날 처음 "도나야"로 부르는 말
     앞에 도나가 놓친 할 일부터 묻는다 (jobs/staff_tasks.py, 2026-11-20). 할 일 묻기를 보는 시험은 keep_tasks=True 로 남겨 둔다."""

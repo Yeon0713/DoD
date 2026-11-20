@@ -17,7 +17,7 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, holidays, marketing, proposals, repo, speech, width
+from voice import activity, clock, config, departments, holidays, marketing, proposals, repo, speech, width
 from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
@@ -502,6 +502,7 @@ def prepare(store_id: str) -> dict | None:
     field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
     holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
     marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)
+    departments.run_leads(load(store_id))  # 팀장 셋이 사원 결과를 판단하고, 부서 사이 충돌을 거른다 (voice/departments.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)
 

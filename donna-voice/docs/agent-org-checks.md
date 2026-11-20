@@ -63,10 +63,12 @@ cd donna-voice/app && npm run web                          # 앱 (http://localho
 - 사장님 화면: http://localhost:8090 · 알바생 화면: http://localhost:8090/staff · 시연: `/demo` · 개발자 모드: `/dev`
 - 시각 옮기기: `curl -X POST localhost:8100/v1/dev/clock -H 'Content-Type: application/json' -d '{"now":"2026-11-17T15:40:00+09:00"}'` (09:30을 넘기면 브리핑을 다시 준비하느라 10초쯤 걸림, 2장)
 - 시연 리뷰 넣기: `curl -X POST localhost:8100/v1/dev/demo_review -H 'Content-Type: application/json' -d '{"store_id":"s005","name":"leak"}'` (`leak`, `missing`, `cold`, `hall`)
-- 바로 답하기 켜고 끄기: 설정 탭 "아쉬운 리뷰 바로 답하기", 또는 `curl -X PATCH localhost:8100/v1/settings -H 'Content-Type: application/json' -d '{"store_id":"s005","negative_review_auto_reply":true}'`
+- 직급 바꾸기 (2026-11-21 인사과, 예전 "바로 답하기 켜고 끄기" 자리): `curl -X POST localhost:8100/v1/dev/hr -H 'Content-Type: application/json' -d '{"store_id":"s005","ranks":{"negative_reply":"assistant"}}'` (대리 = 묻지 않고 올림, 인턴 = 알림 뒤 묻기, 사원 = 30분 묶음 창). 설정 토글과 `negative_review_auto_reply`는 없앴습니다 (인수인계 24장)
 - 교정 카드를 템플릿으로 보려면: 셸이나 `server/.env`에 `VOICE_AGENT_FIXCARD=false`
 
 ### 결과
+
+> 2026-11-21 인사과 뒤: 아래 "바로 답하기 끔/켬"은 부정 리뷰 답글 인턴/대리로 읽습니다. 대리는 알림 없이 올리고, 교정 할 일은 30분 묶음 창으로 묻습니다 (1-7 의 알림은 이제 오지 않음).
 
 교정 카드 사원을 켜 두면 카드 제목·문장은 LLM이 씁니다(예: "국물 새지 않게 포장하세요"). 아래 "배달 용기 이중 실링 / 국물 메뉴는 랩을 두 번…"은 **템플릿 카드**이고, 사원이 실패하거나 꺼졌을 때 나옵니다.
 

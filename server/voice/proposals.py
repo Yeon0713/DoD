@@ -26,7 +26,7 @@ from voice.similar import dice
 
 KIND = "proposal"
 # 할 일 표의 origin (화면 문구와 "시킨 거 다 했대?"가 본다)
-ORIGIN = {"negative_review": "review", "manual_coach": "manual"}
+ORIGIN = {"negative_review": "review", "manual_coach": "manual", "field_variable": "field_variable"}
 LIVE = ("proposed", "asked")
 SAME_SCORE = 0.35  # 이 이상 겹치는 할 일만 LLM 에 묻는다 (시작값. 시험으로 맞춘다)
 SAME_TEXT = 0.9  # 이 이상이면 글이 거의 같다. LLM 없이 묶는다
@@ -65,9 +65,11 @@ def apply(pid: str, trigger: str) -> dict:
         if found["state"] == "applied":
             return next(t for t in staff.store_tasks(found["store_id"]) if t["id"] == found["task_id"])
         p = found["payload"]
+        # 현장 변수의 '오늘 손님이 바로 겪는 일'은 팀장이 유지했을 때(팀장이 없으면 그대로) 긴급으로 넣는다
+        urgent = p.get("urgent", False) or (p.get("today_impact", False) and (found.get("lead") or {}).get("verdict", "keep") == "keep")
         task = staff.add_task(
             found["store_id"], p["title"], p["phase"], repeat=p.get("repeat", "today"), must_confirm=p.get("must_confirm", False),
-            urgent=p.get("urgent", False), detail=p.get("detail"), days=p.get("days", 1), origin=ORIGIN[found["by"]],
+            urgent=urgent, detail=p.get("detail"), days=p.get("days", 1), origin=ORIGIN[found["by"]],
             source={**found["link"], "by": found["by"], "dept": found["dept"], "proposal_id": pid, "reason": found["reason"]},
         )
         repo.put(KIND, pid, found["store_id"], {**found, "state": "applied", "task_id": task["id"],

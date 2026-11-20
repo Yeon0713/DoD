@@ -19,7 +19,7 @@
   "reservations": [
     {"id": "rs_0031", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 2},
     {"id": "rs_0032", "starts_at": "2026-11-17T18:30:00+09:00", "party_size": 4},
-    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 12},
+    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 12, "name": "김*호", "memo": "갑각류 알레르기 손님 2명 있어요"},
     {"id": "rs_0034", "starts_at": "2026-11-17T19:30:00+09:00", "party_size": 3},
     {"id": "rs_0035", "starts_at": "2026-11-17T20:00:00+09:00", "party_size": 2}
   ],

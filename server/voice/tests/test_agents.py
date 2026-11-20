@@ -98,6 +98,8 @@ def test_improve_tip_rejects_ungrounded_numbers(clova_on):
 def test_intent_judge_used_only_when_rules_cannot_decide(clova_on, monkeypatch):
     monkeypatch.setenv("VOICE_AGENT_REPLY", "false")  # 에이전트별 스위치: 답글·고칠 점은 템플릿으로, 뜻 판정만 LLM
     monkeypatch.setenv("VOICE_AGENT_IMPROVE", "false")
+    for name in ("FIXCARD", "FIELD", "SAME", "MANUAL"):  # 2026-11-20 에 더한 사원들도 끈다
+        monkeypatch.setenv(f"VOICE_AGENT_{name}", "false")
     donna = loaded()
     donna.run("prepare_briefing")
     fake = clova_on(FakeClova(

@@ -18,7 +18,7 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 import datetime as dt
 
 from voice import activity, clock, config, proposals, repo, speech, width
-from voice.agents import fix_card, voice_reply
+from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
@@ -495,6 +495,7 @@ def prepare(store_id: str) -> dict | None:
     proposals.promote_repeats(store_id)  # 매뉴얼 코칭: 일주일에 세 번 나온 할 일은 매일 할 일로 올리자고 묻는다
     newly_scheduled = schedule_replies(view, now)
     draft_negative(load(store_id))
+    field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)
 

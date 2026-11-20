@@ -26,10 +26,11 @@ from voice.clock import iso, parse
 
 PHASES = [("before_open", "오픈 전"), ("open", "영업 중"), ("closing", "마감")]
 FRESH = dt.timedelta(minutes=5)
-ORIGINS = ("manual", "owner", "review", "story_event")
+ORIGINS = ("manual", "owner", "review", "story_event", "field_variable")
 # 도나가 넣은 일: origin → (목록 줄 아래 글, 자세히의 설명). 처음 확인하면 사장님께 알린다 (review_loop.on_staff_confirm)
 FROM_DONNA = {"review": ("리뷰에서 나온 일", "도나가 리뷰를 보고 넣은 일"),
-              "story_event": ("오늘 이벤트", "도나가 이벤트를 올리고 넣은 일")}
+              "story_event": ("오늘 이벤트", "도나가 이벤트를 올리고 넣은 일"),
+              "field_variable": ("오늘 날씨·예약", "도나가 오늘 날씨·예약을 보고 넣은 일")}
 LOGIN_ID_MIN, PASSWORD_MIN = 3, 8
 BAD_CODE = "코드가 맞지 않아요. 사장님에게 받은 코드를 확인해 주세요."
 
@@ -74,7 +75,7 @@ def add_task(store_id: str, title: str, phase: str, *, repeat: str = "today", mu
              sent_at: dt.datetime | None = None, days: int = 1, kind: str = "do", to: str = "all",
              origin: str | None = None) -> dict:
     """할 일 하나를 넣는다. 오늘만이면 오늘부터 days 일 동안 보인다.
-    origin(누가 넣었나)은 넣는 쪽이 꼭 밝힌다: manual | owner | review | story_event. 화면 문구와 확인 뒤 처리가 이것을 본다."""
+    origin(누가 넣었나)은 넣는 쪽이 꼭 밝힌다: manual | owner | review | story_event | field_variable. 화면 문구와 확인 뒤 처리가 이것을 본다."""
     if origin not in ORIGINS:
         raise ValueError(f"할 일 origin 이 필요해요: {origin!r}")
     now = clock.now()

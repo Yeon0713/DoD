@@ -55,7 +55,7 @@ def _why(view: VoiceStore, p: dict, now: dt.datetime) -> str:
         return f"{when} {told(summary)} 리뷰 때문이에요."
     if reason["type"] == "repeat":
         return f"일주일에 {speech.count(reason['count'], '번')} 나와서 매일 할 일로 올려요."
-    return reason.get("why") or ""
+    return reason.get("why") or ""  # 현장 변수: "예약 메모에 '…'라고 있어요."
 
 
 def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -> dict | None:

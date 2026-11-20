@@ -321,12 +321,11 @@ def handle(request: dict) -> dict:
                 session.pop("story_id", None)
         if session.get("last_type") != "ask_action":
             session.pop("alert_id", None)
+            session.pop("story_id", None)
         if echo.is_echo(store_id, utterance["text"]):
             intent = Intent("echo", intent_rules.tidy(utterance["text"]))
         else:
             intent = understand(utterance["text"], session, view, addressed)
-            session.pop("story_id", None)
-        intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
     response = dispatch(intent, session, brief, view)

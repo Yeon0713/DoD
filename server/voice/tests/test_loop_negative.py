@@ -357,6 +357,14 @@ def test_answer_goes_to_the_review_being_asked_now():
 # ── A 바로 답하기를 켠 가게 (2026-11-20) ──
 
 
+def test_redo_does_not_post():
+    """"다시 만들어 줘"(action.redo)를 승인으로 보고 답글을 올리고 할 일을 넣던 버그 (2026-11-21)."""
+    donna, rid = leak()
+    donna.open_notice()
+    asked = donna.turn("다시 만들어 줘")
+    assert asked["type"] == "ask_action" and review(rid)["reply_status"] == "proposed" and alert_of(rid)["state"] == "alerted"
+
+
 def test_alert_does_not_go_through_a_team_lead(clova_on, monkeypatch):
     """팀장을 없앴다 (2026-11-21, agent-structure.md 5장). 다른 에이전트를 꺼 두면 알림까지 CLOVA 를 한 번도 부르지 않는다."""
     from Harness.tests.fakes import FakeClova

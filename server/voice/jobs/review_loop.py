@@ -341,6 +341,8 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             return _decide_task(view, record, intent_name, edits)
         if intent_name == "action.unclear":
             return ask(view, record, lead=["진행하시려면 '응, 진행해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
+        if intent_name == "action.redo" and record["state"] in ASKING:  # "다시 만들어"를 승인으로 보고 올리던 것을 막는다 (2026-11-21)
+            return ask(view, record, lead=["올리시려면 '응, 진행해', 올리지 않으시려면 '안 해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
         if record["state"] in DONE:
             return answer("답글은 이미 올렸어요", [say("답글은 이미 올렸어요.")], _cards(record, repo.review(record["review_id"]), posted=True))
 

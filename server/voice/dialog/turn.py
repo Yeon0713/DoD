@@ -29,7 +29,7 @@ from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
-from voice.jobs import review_loop, staff_tasks
+from voice.jobs import batch_ask, review_loop, staff_tasks
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -189,6 +189,20 @@ def story_reply(name: str, session: dict, brief: dict, view) -> dict:
     return _prefixed(_go(brief, session, _after(brief, "story_event")), *lead)
 
 
+def _batch_reply(view, intent: Intent, session: dict) -> dict:
+    """묶음 질문의 대답. 브리핑 단계에서 물었으면 정한 뒤 다음 단계로 이어 간다."""
+    response = batch_ask.decide(view, intent.name, intent.edits, session, intent.owner_said)
+    step = session.get("step")
+    in_briefing = session.get("mode") == "briefing" and step in STEP_KEYS
+    if response["type"] == "ask_action":  # 다음 건을 이어 묻는다 (인턴) 또는 고쳐서 다시 묻는다
+        return {**response, "keep_context": "ask_action", **({"briefing": _gauge(step)} if in_briefing else {})}
+    if not in_briefing:
+        return response
+    brief = briefing_job.refresh_steps(view.store_id)
+    following = _go(brief, session, _after(brief, step))
+    return {**following, "say": response["say"] + following["say"]}
+
+
 def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
     name = intent.name
     if name in ("not_for_donna", "echo"):  # echo: 도나가 한 말이 마이크로 다시 들어온 것 (dialog/echo.py)
@@ -213,6 +227,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         response = holidays.decide(view, name, session)
         briefing_job.refresh_steps(view.store_id)
         return response
+    if session.get("batch") and name.startswith("action."):  # 인턴·사원 결재 묻기 (jobs/batch_ask.py, 인사과 4단계)
+        return _batch_reply(view, intent, session)
     if session.get("story_id") and (name.startswith("action.") or name == "notice.open"):  # 스토리 이벤트 포스터를 묻는 중
         return {**story_event.decide(view, name, intent.edits, session["story_id"], intent.owner_said), "keep_context": "ask_action"}
     if name.startswith("action.") or name == "notice.open":  # 아쉬운 리뷰 고리. 브리핑과 상관없이
@@ -258,20 +274,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         response["headline"] = "다시 말씀드릴게요"
         session["mode"] = "briefing"
         return response
-    if name in ("permission.yes", "permission.no"):
-        if session.get("last_type") != "ask_permission":
-            return empty("not_understood")
-        yes = name == "permission.yes"
-        repo.save_settings(view.store_id, {**repo.settings(view.store_id), "negative_review_auto_reply": yes})
-        activity.log(view.store_id, "owner", "아쉬운 리뷰는 도나가 바로 답하게 맡겼어요" if yes else "아쉬운 리뷰는 직접 보기로 했어요", "permission")
-        if yes:
-            briefing_job.post_ready_negatives(view.store_id, clock.now())
-        brief = briefing_job.prepare(view.store_id)  # 허락에 따라 3단계가 바뀐다 (답글은 미리 써 둬서 LLM 을 기다리지 않는다)
-        if yes and brief["steps"].get("negative") and brief["steps"]["negative"]["type"] == "answer":
-            session.update(step="negative", mode="briefing")
-            return _prefixed(_step(brief, "negative"), "네, 앞으로는 제가 바로 답할게요.")
-        lead = "네, 앞으로는 제가 바로 답할게요." if yes else "네, 아쉬운 리뷰는 제가 답하지 않고 알려만 드릴게요."
-        return _prefixed(_go(brief, session, _after(brief, step or "negative")), lead)
+    if name in ("permission.yes", "permission.no"):  # 허락 질문(D-10)은 없앴다 (인사과 4-a). 직급이 정한다
+        return empty("not_understood")
     # detail.*
     if not step:
         return empty("not_understood")
@@ -370,6 +374,7 @@ def handle(request: dict) -> dict:
             later = dispatch(understand(session.pop("deferred_text"), session, view, True), session, briefing_job.current(store_id), view)
             response = {**later, "say": response["say"] + later["say"], "cards": response["cards"] + later["cards"]}
     staff_tasks.remember_asked(response, session)
+    batch_ask.remember(response, session)
     if response.get("holiday"):  # 쉬는 날을 묻는 중 (holiday.yes / holiday.no 가 본다)
         session["holiday_pending"] = response["holiday"]
     response.setdefault("briefing", None)

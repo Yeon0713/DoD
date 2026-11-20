@@ -22,7 +22,7 @@ from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import auto_reply, queue, schedule, staff_tasks, strengths
+from voice.jobs import auto_reply, batch_ask, queue, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
 STEP_KEYS = ["schedule", "holiday", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
@@ -106,41 +106,17 @@ def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
 
 
 def draft_negative(view: VoiceStore) -> None:
-    """아쉬운 리뷰에 답글을 미리 써 둔다. 허락하면 이 글을 바로 올린다 (말하는 동안 LLM 을 기다리지 않게).
-    허락을 거절한 가게면 초안(drafted)으로 보여 준다."""
-    declined = repo.settings(view.store_id).get("negative_review_auto_reply") is False
+    """아쉬운 리뷰에 답글을 미리 써 둔다. 아침 브리핑에서 "올릴까요?"에 "응"이면 이 글을 바로 올린다 (말하는 동안 LLM 을 기다리지 않게)."""
     for review in view.reviews():
         if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
             continue
         if not review.get("reply_ready"):  # 교정 카드를 먼저 정해 답글이 같은 조치를 약속하게 한다 (2026-11-20, 안 B)
             found = fix_card.card_for(view, review)
             fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
-            written = voice_reply.write(view, review, "DRAFT" if declined else "AUTO", fix=fix)
+            written = voice_reply.write(view, review, "AUTO", fix=fix)
             review["reply_ready"] = written
             auto_reply.propose_overnight(view.store_id, review, found, view.now)  # 할 일은 아침 브리핑에서 묻는다
-        if declined:
-            review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": review["reply_ready"]["text"],
-                           "reply_source": review["reply_ready"]["source"]})
         repo.save_review(review)
-
-
-def post_ready_negatives(store_id: str, now: dt.datetime) -> list[dict]:
-    """허락을 받은 그 자리에서, 미리 써 둔 답글을 밤사이 아쉬운 리뷰에 올린다 (Figma D-10 → D-11)."""
-    view = load(store_id)
-    posted = []
-    for review in view.reviews():
-        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
-            continue
-        ready = review.get("reply_ready") or voice_reply.write(view, review, "AUTO")
-        review.update({
-            "reply_status": "posted", "reply_by": "donna", "reply_text": ready["text"], "reply_source": ready["source"],
-            "reply_posted_at": iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
-            "reply_trigger": "permission",
-        })
-        posted.append(repo.save_review(review))
-    if posted:
-        activity.log(store_id, "donna", f"아쉬운 리뷰 {len(posted)}개에 답글을 올렸어요", "negative_replied")
-    return posted
 
 
 # ── 3: 단계 응답 ──
@@ -271,51 +247,24 @@ def replied_answer(review: dict, now: dt.datetime) -> dict:
 
 
 def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tuple[dict | None, dict | None]:
-    """아쉬운 리뷰 단계와 자세히 보기. 허락 설정에 따라 갈린다 (문서 10장 '3단계의 갈림')."""
-    allowed = repo.settings(view.store_id).get("negative_review_auto_reply")
-    waiting_neg = [r for r in waiting if r.get("sentiment") == "negative"]
-
-    if allowed is None:
-        if not waiting_neg:
-            return None, None
-        response = answer(
-            "제가 바로 답할까요?",
-            # 2026-11-18: 영업 중에 온 아쉬운 리뷰는 바로 여쭤보고 사장님 한마디로 올린다 (review_loop). 이 허락은
-            # 문 닫은 뒤에 온 리뷰, 여쭤봐도 대답이 없을 때 사과만 먼저 다는 것이다.
-            [say("아쉬운 리뷰는 빨리 답할수록 좋아요.", "아쉬운 리뷰는 빨리 답할수록 좋아요."),
-             say("영업 중에 오면 바로 여쭤볼게요."),
-             say("문 닫은 뒤에 왔거나 대답이 없으실 때는, 제가 30분 안에 사과 답글을 달고 브리핑 때 알려 드릴까요?", None, ["pm_reply", "pm_brief"])],
-            [{"type": "rows", "id": "permission", "rows": [
-                {"id": "pm_reply", "kind": "reply", "value": "30분 안에 사과 답글"},
-                {"id": "pm_brief", "kind": "briefing", "value": "브리핑 때 알려 드려요"},
-                {"id": "pm_off", "kind": "off", "value": "언제든 말로 끌 수 있어요"}]}],
-            kind="ask_permission", permission={"key": "negative_review_auto_reply"},
-        )
-        response["expects_reply"] = True
-        return response, None
-
-    if allowed is True:
+    """아쉬운 리뷰 단계와 자세히 보기. 부정 리뷰 답글 직급에 따라 갈린다 (인사과 4-a, 허락 질문 D-10 은 없앰).
+    인턴·사원: 써 둔 답글을 "올릴까요?"로 묻는다 (인턴은 한 건씩, 사원은 묶어서, jobs/batch_ask.py).
+    대리·과장: 밤사이 묻지 않고 올렸으므로 올린 것을 알린다 (사후 보고는 5단계 done_report)."""
+    mode = hr.asks(view.store_id, "negative_reply")
+    if mode is None:
         replied = auto_replied(view, now)
         if not replied:
             return None, None
         review = replied[0]
         response = replied_answer(review, now)
         return response, _detail(review, response["cards"][0]["reply"], "제가 올린 답글이에요.")
-
-    # 허락을 거절함: 아쉬운 리뷰와 써 둔 초안을 보여 준다 (14장 7번 제안). 올리지는 않는다
-    if not waiting_neg:
+    waiting_neg = sorted((r for r in waiting if r.get("sentiment") == "negative"), key=lambda r: r["written_at"], reverse=True)
+    response = batch_ask.ask(view, [{"job": "negative_reply", "ref": r["id"]} for r in waiting_neg], mode)
+    if response is None:
         return None, None
-    review = sorted(waiting_neg, key=lambda r: r["written_at"], reverse=True)[0]
-    n = len(waiting_neg)
-    draft = {"text": review.get("reply_text") or "", "posted_at": None, "by": "donna"}
-    response = answer(
-        f"아쉬운 리뷰가 {n}개 있어요",
-        [say(f"아쉬운 리뷰가 {speech.count(n, '개')} 있어요."),
-         say(f"{told(review['summary'])} 리뷰예요.", None, [review["id"]]),
-         say("답글 초안을 써 뒀어요.", None, [review["id"]])],
-        [review_card(review, draft)],
-    )
-    return response, _detail(review, draft, "제가 써 둔 답글 초안이에요.")
+    first = view.review(response["action"]["items"][0]["ref"])  # 자세히 보기·읽어 주기는 지금 묻는 첫 리뷰와 써 둔 초안
+    draft = {"text": first["reply_ready"]["text"], "posted_at": None, "by": "donna"}
+    return response, _detail(first, draft, "제가 써 둔 답글 초안이에요.")
 
 
 def _detail(review: dict, reply: dict, reply_intro: str) -> dict:
@@ -541,13 +490,16 @@ def prepare(store_id: str) -> dict | None:
 
 
 def refresh_steps(store_id: str) -> dict | None:
-    """대답으로 바뀌는 묻는 단계(알바생 할 일, 쉬는 날)만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
+    """대답으로 바뀌는 묻는 단계(알바생 할 일, 쉬는 날, 아쉬운 리뷰 답글)만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
     brief = current(store_id)
     view = load(store_id)
     if brief is None or view is None:
         return brief
     brief["steps"]["staff_tasks"] = staff_tasks.step(view, clock.now())
     brief["steps"]["holiday"] = holidays.step(view)
+    brief["steps"]["negative"], negative_detail = step_negative(view, clock.now(), awaiting(view))
+    if negative_detail:
+        brief["details"]["negative"] = negative_detail
     return repo.put("briefing", f"{store_id}:{brief['date']}", store_id, brief)
 
 

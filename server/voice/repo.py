@@ -193,7 +193,7 @@ def save_review(data: dict) -> dict:
 
 
 def settings(store_id: str) -> dict:
-    return get("settings", store_id) or {"negative_review_auto_reply": None}
+    return get("settings", store_id) or {}
 
 
 def save_settings(store_id: str, data: dict) -> dict:

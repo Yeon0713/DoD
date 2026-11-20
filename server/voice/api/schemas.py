@@ -52,7 +52,7 @@ class HoursPatch(BaseModel):
 
 
 class SettingsPatch(BaseModel):
-    """보낸 것만 바꾼다. negative_review_auto_reply 의 null 은 '아직 묻지 않음'으로 되돌리는 값이라, 안 보낸 것과 다르다."""
+    """보낸 것만 바꾼다. negative_review_auto_reply 는 없앴다(인사과 4-a). 앱이 바뀔 때까지 와도 무시한다."""
 
     store_id: str
     negative_review_auto_reply: bool | None = None

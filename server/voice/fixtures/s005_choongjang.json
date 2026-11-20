@@ -28,8 +28,10 @@
     ],
     "facts": []
   },
+  "_hr_comment": "업무별 출발 직급 (voice/hr.py). 지금 시연을 가장 적게 바꾸는 배치 (donna-voice/docs/agent-structure.md 9-2의 1). 없는 업무는 인턴",
+  "hr": {"negative_reply": "intern", "positive_reply": "staff", "instagram_post": "intern", "story_poster": "staff",
+         "review_fix_task": "staff", "field_task": "staff", "manual_task": "staff"},
   "settings": {
-    "negative_review_auto_reply": null,
     "compensation": {
       "packaging": "다음 주문 때 감자전 하나를 서비스로 드릴게요.",
       "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",

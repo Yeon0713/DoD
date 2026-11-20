@@ -57,7 +57,9 @@ def test_briefing_notify_defaults_to_an_hour_before_open_and_owner_can_change(ch
 
     changed = patch(chj, briefing_notify={"time": "08:30"})
     assert changed["briefing_notify"]["time_label"] == "오전 8시 30분" and not changed["briefing_notify"]["is_default"]
-    assert changed["negative_review_auto_reply"] is None  # 보내지 않은 것은 그대로
+    assert "negative_review_auto_reply" not in changed  # 없앤 설정 (인사과 4-a)
+    ignored = patch(chj, negative_review_auto_reply=True)  # 옛 앱이 보내도 무시한다
+    assert "negative_review_auto_reply" not in ignored and "negative_review_auto_reply" not in repo.settings("s005")
     jobs = [j for j in repo.all_of("job", "s005") if j["kind"] == "prepare_briefing" and not j["done"]]
     assert [j["due_at"] for j in jobs] == ["2026-11-18T08:30:00+09:00"]  # 알림 때 이미 준비돼 있게
 

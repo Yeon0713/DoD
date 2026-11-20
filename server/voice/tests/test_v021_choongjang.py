@@ -43,14 +43,17 @@ def test_briefing_follows_figma(chj: Choongjang):
     d09 = chj.turn(event="auto_next")
     assert d09["headline"] == "답글 기다리는 리뷰 5개"
     d10 = chj.turn(event="auto_next")
-    assert d10["type"] == "ask_permission" and d10["headline"] == "제가 바로 답할까요?"
+    # 인사과 4-a: 허락 질문(D-10 "제가 바로 답할까요?")을 없앴다. 부정 리뷰 답글 인턴이라 써 둔 답글을 리뷰마다 묻는다
+    assert d10["type"] == "ask_action" and d10["headline"] == "사과 답글 올릴까요?" and d10["action"]["mode"] == "each"
+    assert [s["text"] for s in d10["say"]] == ["어젯밤 배달로 드신 손님이 면이 불어서 왔다는 리뷰를 남기셨어요.", "써 둔 사과 답글을 올릴까요?"]
+    assert d10["cards"][0]["text"] == "면이 불어서 왔어요." and d10["cards"][0]["reply"]["posted_at"] is None
 
     d11 = chj.turn("응, 그렇게 해")
-    assert d11["headline"] == "방금 답글을 달았어요"
-    assert d11["say"][1]["text"] == "어젯밤 배달로 드신 손님이 면이 불어서 왔다는 리뷰를 남기셨어요."
-    assert d11["cards"][0]["text"] == "면이 불어서 왔어요." and d11["cards"][0]["reply"]["by"] == "donna"
+    assert d11["say"][0]["text"] == "사과 답글을 올렸어요." and d11["cards"][0]["text"] == "옹심이가 조금 퍼져 있었어요."
+    assert d11["say"][-1]["text"] == "써 둔 사과 답글을 올릴까요?"
 
-    d12 = chj.turn("다음")
+    d12 = chj.turn("응, 올려")
+    assert d12["say"][0]["text"] == "사과 답글을 올렸어요." and d12["briefing"]["step_key"] == "positive"
     assert d12["headline"] == "들깨 국물을 좋아하세요"
     assert [(b["label"], b["count"]) for b in d12["cards"][0]["items"]] == [("고소한 들깨 국물", 9), ("쫀득한 옹심이", 6), ("넉넉한 양", 4)]
     assert d12["cards"][1]["text"] == "들깨는 지금처럼 그날 아침에 갈아 주세요"

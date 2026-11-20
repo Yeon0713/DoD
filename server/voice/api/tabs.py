@@ -9,7 +9,7 @@ import re
 
 from fastapi import APIRouter
 
-from voice import activity, clock, config, hours, notices, repo, speech
+from voice import activity, clock, config, hours, hr, notices, repo, speech
 from voice.api.errors import store_not_found
 from voice.api.home import date_label, time_of
 from voice.clock import parse
@@ -77,7 +77,7 @@ def _remaining_today(view, now: dt.datetime) -> list[dict]:
     if not any(a["text"] == "오늘 일정 브리핑을 들었어요" for a in activity.on(store_id, now.date())):
         out.append({"id": "r_brief", "kind": "briefing", "text": "오늘 일정 브리핑 듣기", "time_label": None})
     neg = [r for r in briefing.awaiting(view) if r.get("sentiment") == "negative"]
-    if neg and repo.settings(store_id).get("negative_review_auto_reply") is not True:
+    if neg and hr.asks(store_id, "negative_reply") is not None:
         out.append({"id": "r_neg", "kind": "reviews", "text": f"아쉬운 리뷰 {len(neg)}개에 답글 달기", "time_label": None})
     for plan in _plans(view, now.date()):
         if plan["kind"] != "weather" and plan["starts_at"] and parse(plan["starts_at"]) > now:

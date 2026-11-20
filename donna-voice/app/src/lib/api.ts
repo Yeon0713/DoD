@@ -92,7 +92,11 @@ export type Turn = {
   open?: 'kakao_share' | 'instagram';
   /** ask_action: 도나가 아쉬운 리뷰 처리를 물었다 ("응, 진행해" / "쿠폰 빼고" / "안 해").
    *  review_fix_task: 바로 답하기를 켠 가게에서 답글은 올렸고 알바생 할 일만 묻는다 */
-  action?: { kind: 'review_fix' | 'review_fix_task'; alert_id: string; compensation: boolean; staff_card: string | null; deadline_at: string };
+  action?:
+    | { kind: 'review_fix' | 'review_fix_task'; alert_id: string; compensation: boolean; staff_card: string | null; deadline_at: string }
+    /** batch: 인사과 직급대로 묻기 (인턴은 한 건씩 mode 'each', 사원은 묶어서 'batch'). 대답: "응" / "두 번째는 빼" / "안 해".
+     *  items 는 지금 묻는 것, rest 는 이어서 물을 것 (server/voice/jobs/batch_ask.py) */
+    | { kind: 'batch'; items: { job: string; ref: string }[]; rest: { job: string; ref: string }[]; mode: 'each' | 'batch' };
 };
 
 export type Actor = 'donna' | 'owner';

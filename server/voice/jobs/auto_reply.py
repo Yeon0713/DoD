@@ -1,4 +1,4 @@
-"""F3 아쉬운 리뷰에 바로 답하기 (허락받은 경우만), 예약한 답글 올리기.
+"""F3 아쉬운 리뷰에 바로 답하기 (부정 리뷰 답글 직급이 대리·과장일 때만, voice/hr.py), 예약한 답글 올리기.
 
 '올린다' = reply_status 를 posted 로 바꾸고 reply_posted_at 을 적는 것 (v0.2.0 은 실제 플랫폼에 올리지 않는다, 문서 9장).
 reply_summary(화면 폭 32 안)는 주제별 템플릿이다. 답글 본문을 줄이는 LLM 호출은 하지 않는다.
@@ -8,7 +8,7 @@ reply_summary(화면 폭 32 안)는 주제별 템플릿이다. 답글 본문을 
 
 import datetime as dt
 
-from voice import clock, config, proposals, repo
+from voice import clock, config, hr, proposals, repo
 from voice.agents import fix_card, voice_reply
 from voice.clock import parse
 from voice.context import load
@@ -31,8 +31,9 @@ def eligible(review: dict, now: dt.datetime) -> bool:
 
 
 def reply_now(store_id: str, review_id: str) -> dict | None:
-    """리뷰 한 건에 바로 답한다. 허락이 없거나, 이미 답했거나, 30분이 지났으면 아무것도 하지 않는다."""
-    if repo.settings(store_id).get("negative_review_auto_reply") is not True:
+    """리뷰 한 건에 바로 답한다. 대리·과장이 아니거나, 이미 답했거나, 30분이 지났으면 아무것도 하지 않는다.
+    인턴·사원이면 아침 브리핑 준비(draft_negative)가 써 두고 "올릴까요?"로 묻는다."""
+    if hr.asks(store_id, "negative_reply") is not None:
         return None
     view = load(store_id)
     review = view.review(review_id) if view else None
@@ -49,7 +50,9 @@ def reply_now(store_id: str, review_id: str) -> dict | None:
         "reply_notes": written["notes"], "reply_summary": REPLY_SUMMARIES[review.get("topic") or "other"],
         "reply_posted_at": clock.iso(posted), "replied_in_minutes": max(1, round((posted - parse(review["written_at"])).total_seconds() / 60)),
     })
-    return repo.save_review(review)
+    saved = repo.save_review(review)
+    hr.record(store_id, "negative_reply", review_id, "done")
+    return saved
 
 
 def propose_overnight(store_id: str, review: dict, found: dict, now: dt.datetime) -> dict | None:

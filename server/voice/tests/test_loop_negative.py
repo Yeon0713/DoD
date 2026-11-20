@@ -1,8 +1,8 @@
 """L·E·T·G: 아쉬운 리뷰 → 알림 → 사장님 한마디 → 답글 + 알바생 교정 카드 → 알바생 확인 (닫힌 고리).
 
 번호는 donna-voice/docs/test-scenarios-closed-loop.md 와 같다. 에이전트는 꺼져 있어 답글은 원인별 템플릿이다.
-공통 준비: 초옹장 11/17, 바로 답하기 안 켬(묻기), 15:35 하린 출근, 15:40 국물 샘 리뷰.
-바로 답하기를 켠 가게(자동 답글 → 할 일만 묻기 → 대답 없으면 다음 날 브리핑)는 A 묶음 (2026-11-20).
+공통 준비: 초옹장 11/17, 부정 리뷰 답글 인턴(묻기), 15:35 하린 출근, 15:40 국물 샘 리뷰.
+부정 리뷰 답글 대리(묻지 않고 올림 → 할 일은 다음 날 브리핑)는 A 묶음 (2026-11-20, 2026-11-21 인사과 4-a).
 """
 
 import re
@@ -88,7 +88,7 @@ def test_l4_approve():
     assert alert_of(rid)["state"] == "card_pinned"
     assert [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
     assert hr_log() == [("negative_reply", "approved"), ("review_fix_task", "approved")]
-    assert [e["said"] for e in hr.events("s005")] == ["응, 진행해"] * 2 and hr.events("s005")[0]["ref"] == f"al_{rid}"
+    assert [e["said"] for e in hr.events("s005")] == ["응, 진행해"] * 2 and hr.events("s005")[0]["ref"] == rid
 
 
 def test_l6_confirm_closes():
@@ -248,8 +248,9 @@ def test_t4_no_permission():
     donna.clock("2026-11-18T10:00:00+09:00")
     donna.session_id = "sess_20261118_s005"
     assert donna.turn("오늘 일정 브리핑해 줘")["briefing"]
-    asked = next(s for s in (donna.turn(event="auto_next") for _ in range(2)) if s["type"] == "ask_permission")
-    assert asked["permission"] == {"key": "negative_review_auto_reply"}
+    # 다음 날 아침 3단계: 초안으로 남은 답글을 "올릴까요?"로 묻는다 (부정 리뷰 답글 인턴, 허락 질문은 없앰)
+    asked = next(s for s in (donna.turn(event="auto_next") for _ in range(2)) if s["type"] == "ask_action")
+    assert asked["action"]["kind"] == "batch" and asked["action"]["mode"] == "each" and asked["say"][-1]["text"] == "써 둔 사과 답글을 올릴까요?"
 
 
 def test_t6_clock_jump():
@@ -260,7 +261,7 @@ def test_t6_clock_jump():
 
 
 def test_t7_after_hours():
-    donna = choongjang()
+    donna = choongjang(permission=True)  # 부정 리뷰 답글 대리: 문 닫은 뒤 리뷰에 묻지 않고 답한다
     donna.clock("2026-11-17T21:40:00+09:00")
     rid = donna.demo_review("leak")
     assert alert_of(rid) is None and donna.notices() == []
@@ -360,7 +361,7 @@ def test_answer_goes_to_the_review_being_asked_now():
     assert alert_of(first)["state"] == "left_draft" and alert_of(first)["task_id"] is None
 
 
-# ── A 바로 답하기를 켠 가게 (2026-11-20) ──
+# ── A 부정 리뷰 답글 대리 (예전: 바로 답하기를 켠 가게) ──
 
 
 def test_redo_does_not_post():
@@ -384,20 +385,20 @@ def test_alert_does_not_go_through_a_team_lead(clova_on, monkeypatch):
     assert proposals.get(record["proposal_id"])["state"] == "asked"  # 팀장이 빼지 않고 그대로 묻는다
 
 
-def test_a1_auto_posts_without_compensation_and_asks_only_the_task():
+def test_a1_assistant_posts_without_asking_or_notice():
+    """부정 리뷰 답글 대리 (예전: 바로 답하기를 켠 가게): 묻지 않고 올리고, 바로 알리지 않는다 (다음 날 아침 사후 보고, 인사과 4-a).
+    교정 할 일은 알바생 할 일이라 늘 결재: 다음 아침 브리핑에서 묻는다."""
+    from voice import proposals
+
     donna, rid = leak(permission=True)
     posted = review(rid)
     assert posted["reply_status"] == "posted" and posted["reply_trigger"] == "auto" and LEAK_PRESET not in posted["reply_text"]
     assert "랩을 두 번" in posted["reply_text"]  # 교정 카드와 같은 조치를 약속한다
-    assert alert_of(rid)["state"] == "auto_posted" and jobs(donna, rid) == {"review_alert": "15:40", "review_fix_carry": "16:05"}
-    asked = donna.open_notice()
-    assert asked["type"] == "ask_action" and asked["action"]["kind"] == "review_fix_task"
-    assert [s["text"] for s in asked["say"]] == [
-        "사장님, 방금 배민에 국물이 샜다는 아쉬운 리뷰가 와서 사과 답글을 올렸어요.", "알바생 할 일에 배달 용기 이중 실링을 넣을까요?"]
-    done = donna.turn("응, 넣어")
-    assert done["headline"] == "할 일 넣었어요" and [t["title"] for t in fix_cards(donna)] == ["배달 용기 이중 실링"]
-    assert alert_of(rid)["state"] == "card_pinned"
-    assert hr_log() == [("review_fix_task", "approved")]  # 자동으로 올린 답글은 결재가 아니다
+    assert donna.notices() == [] and jobs(donna, rid) == {"review_alert": "15:40"}
+    record = alert_of(rid)
+    assert record["state"] == "carried" and fix_cards(donna) == []
+    assert proposals.get(record["proposal_id"])["ask_on"] == "2026-11-18"
+    assert hr_log() == [("negative_reply", "done")]  # 묻지 않고 처리한 것 (대리 → 과장 판정과 사후 보고에 쓴다)
 
 
 def test_a2_no_answer_goes_to_next_morning():
@@ -417,14 +418,6 @@ def test_a2_no_answer_goes_to_next_morning():
             break
         response = donna.turn("다음")
     assert response["type"] == "ask_tasks" and "배달 용기 이중 실링" in response["say"][-1]["text"]
-
-
-def test_a3_no_means_no_task():
-    donna, rid = leak(permission=True)
-    donna.open_notice()
-    done = donna.turn("안 해")
-    assert done["headline"] == "할 일은 넣지 않을게요" and fix_cards(donna) == [] and alert_of(rid)["state"] == "closed"
-    assert hr_log() == [("review_fix_task", "rejected")]
 
 
 def test_a4_late_delivery_makes_no_card():

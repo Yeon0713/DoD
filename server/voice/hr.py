@@ -77,6 +77,14 @@ def _start(store_id: str, job: str, rank: str) -> dict:
         "since": now, "changed_by": "start", "history": [{"at": now, "from": None, "to": rank, "by": "start"}]})
 
 
+def set_ranks(store_id: str, ranks: dict[str, str]) -> None:
+    """직급을 그대로 적는다 (시나리오 파일의 hr 칸, 개발자 API /v1/dev/hr). 평가·강등이 아니라 출발 직급이다."""
+    for job, rank_ in ranks.items():
+        if job not in JOBS or rank_ not in RANKS:
+            raise ValueError(f"모르는 업무나 직급: {job}={rank_}")
+        _start(store_id, job, rank_)
+
+
 def stored(store_id: str, job: str) -> dict:
     """저장된 직급 문서. 없으면 인턴으로 만든다 (새 가게, 4-9)."""
     return repo.get(RANK_KIND, rank_id(store_id, job)) or _start(store_id, job, "intern")

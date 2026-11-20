@@ -11,7 +11,7 @@ import json
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
-from voice import clock, config, repo, speech, staff, staff_db
+from voice import clock, config, hr, repo, speech, staff, staff_db
 from voice.api.errors import store_not_found
 from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn
 from voice import prepared_snapshot, staff_orders
@@ -40,6 +40,7 @@ def load_fixtures(payload: dict) -> dict:
         repo.save_review(label.label({"reply_status": "none", **raw, "store_id": store_id}))
     if "settings" in payload:
         repo.save_settings(store_id, payload["settings"])
+    hr.set_ranks(store_id, payload.get("hr") or {})  # 업무별 출발 직급 (없는 업무는 인턴, voice/hr.py)
     _put_pos_data(store_id, payload)
     for item in payload.get("activity", []):  # 지난 날 한 일 (일정 탭)
         repo.put("activity", f"{store_id}:{item['at'][:10]}:{item['id']}", store_id, item)
@@ -261,3 +262,13 @@ def get_state(store_id: str):
         return store_not_found()
     data = repo.kinds_of(store_id)
     return {"now": clock.iso(clock.now()), "settings": repo.settings(store_id), **{kind: rows for kind, rows in data.items() if kind != "settings"}}
+
+
+@router.post("/hr")
+def post_hr(payload: dict = Body(...)):
+    """직급을 바꾼다 (시연·시험): {"store_id": "s005", "ranks": {"negative_reply": "assistant"}}. 바뀐 직급은 다음 준비부터 보인다."""
+    store_id = payload["store_id"]
+    if repo.store(store_id) is None:
+        return store_not_found()
+    hr.set_ranks(store_id, payload.get("ranks") or {})
+    return {"store_id": store_id, "ranks": {job: hr.rank(store_id, job) for job, spec in hr.JOBS.items() if not spec.get("future")}}

@@ -6,7 +6,9 @@
   3. "응, 진행해" → 답글을 올리고(플랫폼에 올린 것으로 적는다) 알바생 할 일에 교정 카드를 넣는다 (모두 확인 필요, 긴급 아님)
      "쿠폰 빼고 사과만", "카드는 넣지 마" → 고쳐서 다시 묻거나(올리라는 말이 같이 있으면) 바로 올린다. "안 해" → 초안만 남긴다
   4. 알바생이 카드를 확인하면 사장님께 알린다 (notice staff_checked) → 고리가 닫힌다
-  대답이 없으면 15분 뒤 한 번 더 알리고, 25분이 되면 (허락했으면) 사과만 먼저 올린다. 허락이 없으면 초안으로 남긴다.
+  대답이 없으면 15분 뒤 한 번 더 알리고, 25분이 되면 초안으로 남긴다.
+부정 리뷰 답글 직급이 대리·과장이면(voice/hr.py, 인사과 4-a) 묻지 않고 바로 올리고 알리지 않는다 (다음 날 아침 사후 보고).
+교정 할 일은 제안으로 남겨 다음 아침 브리핑에서 묻는다.
 문을 닫은 뒤에 온 리뷰는 지금처럼 10분 뒤 바로 답하기(auto_reply)를 탄다.
 
 상태 (저장소 종류 alert, id al_<리뷰 id>)
@@ -58,9 +60,7 @@ def on_new_review(review: dict) -> str:
     payload = {"review_id": review["id"]}
     if in_alert_hours(repo.store(store_id), written):
         queue.add(store_id, "review_alert", written, payload)
-        if _auto(store_id):  # 바로 답하기를 켠 가게: 묻지 않고 올린다. 할 일만 묻고, 대답이 없으면 다음 날 브리핑으로
-            queue.add(store_id, "review_fix_carry", written + config.ALERT_FALLBACK_AFTER, payload)
-        else:
+        if not _auto(store_id):  # 대리·과장은 묻지 않고 올리므로 다시 알림·25분 처리가 없다
             queue.add(store_id, "review_remind", written + config.ALERT_REMIND_AFTER, payload)
             queue.add(store_id, "review_fallback", written + config.ALERT_FALLBACK_AFTER, payload)
         return "alert"
@@ -69,7 +69,8 @@ def on_new_review(review: dict) -> str:
 
 
 def _auto(store_id: str) -> bool:
-    return repo.settings(store_id).get("negative_review_auto_reply") is True
+    """부정 리뷰 답글을 묻지 않고 올리는가 (대리·과장)."""
+    return hr.asks(store_id, "negative_reply") is None
 
 
 def _preset(store_id: str, kind: str) -> str | None:
@@ -117,16 +118,17 @@ def alert(store_id: str, review_id: str) -> dict | None:
 
 
 def _auto_post(record: dict, platform: str) -> dict:
-    """바로 답하기를 켠 가게: 사과 답글을 바로 올리고 알린다. 교정 카드가 있으면 넣을지만 묻는다 (2026-11-20 결정)."""
+    """대리·과장: 사과 답글을 묻지 않고 올린다. 바로 알리지 않는다 (다음 날 아침 사후 보고, 6장 결정 15).
+    교정 카드가 있으면 제안으로 남겨 다음 아침 브리핑에서 묻는다 (알바생 할 일은 늘 결재)."""
     _post(record, "auto")
-    text = f"{platform} 아쉬운 리뷰에 사과 답글을 올렸어요"
-    if record["use_card"] and record["card"]:
-        record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "auto_posted"})
-        notices.push(record["store_id"], "negative_auto", text, opens_turn=True, alert_id=record["id"])
-    else:
-        record = repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "auto"})
-        notices.push(record["store_id"], "negative_auto", text, say=[f"{text}."])
-    return record
+    hr.record(record["store_id"], "negative_reply", record["review_id"], "done")
+    if record["use_card"] and record["card"] and record.get("proposal_id"):
+        day = staff_tasks.briefing_day(repo.store(record["store_id"]), clock.now(), after_today=True)
+        proposals.carry(record["proposal_id"], day)
+        return repo.put("alert", record["id"], record["store_id"], {**record, "state": "carried", "decided_by": "auto",
+                                                                    "decided_at": iso(clock.now())})
+    return repo.put("alert", record["id"], record["store_id"], {**record, "state": "closed", "decided_by": "auto",
+                                                                "decided_at": iso(clock.now())})
 
 
 def carry(store_id: str, review_id: str) -> str | None:
@@ -155,12 +157,12 @@ def remind(store_id: str, review_id: str) -> bool:
 
 
 def fallback(store_id: str, review_id: str) -> str | None:
-    """작업 review_fallback (25분): 대답이 없으면 허락한 가게는 사과만 먼저 올리고, 아니면 초안으로 남긴다."""
+    """작업 review_fallback (25분): 대답이 없으면 대리·과장은 사과만 먼저 올리고(알림 뒤 직급이 오른 경우), 아니면 초안으로 남긴다."""
     with repo._lock:
         record = repo.get("alert", f"al_{review_id}")
         if not record or record["state"] not in PENDING:
             return None
-        allowed = repo.settings(store_id).get("negative_review_auto_reply") is True
+        allowed = _auto(store_id)
         record = {**record, "decided_by": "timeout", "decided_at": iso(clock.now())}
         if allowed:  # 사과만: 보상 문장과 교정 카드는 사장님이 정할 몫이라 넣지 않는다 (나중에 "진행해"면 카드만 넣는다)
             _post({**record, "use_card": False, "use_compensation": False}, "timeout")
@@ -368,7 +370,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": reply_text(record), "reply_source": record["reply_source"]})
             repo.save_review(review)
             repo.put("alert", record["id"], record["store_id"], {**record, "state": "canceled", "decided_by": "owner_no", "decided_at": iso(clock.now())})
-            hr.record(record["store_id"], "negative_reply", record["id"], "rejected", said)  # "안 해": 둘 다 반려
+            hr.record(record["store_id"], "negative_reply", record["review_id"], "rejected", said)  # "안 해": 둘 다 반려
             _record_card(record, "rejected", said)
             return answer("올리지 않을게요", [say("네, 올리지 않을게요."), say("초안은 남겨 둘게요.")], [])
 
@@ -383,7 +385,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
         was = record["state"]
         record = _finish(record, "owner_yes")
         if was != "fallback_posted":  # 25분 시간 넘김으로 올린 답글은 기록하지 않는다 (무응답). "쿠폰 빼고"도 답글은 그대로 승인 (9-0 k)
-            hr.record(record["store_id"], "negative_reply", record["id"], "approved", said)
+            hr.record(record["store_id"], "negative_reply", record["review_id"], "approved", said)
         _record_card(record, "approved" if record["task_id"] else "rejected", said)  # "카드는 넣지 마": 할 일만 반려 (9-0 l)
     review = repo.review(record["review_id"])
     cards = _cards(record, review, posted=True)

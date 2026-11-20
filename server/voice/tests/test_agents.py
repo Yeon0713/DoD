@@ -127,7 +127,7 @@ def test_intent_judge_rejects_unknown_intent(clova_on):
 def test_scenario_b_with_agent_reply(clova_on):
     payload = baseline()
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
-    payload["settings"] = {"negative_review_auto_reply": True}
+    payload["hr"] = {**payload["hr"], "negative_reply": "assistant"}  # 묻지 않고 답한다 (인사과 4-a)
     donna = Donna()
     donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)

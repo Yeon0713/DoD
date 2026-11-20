@@ -1,4 +1,6 @@
 {
+  "_hr_comment": "업무별 출발 직급 (voice/hr.py). 인사과를 넣을 때 이미 쓰던 가게와 같게 (donna-voice/docs/agent-structure.md 4-9)",
+  "hr": {"negative_reply": "intern", "positive_reply": "manager", "review_fix_task": "staff", "field_task": "staff", "manual_task": "staff"},
   "store": {
     "id": "s001",
     "name": "도나네 곱창 역삼점",

@@ -176,7 +176,9 @@ class Donna:
         return self.client.post("/v1/dev/reviews", json={"store_id": "s001", **body}).json()
 
     def settings(self, value) -> dict:
-        return self.client.patch("/v1/settings", json={"store_id": "s001", "negative_review_auto_reply": value}).json()
+        """예전 '아쉬운 리뷰에 바로 답하기' 자리: True 면 부정 리뷰 답글 대리(묻지 않고 올림), 아니면 인턴 (인사과 4-a)."""
+        rank = "assistant" if value is True else "intern"
+        return self.client.post("/v1/dev/hr", json={"store_id": "s001", "ranks": {"negative_reply": rank}}).json()
 
     def turn(self, text: str | None = None, *, event: str | None = None, request_id: str | None = None, source: str = "voice",
              addressed: bool = False, expect: int = 200, **context_fields) -> dict:
@@ -231,7 +233,9 @@ class Choongjang(Donna):
         return response.json()
 
     def settings(self, value) -> dict:
-        return self.client.patch("/v1/settings", json={"store_id": "s005", "negative_review_auto_reply": value}).json()
+        """예전 '아쉬운 리뷰에 바로 답하기' 자리: True 면 부정 리뷰 답글 대리(묻지 않고 올림), 아니면 인턴 (인사과 4-a)."""
+        rank = "assistant" if value is True else "intern"
+        return self.client.post("/v1/dev/hr", json={"store_id": "s005", "ranks": {"negative_reply": rank}}).json()
 
     def state(self) -> dict:
         return self.get("/v1/dev/state")
@@ -297,8 +301,8 @@ def no_morning_tasks(store_id: str = "s005") -> None:
     briefing.refresh_steps(store_id)
 
 
-def choongjang(*, permission=True, at: str | None = "2026-11-17T15:35:00+09:00", keep_tasks: bool = False) -> Choongjang:
-    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → 허락 설정 → (at) 시계를 옮기고 하린이 가입한 뒤 할 일 화면을 연다 (출근).
+def choongjang(*, permission=None, at: str | None = "2026-11-17T15:35:00+09:00", keep_tasks: bool = False) -> Choongjang:
+    """초옹장 픽스처(11/17 09:02, 브리핑 준비) → (permission=True 면 부정 리뷰 답글 대리, 아니면 픽스처대로 인턴) → (at) 시계를 옮기고 하린이 가입한 뒤 할 일 화면을 연다 (출근).
     at=None 이면 하린은 아직 안 들어온 상태 그대로다 (2026-11-18 픽스처: 시연에서 초대한다)."""
     donna = Choongjang()
     assert donna.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang"}).json()["store_id"] == "s005"

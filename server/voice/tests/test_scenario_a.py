@@ -1,6 +1,6 @@
 """시나리오 A: 처음 쓰는 날 (허락을 아직 안 물음). 문서 13장. v0.2.1 화면 포맷 (17장): 칩과 줄 이름표가 없다."""
 
-from voice import repo, width
+from voice import hr, repo, width
 from voice.tests.conftest import Donna
 
 
@@ -34,20 +34,24 @@ def test_scenario_a_full_flow(donna: Donna):
     assert counts == {"positive": 3, "negative": 2}
 
     a4 = donna.turn(event="auto_next")
-    assert a4["type"] == "ask_permission" and a4["briefing"] == {"step": 2, "total": 5, "step_key": "negative"} and a4["owner_said"] is None
-    assert a4["permission"] == {"key": "negative_review_auto_reply"} and a4["expects_reply"] is True
-    assert [r["value"] for r in a4["cards"][0]["rows"]] == ["30분 안에 사과 답글", "브리핑 때 알려 드려요", "언제든 말로 끌 수 있어요"]
+    # 부정 리뷰 답글 인턴: 써 둔 답글을 리뷰마다 묻는다 (허락 질문 D-10 은 없앰, 인사과 4-a)
+    assert a4["type"] == "ask_action" and a4["briefing"] == {"step": 2, "total": 5, "step_key": "negative"} and a4["owner_said"] is None
+    assert a4["action"]["kind"] == "batch" and a4["action"]["items"] == [{"job": "negative_reply", "ref": "rv_0412"}]
+    assert [s["text"] for s in a4["say"]] == ["어젯밤 배달로 드신 손님이 배달이 늦어 음식이 식었다는 리뷰를 남기셨어요.", "써 둔 사과 답글을 올릴까요?"]
+    assert a4["expects_reply"] is True and a4["cards"][0]["type"] == "review" and a4["cards"][0]["reply"]["posted_at"] is None
 
-    # 허락하면 미리 써 둔 답글을 그 자리에서 올리고 보여 준다 (D-10 → D-11)
-    yes = donna.turn("응 그렇게 해")
-    assert yes["intent"] == "permission.yes" and yes["owner_said"] == "응, 그렇게 해"
-    assert repo.settings("s001")["negative_review_auto_reply"] is True
-    assert yes["type"] == "answer" and yes["briefing"]["step_key"] == "negative" and yes["headline"] == "방금 답글을 달았어요"
-    assert yes["say"][0]["text"] == "네, 앞으로는 제가 바로 답할게요."
-    posted = {r["id"]: r for r in repo.reviews("s001") if r.get("reply_status") == "posted" and r.get("reply_trigger") == "permission"}
-    assert set(posted) == {"rv_0412", "rv_0405"} and yes["cards"][0]["reply"]["text"] == posted[yes["cards"][0]["id"]]["reply_text"]
+    yes = donna.turn("응, 올려")  # 첫 건을 올리고 다음 건을 묻는다
+    assert yes["intent"] == "action.approve" and yes["type"] == "ask_action" and yes["briefing"]["step_key"] == "negative"
+    assert [s["text"] for s in yes["say"]][0] == "사과 답글을 올렸어요."
+    assert yes["action"]["items"] == [{"job": "negative_reply", "ref": "rv_0405"}]
+    no = donna.turn("안 해")  # 둘째는 초안으로 남기고 다음 단계로
+    assert no["intent"] == "action.cancel" and [s["text"] for s in no["say"]][:2] == ["네, 올리지 않을게요.", "초안은 남겨 둘게요."]
+    assert {r["id"]: r["reply_status"] for r in repo.reviews("s001") if r.get("sentiment") == "negative"} == {
+        "rv_0412": "posted", "rv_0405": "drafted"}
+    assert [(e["job"], e["ref"], e["reaction"]) for e in hr.events("s001")] == [
+        ("negative_reply", "rv_0412", "approved"), ("negative_reply", "rv_0405", "rejected")]
+    a5 = no
 
-    a5 = donna.turn("다음")
     assert a5["type"] == "answer" and a5["briefing"] == {"step": 3, "total": 5, "step_key": "positive"}
     bars, tip = a5["cards"]
     assert [(b["label"], b["count"]) for b in bars["items"]] == [("곱창전골 국물", 9), ("친절한 응대", 6), ("넉넉한 양", 4)]
@@ -69,10 +73,10 @@ def test_scenario_a_full_flow(donna: Donna):
     a7 = donna.turn("다음")
     assert a7["type"] == "end" and a7["headline"] == "브리핑은 여기까지예요" and a7["briefing"]["step"] == 5
     assert a7["cards"][0]["title"] == "오늘 아침에 한 것"
-    assert [r["value"] for r in a7["cards"][0]["rows"]] == ["아쉬운 리뷰에 답글", "좋은 리뷰 답글 예약"]
-    assert a7["say"][-1]["text"] == "아쉬운 리뷰에 답했고, 좋은 리뷰 답글은 예약했어요."
+    assert [r["value"] for r in a7["cards"][0]["rows"]] == ["좋은 리뷰 답글 예약"]  # 사장님이 "응"한 답글은 이미 아신다
+    assert a7["say"][-1]["text"] == "좋은 리뷰 답글은 예약했어요."
 
-    for response in (a2, a3, a4, yes, a5, a6, a7):
+    for response in (a2, a3, a4, yes, no, a6, a7):
         assert width.violations(response) == [], response["headline"]
 
 

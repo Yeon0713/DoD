@@ -1,4 +1,5 @@
-"""시나리오 B: 허락한 다음 날. 문 닫은 뒤(22:00) 밤에 아쉬운 리뷰가 오면 30분 안에 바로 답하고, 아침 브리핑 3단계에서 알려 준다. 문서 13장."""
+"""시나리오 B: 부정 리뷰 답글이 대리인 가게(예전: 허락한 다음 날). 문 닫은 뒤(22:00) 밤에 아쉬운 리뷰가 오면 30분 안에 바로 답하고,
+아침 브리핑 3단계에서 알려 준다. 문서 13장. 인턴·사원은 아침에 "올릴까요?"로 묻는다 (인사과 4-a)."""
 
 from voice import width
 from voice.tests.conftest import Donna, baseline
@@ -10,7 +11,7 @@ NIGHT_REVIEW = {"platform": "baemin", "rating": 1, "text": "배달이 너무 늦
 def night_then_morning() -> tuple[Donna, str]:
     payload = baseline()
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]  # 밤 리뷰는 dev/reviews 로 넣는다
-    payload["settings"] = {"negative_review_auto_reply": True}
+    payload["hr"] = {**payload["hr"], "negative_reply": "assistant"}  # 묻지 않고 답한다
     donna = Donna()
     donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)
@@ -68,28 +69,36 @@ def test_no_auto_reply_without_permission_or_after_30_minutes():
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
     donna = Donna()
     donna.clock("2026-11-16T22:40:00+09:00")
-    donna.fixtures(payload)  # 허락을 아직 안 물음
+    donna.fixtures(payload)  # 부정 리뷰 답글 인턴
     review_id = donna.review(**NIGHT_REVIEW)["review_id"]
     donna.clock("2026-11-17T09:00:00+09:00")
     review = next(r for r in donna.state()["review"] if r["id"] == review_id)
     assert review["reply_status"] == "none"
 
-    # 허락했어도 30분이 지난 리뷰에는 바로 답하지 않는다
+    # 대리가 되어도 30분이 지난 리뷰에는 바로 답하지 않는다
     donna.settings(True)
     assert donna.run("auto_reply")["replied"] == []
 
 
-def test_permission_refused_shows_draft_without_posting():
+def test_staff_rank_asks_negative_replies_together():
+    """부정 리뷰 답글 사원: 밤사이 아쉬운 리뷰를 묶어서 한 번에 묻는다. "두 번째는 빼고 올려"면 그것만 초안으로 (인사과 4-a)."""
+    from voice import hr
     from voice.tests.conftest import prepared
 
-    donna = prepared(permission=False)
+    payload = baseline()
+    payload["hr"] = {**payload["hr"], "negative_reply": "staff"}
+    donna = prepared(payload)
     donna.turn("오늘 일정 브리핑해 줘")
     donna.turn("다음")
     step3 = donna.turn("다음")
-    assert step3["type"] == "answer" and step3["headline"] == "아쉬운 리뷰가 2개 있어요"
-    assert step3["cards"][0]["reply"]["posted_at"] is None and step3["cards"][0]["reply"]["text"]  # 써 둔 초안 (올리지 않음)
-    detail = donna.turn("화면에 보여 줘")
-    assert detail["cards"][0]["reply"]["posted_at"] is None and detail["cards"][0]["reply"]["text"]
-    drafted = [r for r in donna.state()["review"] if r.get("reply_status") == "drafted"]
-    assert {r["id"] for r in drafted} == {"rv_0412", "rv_0405"}  # 초안만 쓰고 올리지 않는다
-    assert width.violations(step3) == [] and width.violations(detail) == []
+    assert step3["type"] == "ask_action" and step3["headline"] == "사과 답글 올릴까요?" and step3["action"]["mode"] == "batch"
+    assert [s["text"] for s in step3["say"]] == ["아쉬운 리뷰가 두 개 있어요.", "첫째, 배달이 늦어 음식이 식었다는 리뷰예요.",
+                                                "둘째, 배달이 늦었다는 리뷰예요.", "써 둔 사과 답글을 올릴까요?"]
+    assert [i["title"] for i in step3["cards"][0]["items"]] == ["1. 배달이 늦어 음식이 식었대요", "2. 배달이 늦었대요"]
+    done = donna.turn("두 번째는 빼고 올려")
+    assert done["intent"] == "action.approve" and done["say"][0]["text"] == "사과 답글을 올렸어요."
+    assert done["briefing"]["step_key"] == "positive"  # 정하면 다음 단계로
+    status = {r["id"]: r["reply_status"] for r in donna.state()["review"] if r.get("sentiment") == "negative"}
+    assert status == {"rv_0412": "posted", "rv_0405": "drafted"}
+    assert [(e["ref"], e["reaction"]) for e in hr.events("s001")] == [("rv_0405", "rejected"), ("rv_0412", "approved")]
+    assert width.violations(step3) == [] and width.violations(done) == []

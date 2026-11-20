@@ -17,16 +17,17 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 
 import datetime as dt
 
-from voice import activity, clock, config, locks, repo, speech, width
-from voice.agents import voice_reply
+from voice import activity, clock, config, departments, holidays, hr, locks, marketing, proposals, repo, speech, width
+from voice.agents import field_tasks, fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import queue, schedule, strengths
+from voice.jobs import auto_reply, batch_ask, done_report, queue, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "reviews", "negative", "positive", "scheduling", "instagram", "story_event"]
-GAUGE = {"schedule": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4, "end": 5}
+STEP_KEYS = ["schedule", "holiday", "done_report", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
+GAUGE = {"schedule": 1, "holiday": 1, "done_report": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
+         "staff_tasks": 5, "end": 5}
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
 RAIN_CHANCE = 0.6
@@ -86,59 +87,44 @@ def recent_positive(view: VoiceStore, now: dt.datetime) -> list[dict]:
 
 def schedule_replies(view: VoiceStore, now: dt.datetime) -> int:
     """답글 기다리는 좋은 리뷰마다 올릴 때(schedule.occasion_for: 평일 리뷰 → 토요일 오전, 주말 리뷰 → 24~48시간 안 식사 피크
-    한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다."""
-    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and r.get("reply_status", "none") == "none"]
+    한 시간 전)를 정하고 답글을 써 둔다. 그날의 날씨·행사는 글에만 들어간다.
+    칭찬 리뷰 답글 직급 (인사과 4-b): 대리·과장은 지금처럼 예약한다. 인턴·사원은 써 두기만 하고(awaiting) 브리핑에서 "이렇게
+    예약할까요?"로 묻는다. 대답이 없어 올릴 날이 지난 awaiting 은 다음 날 준비 때 때와 글을 새로 정해 다시 묻는다 (9-0 b).
+    같은 날 다시 준비할 때(시계 옮기기, 새 리뷰)는 다시 쓰지 않는다 (영업 중에 LLM 을 부르지 않게)."""
+    asks = hr.asks(view.store_id, "positive_reply") is not None
+    waiting = [r for r in view.reviews() if r.get("sentiment") == "positive" and not r.get("reply_deleted_at") and (
+        r.get("reply_status", "none") == "none"
+        or (r.get("reply_status") == "awaiting" and parse(r["reply_post_at"]).date() < now.date()))]
     if not waiting:
         return 0
     for review in sorted(waiting, key=lambda r: r["written_at"]):
+        before = review.get("reply_status", "none")  # none 또는 다시 묻는 awaiting. 쓰는 사이 바뀌었으면 덮지 않는다
         slot = schedule.occasion_for(review, view.data, view.store, now)
         occasion = {**slot, "post_at": iso(slot["post_at"])}
         written = voice_reply.write(view, review, "SCHEDULED", occasion)
         review.update({
-            "reply_status": "scheduled", "reply_by": "donna", "reply_text": written["text"], "reply_source": written["source"],
-            "reply_notes": written["notes"], "reply_post_at": occasion["post_at"],
+            "reply_status": "awaiting" if asks else "scheduled", "reply_by": "donna", "reply_text": written["text"],
+            "reply_source": written["source"], "reply_notes": written["notes"], "reply_post_at": occasion["post_at"],
             "reply_reason": {key: slot[key] for key in ("kind", "label", "meal", "context", "explanation")},
+            "reply_trigger": None if asks else "auto",  # auto: 묻지 않고 예약 → 올릴 때 인사과에 done
         })
-        if repo.save_review_if(review, "none"):  # 답글을 쓰는 사이 사장님이 직접 답했으면 덮지 않는다
+        if repo.save_review_if(review, before) and not asks:  # 답글을 쓰는 사이 사장님이 직접 답했으면 덮지 않는다
             queue.add(view.store_id, "post_scheduled", slot["post_at"])
-    return len(waiting)
+    return 0 if asks else len(waiting)
 
 
 def draft_negative(view: VoiceStore) -> None:
-    """아쉬운 리뷰에 답글을 미리 써 둔다. 허락하면 이 글을 바로 올린다 (말하는 동안 LLM 을 기다리지 않게).
-    허락을 거절한 가게면 초안(drafted)으로 보여 준다."""
-    declined = repo.settings(view.store_id).get("negative_review_auto_reply") is False
+    """아쉬운 리뷰에 답글을 미리 써 둔다. 아침 브리핑에서 "올릴까요?"에 "응"이면 이 글을 바로 올린다 (말하는 동안 LLM 을 기다리지 않게)."""
     for review in view.reviews():
-        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
-            continue
-        if not review.get("reply_ready"):
-            written = voice_reply.write(view, review, "DRAFT" if declined else "AUTO")
+        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none" or review.get("reply_deleted_at"):
+            continue  # 사장님이 지운 답글은 다시 쓰지 않는다 (사후 취소, 인사과 5단계)
+        if not review.get("reply_ready"):  # 교정 카드를 먼저 정해 답글이 같은 조치를 약속하게 한다 (2026-11-20, 안 B)
+            found = fix_card.card_for(view, review)
+            fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
+            written = voice_reply.write(view, review, "AUTO", fix=fix)
             review["reply_ready"] = written
-        if declined:
-            review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": review["reply_ready"]["text"],
-                           "reply_source": review["reply_ready"]["source"]})
+            auto_reply.propose_overnight(view.store_id, review, found, view.now)  # 할 일은 아침 브리핑에서 묻는다
         repo.save_review_if(review, "none")  # 답글을 쓰는 사이 알림(review_loop.alert)이 proposed 로 바꿨으면 덮지 않는다
-
-
-def post_ready_negatives(store_id: str, now: dt.datetime) -> list[dict]:
-    """허락을 받은 그 자리에서, 미리 써 둔 답글을 밤사이 아쉬운 리뷰에 올린다 (Figma D-10 → D-11)."""
-    view = load(store_id)
-    posted = []
-    for review in view.reviews():
-        if review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none":
-            continue
-        ready = review.get("reply_ready") or voice_reply.write(view, review, "AUTO")
-        review.update({
-            "reply_status": "posted", "reply_by": "donna", "reply_text": ready["text"], "reply_source": ready["source"],
-            "reply_posted_at": iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
-            "reply_trigger": "permission",
-        })
-        saved = repo.save_review_if(review, "none")
-        if saved:
-            posted.append(saved)
-    if posted:
-        activity.log(store_id, "donna", f"아쉬운 리뷰 {len(posted)}개에 답글을 올렸어요", "negative_replied")
-    return posted
 
 
 # ── 3: 단계 응답 ──
@@ -247,73 +233,20 @@ def _when(written: dt.datetime, now: dt.datetime) -> str:
     return f"{speech.weekday(written.date())}요일에"
 
 
-def replied_answer(review: dict, now: dt.datetime) -> dict:
-    """도나가 아쉬운 리뷰에 답한 것 (D-11). 허락받은 그 자리에서 올렸으면 '방금'."""
-    written = parse(review["written_at"])
-    who = "배달로 드신 손님이" if review.get("order_channel") == "delivery" else "가게에서 드신 손님이"
-    just_now = review.get("reply_trigger") == "permission"
-    minutes = review.get("replied_in_minutes") or 1
-    headline = "방금 답글을 달았어요" if just_now else f"{minutes}분 만에 답했어요"
-    second = "방금 사과 답글을 달았어요." if just_now else f"{minutes}분 만에 사과 답글을 달았어요."
-    says = [say(f"{_when(written, now)} {who} {told(review['summary'])} 리뷰를 남기셨어요.", None, [review["id"]])]
-    if review.get("reply_trigger") == "timeout":  # 영업 중 알림에 대답이 없어 사과만 먼저 올린 것 (jobs/review_loop.py)
-        says.append(say(f"{minutes}분 만에 사과 답글만 먼저 달았어요.", None, [review["id"]]))
-        record = repo.get("alert", f"al_{review['id']}") or {}
-        left = [w for w, on in (("서비스 안내", record.get("compensation")), ("할 일", record.get("card"))) if on]
-        if left:
-            says.append(say(f"{speech.josa('와 '.join(left), '은', '는')} 넣지 않았어요."))
-    else:
-        says.append(say(second, None, [review["id"]]))
-    reply = {"text": review["reply_text"], "posted_at": review["reply_posted_at"], "by": "donna"}
-    return answer(headline, says, [review_card(review, reply)])
-
-
 def step_negative(view: VoiceStore, now: dt.datetime, waiting: list[dict]) -> tuple[dict | None, dict | None]:
-    """아쉬운 리뷰 단계와 자세히 보기. 허락 설정에 따라 갈린다 (문서 10장 '3단계의 갈림')."""
-    allowed = repo.settings(view.store_id).get("negative_review_auto_reply")
-    waiting_neg = [r for r in waiting if r.get("sentiment") == "negative"]
-
-    if allowed is None:
-        if not waiting_neg:
-            return None, None
-        response = answer(
-            "제가 바로 답할까요?",
-            # 2026-11-18: 영업 중에 온 아쉬운 리뷰는 바로 여쭤보고 사장님 한마디로 올린다 (review_loop). 이 허락은
-            # 문 닫은 뒤에 온 리뷰, 여쭤봐도 대답이 없을 때 사과만 먼저 다는 것이다.
-            [say("아쉬운 리뷰는 빨리 답할수록 좋아요.", "아쉬운 리뷰는 빨리 답할수록 좋아요."),
-             say("영업 중에 오면 바로 여쭤볼게요."),
-             say("문 닫은 뒤에 왔거나 대답이 없으실 때는, 제가 30분 안에 사과 답글을 달고 브리핑 때 알려 드릴까요?", None, ["pm_reply", "pm_brief"])],
-            [{"type": "rows", "id": "permission", "rows": [
-                {"id": "pm_reply", "kind": "reply", "value": "30분 안에 사과 답글"},
-                {"id": "pm_brief", "kind": "briefing", "value": "브리핑 때 알려 드려요"},
-                {"id": "pm_off", "kind": "off", "value": "언제든 말로 끌 수 있어요"}]}],
-            kind="ask_permission", permission={"key": "negative_review_auto_reply"},
-        )
-        response["expects_reply"] = True
-        return response, None
-
-    if allowed is True:
-        replied = auto_replied(view, now)
-        if not replied:
-            return None, None
-        review = replied[0]
-        response = replied_answer(review, now)
-        return response, _detail(review, response["cards"][0]["reply"], "제가 올린 답글이에요.")
-
-    # 허락을 거절함: 아쉬운 리뷰와 써 둔 초안을 보여 준다 (14장 7번 제안). 올리지는 않는다
-    if not waiting_neg:
+    """아쉬운 리뷰 단계와 자세히 보기. 부정 리뷰 답글 직급에 따라 갈린다 (인사과 4-a, 허락 질문 D-10 은 없앰).
+    인턴·사원: 써 둔 답글을 "올릴까요?"로 묻는다 (인턴은 한 건씩, 사원은 묶어서, jobs/batch_ask.py).
+    대리·과장: 묻지 않고 올렸으므로 이 단계는 없다. 올린 것은 done_report 단계가 알린다 (인사과 5단계)."""
+    mode = hr.asks(view.store_id, "negative_reply")
+    if mode is None:
         return None, None
-    review = sorted(waiting_neg, key=lambda r: r["written_at"], reverse=True)[0]
-    n = len(waiting_neg)
-    draft = {"text": review.get("reply_text") or "", "posted_at": None, "by": "donna"}
-    response = answer(
-        f"아쉬운 리뷰가 {n}개 있어요",
-        [say(f"아쉬운 리뷰가 {speech.count(n, '개')} 있어요."),
-         say(f"{told(review['summary'])} 리뷰예요.", None, [review["id"]]),
-         say("답글 초안을 써 뒀어요.", None, [review["id"]])],
-        [review_card(review, draft)],
-    )
-    return response, _detail(review, draft, "제가 써 둔 답글 초안이에요.")
+    waiting_neg = sorted((r for r in waiting if r.get("sentiment") == "negative"), key=lambda r: r["written_at"], reverse=True)
+    response = batch_ask.ask(view, [{"job": "negative_reply", "ref": r["id"]} for r in waiting_neg], mode)
+    if response is None:
+        return None, None
+    first = view.review(response["action"]["items"][0]["ref"])  # 자세히 보기·읽어 주기는 지금 묻는 첫 리뷰와 써 둔 초안
+    draft = {"text": first["reply_ready"]["text"], "posted_at": None, "by": "donna"}
+    return response, _detail(first, draft, "제가 써 둔 답글 초안이에요.")
 
 
 def _detail(review: dict, reply: dict, reply_intro: str) -> dict:
@@ -346,6 +279,15 @@ def step_positive(view: VoiceStore, now: dt.datetime) -> dict | None:
 
 
 def step_scheduling(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, dict | None]:
+    """예약 답글 단계. 칭찬 리뷰 답글 인턴·사원은 써 둔 답글을 "이렇게 예약할까요?"로 묻는다 (jobs/batch_ask.py).
+    대리·과장은 묻지 않고 예약했으므로 단계를 보이지 않는다 (올린 것은 사후 보고, 9-0 c)."""
+    mode = hr.asks(view.store_id, "positive_reply")
+    if mode is None:
+        return None, None
+    waiting = sorted((r for r in view.reviews() if r.get("reply_status") == "awaiting"), key=lambda r: r["reply_post_at"])
+    asked = batch_ask.ask(view, [{"job": "positive_reply", "ref": r["id"]} for r in waiting], mode)
+    if asked is not None:
+        return asked, None
     scheduled = [r for r in view.reviews() if r.get("reply_status") == "scheduled"]
     rows = schedule.rows(scheduled, view.menus, now, view.store.get("rain_menu"))
     if not rows:
@@ -373,9 +315,25 @@ def step_scheduling(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, di
     return response, detail
 
 
+def auto_instagram(view: VoiceStore, now: dt.datetime) -> dict | None:
+    """인스타 게시가 대리면 브리핑 준비 때 만든 게시물을 그날 첫 식사 피크 한 시간 전에 올린다 (9-0 d). 사원·인턴은 묻는다 (9-0 e)."""
+    if hr.asks(view.store_id, "instagram_post") is not None or not posts.connection(view.store_id)["connected"]:
+        return None
+    if posts.posted_on(view.store_id, "feed", now.date()):
+        return None
+    built = posts.build_feed(view)
+    if built is None:
+        return None
+    due = next((at for at, _ in schedule.slots(view.store, now.date(), 1) if at > now), now)
+    post = posts.save({**posts.create(view.store_id, built), "auto": True})  # auto: 올라가면 인사과에 done
+    return posts.queue_publish(view.store_id, post, due)
+
+
 def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
-    """인스타에 올릴까요 (D-14). 연결 안 됨, 오늘 이미 올림, 메뉴 사진이 3개보다 적으면 건너뛴다.
+    """인스타에 올릴까요 (D-14). 연결 안 됨, 오늘 이미 올림, 메뉴 사진이 3개보다 적으면 건너뛴다. 대리면 묻지 않는다 (auto_instagram).
     자세히 보기는 올라갈 모양 그대로 한 장씩 (D-15, '다음 사진'으로 넘긴다)."""
+    if hr.asks(view.store_id, "instagram_post") is None:
+        return None, None
     connection = posts.connection(view.store_id)
     if not connection["connected"] or posts.posted_on(view.store_id, "feed", view.now.date()):
         return None, None
@@ -384,8 +342,12 @@ def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
         return None, None
     top = built["menus"]
     names = [m["name"] for m in top["items"]]
-    says = [say(f"{top['period']} 가장 많이 나간 메뉴는 {', '.join(names[:-1])}, {speech.josa(names[-1], '이에요', '예요')}.", None, ["top_menus"])]
-    cards = [{"type": "menus", "id": "top_menus", "title": f"{top['period']} 많이 나간 메뉴", "items": top["items"]}]
+    if top.get("angle"):  # 마케팅 소재 사원이 고른 메뉴와 이야기 (voice/marketing.py)
+        says = [say(f"오늘은 {speech.josa(top['angle'], '이라는', '라는')} 이야기로 {', '.join(names)} 사진을 골랐어요.", None, ["top_menus"])]
+        cards = [{"type": "menus", "id": "top_menus", "title": "오늘 올릴 메뉴", "items": top["items"]}]
+    else:
+        says = [say(f"{top['period']} 가장 많이 나간 메뉴는 {', '.join(names[:-1])}, {speech.josa(names[-1], '이에요', '예요')}.", None, ["top_menus"])]
+        cards = [{"type": "menus", "id": "top_menus", "title": f"{top['period']} 많이 나간 메뉴", "items": top["items"]}]
     if built["quote"]:
         says.append(say(f"손님 리뷰 “{built['quote']}”{'을' if speech.has_batchim(built['quote']) else '를'} 글에 넣었어요.", None, ["insta_quote"]))
         cards.append({"type": "quote", "id": "insta_quote", "label": "글에 넣을 손님 리뷰", "text": f"“{built['quote']}”"})
@@ -478,6 +440,9 @@ def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n
         rows.append({"id": "p_reviews", "kind": "reviews", "value": f"밤사이 리뷰 {len(waiting)}개 읽어 둠"})
     if scheduled_n:
         rows.append({"id": "p_replies", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {scheduled_n}개 예약"})
+    drafted_n = sum(1 for r in view.reviews() if r.get("reply_status") == "awaiting")  # 칭찬 답글 인턴·사원: 써 두고 묻는다
+    if drafted_n:
+        rows.append({"id": "p_replies_ask", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {drafted_n}개 써 둠"})
     if instagram:
         rows.append(INSTAGRAM_ROW)
     return rows
@@ -495,25 +460,38 @@ def _prepare(store_id: str) -> dict | None:
     if view is None:
         return None
     now = clock.now()
+    hr.evaluate(store_id, now.date())  # 인사과 격주 평가 (평가일이 아니거나 이미 했으면 바로 돌아온다, voice/hr.py)
+    proposals.expire(store_id, now.date().isoformat())  # 물을 날이 지난 할 일 제안은 버린다 (브리핑을 듣지 않으면 넣지 않는다)
+    proposals.promote_repeats(store_id)  # 매뉴얼 코칭: 일주일에 세 번 나온 할 일은 매일 할 일로 올리자고 묻는다
     newly_scheduled = schedule_replies(view, now)
     draft_negative(load(store_id))
+    field_tasks.propose_today(load(store_id))  # 현장 변수 사원: 오늘 날씨·예약 때문에 필요한 알바생 할 일 (2026-11-20)
+    holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
+    marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)
+    auto_instagram(load(store_id), now)  # 인스타 게시 대리: 묻지 않고 첫 식사 피크 한 시간 전에 올린다 (9-0 d)
+    departments.run_reports(load(store_id))  # 부서 보고를 남기고, 부서 사이 충돌을 거른다 (voice/departments.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)
 
-    steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "reviews": step_reviews(waiting)}
+    steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "holiday": holidays.step(view),
+                                     "reviews": step_reviews(waiting)}
+    steps["done_report"], report_detail = done_report.step(view, now)  # 대리·과장이 처리한 것 사후 보고 (인사과 5단계)
     steps["negative"], negative_detail = step_negative(view, now, waiting)
     steps["positive"] = step_positive(view, now)
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
     steps["instagram"], instagram_detail = step_instagram(view)
     steps["story_event"] = story_event.step(view)  # 비 오는 날 스토리 이벤트 (instagram/story_event.py)
+    steps["staff_tasks"] = staff_tasks.step(view, now)  # 알바생 할 일 묻기 (jobs/staff_tasks.py, 2026-11-20)
     details = {key: plain_detail(step) for key, step in steps.items() if step and step["type"] == "answer"}
     if negative_detail:
         details["negative"] = negative_detail
+    if report_detail:
+        details["done_report"] = report_detail
     if scheduling_detail:
         details["scheduling"] = scheduling_detail
     if instagram_detail:
         details["instagram"] = instagram_detail
-    scheduled_n = sum(len(i["review_ids"]) for i in (steps["scheduling"] or {"cards": [{"items": []}]})["cards"][0]["items"])
+    scheduled_n = sum(1 for r in view.reviews() if r.get("reply_status") == "scheduled" and parse(r["reply_post_at"]) > now)
 
     overnight = [r for r in view.reviews() if now - dt.timedelta(days=1) <= parse(r["written_at"]) <= now]
     if overnight:
@@ -529,6 +507,22 @@ def _prepare(store_id: str) -> dict | None:
         "sources": {"replies": sorted({r.get("reply_source") for r in view.reviews() if r.get("reply_source")} - {None})},
     }
     return repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
+
+
+def refresh_steps(store_id: str) -> dict | None:
+    """대답으로 바뀌는 묻는 단계(알바생 할 일, 쉬는 날, 아쉬운 리뷰 답글)만 다시 만든다 (대답한 뒤, 브리핑 밖에서 물은 뒤)."""
+    brief = current(store_id)
+    view = load(store_id)
+    if brief is None or view is None:
+        return brief
+    brief["steps"]["staff_tasks"] = staff_tasks.step(view, clock.now())
+    brief["steps"]["holiday"] = holidays.step(view)
+    brief["steps"]["scheduling"], _ = step_scheduling(view, clock.now())
+    brief["steps"]["negative"], negative_detail = step_negative(view, clock.now(), awaiting(view))
+    if negative_detail:
+        brief["details"]["negative"] = negative_detail
+    return repo.put("briefing", f"{store_id}:{brief['date']}", store_id, brief)
+
 
 
 def current(store_id: str) -> dict | None:

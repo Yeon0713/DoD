@@ -9,9 +9,9 @@ from PIL import Image
 
 from app.poster_ai import image_engine
 from app.poster_ai.image_engine import PosterEngineError
-from voice import repo, width
+from voice import repo, staff, staff_orders, width
 from voice.instagram import media
-from voice.tests.conftest import FakeGraph
+from voice.tests.conftest import FakeGraph, hr_log
 from voice.tests.test_instagram import Choongjang, chj, connect, run_publish, to_instagram_step  # noqa: F401 (chj 는 fixture)
 
 SE_ID = "se_s005_2026-11-17"
@@ -82,7 +82,7 @@ def test_i1_no_step(chj: Choongjang, ig_on, case):
     if case == "sunny":
         chj.clock("2026-11-18T09:02:00+09:00")  # 흐림, 비 30%
         chj.client.post("/v1/dev/run", json={"store_id": "s005", "job": "prepare_briefing"})
-    assert to_story_step(chj)["type"] == "end"
+    assert to_story_step(chj)["briefing"]["step_key"] != "story_event"  # 끝이나 알바생 할 일 묻기로 넘어간다
 
 
 def test_i1_settings_api(chj: Choongjang):
@@ -112,7 +112,7 @@ def test_i2_yes_draws_and_notifies(chj: Choongjang, ig_on):
         done = chj.turn("응, 좋아")
     finally:
         image_engine.generate = saved
-    assert done["intent"] == "instagram.post" and done["type"] == "end"
+    assert done["intent"] == "instagram.post" and done["type"] == "ask_tasks"  # 다음은 알바생 할 일 묻기 (2026-11-20)
     assert [s["text"] for s in done["say"]][:2] == ["네, 이벤트 포스터를 그릴게요.", "1~2분 걸려요. 다 되면 알려 드릴게요."]
 
     prompt, files = drawn[0]
@@ -155,6 +155,7 @@ def test_i3_i4_preview_post_and_card(chj: Choongjang, ig_on):
     assert [s["text"] for s in done["say"]] == ["네, 이벤트 스토리를 올릴게요.", f"올라가면 알바생 할 일 맨 위에 {TITLE}를 넣을게요."]
     assert record()["state"] == "approved"
     assert chj.staff_today("st_harin")["urgent"] == []  # 아직 안 올라갔다
+    assert hr_log() == [("story_poster", "approved")]
 
     run_publish(chj)
     created = [params for method, path, params in fake.calls if method == "POST" and path.endswith("/media")]
@@ -167,6 +168,9 @@ def test_i3_i4_preview_post_and_card(chj: Choongjang, ig_on):
     assert card["title"] == TITLE and card["detail"] == OFFER
     saved = record()
     assert saved["state"] == "card_pinned" and saved["task_id"] == card["id"]
+    [pinned] = [t for t in staff.store_tasks("s005") if t["id"] == card["id"]]
+    assert pinned["origin"] == "story_event"  # 리뷰에서 나온 일(review)로 적지 않는다
+    assert card["id"] in [t["id"] for t in staff_orders._sent_today("s005")]  # "시킨 거 다 했대?"에는 들어간다
     told = chj.notices()
     assert [(n["text"], n["say"]) for n in told] == [("이벤트 스토리를 올렸어요", ["이벤트 스토리를 올렸어요.", f"알바생 할 일 맨 위에 {TITLE}를 넣었어요."])]
 
@@ -205,6 +209,7 @@ def test_i6_cancel_then_redo(chj: Choongjang, ig_on):
     assert record()["state"] == "ready" and record()["image_url"] == f"/media/{SE_ID}/poster_2.jpg"
     asked = open_story(chj)
     assert asked["cards"][0]["photo_url"] == f"/media/{SE_ID}/poster_2.jpg"
+    assert hr_log() == [("story_poster", "rejected")]  # 첫 포스터만 반려. 다시 그린 포스터는 따로 센다
 
 
 def test_i6_story_only(chj: Choongjang, ig_on):
@@ -217,6 +222,7 @@ def test_i6_story_only(chj: Choongjang, ig_on):
     assert done["say"] == [{"text": "네, 이벤트 스토리를 올릴게요.", "caption": None, "focus": []}]
     run_publish(chj)
     assert record()["state"] == "published" and chj.staff_today("st_harin")["urgent"] == []
+    assert hr_log() == [("story_poster", "approved")]  # "할 일은 넣지 마"도 포스터는 그대로 승인 (9-0 m)
 
 
 def test_i6_unclear_yes_asks_again(chj: Choongjang, ig_on):
@@ -254,6 +260,7 @@ def test_i7_engine_failure(chj: Choongjang, ig_on, monkeypatch):
 def test_i8_review_and_story_do_not_mix(chj: Choongjang, ig_on):
     ready(chj, ig_on)
     open_story(chj)  # 스토리 포스터를 묻는 중에
+    chj.settings(None)  # 묻는 가게 (바로 답하기를 켜면 답글은 묻지 않고 올린다)
     chj.clock("2026-11-17T15:40:00+09:00")
     rid = chj.demo_review("leak")  # 아쉬운 리뷰가 온다
     review_notice = [n for n in chj.notices() if n["kind"] == "negative_review"]

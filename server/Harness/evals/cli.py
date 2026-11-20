@@ -102,6 +102,36 @@ def _intent_systems(text: str) -> list[str]:
     return intent_eval.parse_systems(text)
 
 
+def _run_fixcard(args: argparse.Namespace) -> object:
+    from Harness.evals import staff_eval
+
+    return staff_eval.run_fixcard(args)
+
+
+def _run_revise(args: argparse.Namespace) -> object:
+    from Harness.evals import revise_eval
+
+    return revise_eval.run_revise(args)
+
+
+def _run_notebook(args: argparse.Namespace) -> object:
+    from Harness.evals import notebook_eval
+
+    return notebook_eval.run_notebook(args)
+
+
+def _run_dedupe(args: argparse.Namespace) -> object:
+    from Harness.evals import staff_eval
+
+    return staff_eval.run_dedupe(args)
+
+
+def _dedupe_systems(text: str) -> list[str]:
+    from Harness.evals import staff_eval
+
+    return staff_eval.parse_dedupe_systems(text)
+
+
 def _run_noise(args: argparse.Namespace) -> object:
     from Harness.evals import noise_eval
 
@@ -186,6 +216,19 @@ SUITES: dict[str, Suite] = {suite.name: suite for suite in (
                    "p50·p95·최댓값, 5초 초과율 (--systems 기본 rule+judge, rule 은 CLOVA 없이)",
           _run_voice, uses_systems=True, parse_systems=_voice_systems, default_systems="rule+judge",
           needs_clova=lambda args: not args.dry_run and "rule+judge" in args.system_names),
+    Suite("fixcard", "부정 리뷰 사원(알바생 교정 카드): 조치 가능 판정 정밀도·재현율, 알바생이 할 수 없는 일이 들어간 비율, "
+                     "템플릿으로 물러난 비율. 세트 Harness/evals/data/fix_cases.json (2026-11-20)",
+          _run_fixcard, needs_clova=lambda args: not args.dry_run),
+    Suite("revise", "사장님 고침 지시(\"좀 더 짧게\"): 코드로 보는 조건을 지킨 비율, 검사를 통과해 고친 글이 나온 비율. "
+                    "세트 Harness/evals/data/revise_cases.json (2026-11-21, 인사과 6단계)",
+          _run_revise, needs_clova=lambda args: not args.dry_run),
+    Suite("notebook", "업무 수첩 규칙 판정(계속 지킬 규칙인가): 정확도·정밀도·재현율, 칸 정확도. "
+                      "세트 Harness/evals/data/notebook_cases.json (2026-11-21, 인사과 7단계)",
+          _run_notebook, needs_clova=lambda args: not args.dry_run),
+    Suite("dedupe", "같은 알바생 할 일 묶기: 정확도, 잘못 묶음, 놓침 (--systems dice 는 CLOVA 없이, dice+judge 는 좁은 LLM 질문까지). "
+                    "세트 Harness/evals/data/dedupe_cases.json (2026-11-20)",
+          _run_dedupe, uses_systems=True, parse_systems=_dedupe_systems, default_systems="dice,dice+judge",
+          needs_clova=lambda args: not args.dry_run and "dice+judge" in args.system_names),
     Suite("all", "label → guards → reply → batch → intent 를 차례로 (스위트마다 기본 --systems). 실패해도 다음으로 가고 "
                  "끝에 결과 폴더를 출력한다. --baseline 이면 기준점으로 적는다",
           _run_all, needs_clova=lambda args: False),

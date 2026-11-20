@@ -394,7 +394,7 @@ function Checklist({ card }: { card: ChecklistCard }) {
         <View key={it.id} style={[styles.inline, { alignItems: 'flex-start' }]}>
           <View style={{ paddingTop: 4 }}>
             {it.tone === 'urgent' ? (
-              // 아쉬운 리뷰에서 나온 알바생 교정 카드: 알바생 화면 맨 위에 붉은 표시로 뜨는 것과 같은 표시
+              // 긴급 알바생 할 일 (비 오는 날 이벤트 등): 알바생 화면 맨 위에 붉은 표시로 뜨는 것과 같은 표시
               <Icon name="alert" size={Math.round(20 * scale)} color="urgent" />
             ) : (
               <Icon name={it.state === 'done' ? 'check' : it.state === 'canceled' ? 'x' : 'clock'} size={Math.round(20 * scale)} color={it.state === 'todo' ? 'ink2' : 'brand'} />

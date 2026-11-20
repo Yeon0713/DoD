@@ -108,3 +108,8 @@ def test_prepare_does_not_overwrite_alert_state_with_stale_review():
     briefing.draft_negative(stale)
     saved = repo.review(review["id"])
     assert saved["reply_status"] == "proposed" and saved["cause"] == "packaging"
+
+
+def test_batch_window_notice_is_on_the_alert_lane():
+    """사원 업무 묶음 창 알림(hr_batch, 인사과 4-c)도 30분 안에 가야 해서 브리핑 준비를 기다리지 않는다 (2026-11-21 머지 때 더함)."""
+    assert queue.lane_of("hr_batch") == "alert" and queue.lane_of("prepare_briefing") == "slow"

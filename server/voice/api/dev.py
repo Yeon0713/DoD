@@ -11,7 +11,7 @@ import json
 from fastapi import APIRouter, Body
 from fastapi.responses import JSONResponse
 
-from voice import clock, config, repo, speech, staff, staff_db
+from voice import clock, config, hr, repo, speech, staff, staff_db
 from voice.api.errors import store_not_found
 from voice.api.schemas import ClockIn, DemoReviewIn, ReviewIn, RunIn
 from voice import prepared_snapshot, staff_orders
@@ -27,7 +27,7 @@ def load_fixtures(payload: dict) -> dict:
     store_id = store["id"]
     repo.delete_store(store_id)
     staff_orders.forget_recent()
-    repo.put("store", store_id, store_id, store)
+    repo.put("store", store_id, store_id, {**store, "fixture": True})  # 시연 가게 표시 (시계를 멈춘 동안 이 가게 작업만 돈다, jobs/queue.py)
     for item in payload.get("reservations", []):
         kind = "group" if item["party_size"] >= config.GROUP_MIN_PEOPLE else "general"
         repo.put("reservation", item["id"], store_id, {**item, "kind": kind})
@@ -40,6 +40,8 @@ def load_fixtures(payload: dict) -> dict:
         repo.save_review(label.label({"reply_status": "none", **raw, "store_id": store_id}))
     if "settings" in payload:
         repo.save_settings(store_id, payload["settings"])
+    hr.set_ranks(store_id, payload.get("hr") or {})  # 업무별 출발 직급 (없는 업무는 인턴, voice/hr.py)
+    hr.seed_history(store_id, payload.get("hr_history") or [])  # 지난 반응 기록 (시연 가게)
     _put_pos_data(store_id, payload)
     for item in payload.get("activity", []):  # 지난 날 한 일 (일정 탭)
         repo.put("activity", f"{store_id}:{item['at'][:10]}:{item['id']}", store_id, item)
@@ -79,6 +81,13 @@ def fixture(name: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _mark_fixture(store_id: str) -> None:
+    """fixtures 로 넣은 가게 표시. 저장본으로 되살렸거나 표시 전에 넣어 둔 가게에도 붙인다."""
+    store = repo.store(store_id)
+    if store is not None and not store.get("fixture"):
+        repo.put("store", store_id, store_id, {**store, "fixture": True})
+
+
 def seed(name: str, *, fresh: bool) -> dict:
     """시연 가게 하나를 시연할 수 있는 상태로: 시계를 그 파일의 demo.now 로 맞추고, (fresh 거나 가게가 없으면) 데이터를 넣고,
     브리핑을 바로 준비한다 (문 열기 한 시간 전보다 일찍이어도). 답글을 에이전트가 쓰느라 1 ~ 2분 걸릴 수 있다."""
@@ -89,6 +98,7 @@ def seed(name: str, *, fresh: bool) -> dict:
     result = {"store_id": store_id, "loaded": False}
     if (fresh or repo.store(store_id) is None) and prepared_snapshot.restore(name, payload):
         # 밤사이 준비 결과 저장본 (voice/prepared_snapshot.py): CLOVA 를 기다리지 않고 바로 브리핑할 수 있다
+        _mark_fixture(store_id)
         queue.run_due()
         return {"store_id": store_id, "loaded": True, "prepared": "snapshot", "now": clock.iso(clock.now())}
     if fresh or repo.store(store_id) is None:
@@ -97,6 +107,7 @@ def seed(name: str, *, fresh: bool) -> dict:
         _put_pos_data(store_id, payload)
         if not staff_db.members(store_id):  # 알바생 표가 생기기 전의 voice.db: 알바생과 매뉴얼만 넣는다
             staff.seed(store_id, payload)
+    _mark_fixture(store_id)
     queue.run_due()
     if briefing.current(store_id) is None:
         briefing.prepare(store_id)
@@ -252,3 +263,13 @@ def get_state(store_id: str):
         return store_not_found()
     data = repo.kinds_of(store_id)
     return {"now": clock.iso(clock.now()), "settings": repo.settings(store_id), **{kind: rows for kind, rows in data.items() if kind != "settings"}}
+
+
+@router.post("/hr")
+def post_hr(payload: dict = Body(...)):
+    """직급을 바꾼다 (시연·시험): {"store_id": "s005", "ranks": {"negative_reply": "assistant"}}. 바뀐 직급은 다음 준비부터 보인다."""
+    store_id = payload["store_id"]
+    if repo.store(store_id) is None:
+        return store_not_found()
+    hr.set_ranks(store_id, payload.get("ranks") or {})
+    return {"store_id": store_id, "ranks": {job: hr.rank(store_id, job) for job, spec in hr.JOBS.items() if not spec.get("future")}}

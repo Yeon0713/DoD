@@ -41,3 +41,9 @@ def test_native_numbers_and_clock_labels():
     assert speech.clock_label(day.replace(hour=11, minute=0)) == "오전 11시"
     assert speech.clock_label(day.replace(hour=17, minute=0)) == "오후 5시"
     assert speech.josa("강남 페스티벌", "과", "와") == "강남 페스티벌과" and speech.josa("한국시리즈", "이", "가") == "한국시리즈가"
+
+
+def test_too_long_tells_the_agent_in_letters():
+    assert width.too_long("title", "땅콩 알레르기 손님 대체 메뉴 준비", "staff.title") == (
+        "title 칸이 길어요 (지금 16.5자, 16자까지. 띄어쓰기·숫자는 반 자). 더 짧게 다시 써 주세요")
+    assert width.limit_note("staff.detail") == "한글 48자까지, 띄어쓰기·숫자는 반 자"

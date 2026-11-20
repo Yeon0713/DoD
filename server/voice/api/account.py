@@ -126,7 +126,7 @@ def ensure(store_id: str) -> dict | None:
     }
     repo.put("store", store_id, store_id, store)
     if not repo.get("settings", store_id):
-        repo.save_settings(store_id, {"negative_review_auto_reply": None})
+        repo.save_settings(store_id, {})
     now = clock.now()
     for r in read_store_db.read_reviews(store_id, now):
         if r["written_at"] < now - RECENT_REVIEWS:

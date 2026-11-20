@@ -1,4 +1,6 @@
 {
+  "_hr_comment": "업무별 출발 직급 (voice/hr.py). 인사과를 넣을 때 이미 쓰던 가게와 같게 (donna-voice/docs/agent-structure.md 4-9)",
+  "hr": {"negative_reply": "intern", "positive_reply": "manager", "review_fix_task": "staff", "field_task": "staff", "manual_task": "staff"},
   "store": {
     "id": "s001",
     "name": "도나네 곱창 역삼점",
@@ -19,7 +21,7 @@
   "reservations": [
     {"id": "rs_0031", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 2},
     {"id": "rs_0032", "starts_at": "2026-11-17T18:30:00+09:00", "party_size": 4},
-    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 12},
+    {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 12, "name": "김*호", "memo": "갑각류 알레르기 손님 2명 있어요"},
     {"id": "rs_0034", "starts_at": "2026-11-17T19:30:00+09:00", "party_size": 3},
     {"id": "rs_0035", "starts_at": "2026-11-17T20:00:00+09:00", "party_size": 2}
   ],

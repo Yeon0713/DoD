@@ -43,7 +43,7 @@ def can_fetch(store_id: str) -> bool:
 def update_store_weather(store_id: str, client: KmaClient | None = None, now: dt.datetime | None = None) -> dict:
     """가게 좌표로 날씨를 받아 저장한다. 아무것도 받지 못하면 첫 오류를 낸다. 저장한 요약을 돌려준다.
 
-    이미 관측을 저장해 둔 날은 다시 부르지 않는다 (3시간마다 새로 받을 때 일자료 30번 호출을 줄인다).
+    이미 관측을 저장해 둔 날은 다시 부르지 않는다 (매일 새로 받을 때 일자료 30번 호출을 줄인다).
     """
     store = read_store_db.read_store(store_id)
     observed = {r["date"] for r in read_store_db.read_store_weather(store_id) if r["kind"] == "observed"}

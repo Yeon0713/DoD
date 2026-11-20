@@ -14,7 +14,7 @@ import datetime as dt
 from voice import clock, config, repo, speech
 from voice.clock import iso, parse
 
-OPEN_STATES = {"alerted", "reminded"}
+OPEN_STATES = {"alerted", "reminded", "auto_posted"}
 
 
 def push(store_id: str, kind: str, text: str, *, say: list[str] | None = None, opens_turn: bool = False,
@@ -33,7 +33,7 @@ def _alive(notice: dict, now: dt.datetime) -> bool:
     if notice["kind"] == "story_event" and notice["opens_turn"]:  # 이미 대답한 포스터는 다시 묻지 않는다
         event = repo.get("story_event", notice["alert_id"]) if notice.get("alert_id") else None
         return bool(event) and event["state"] == "ready"
-    if notice["kind"] != "negative_review":
+    if notice["kind"] not in ("negative_review", "negative_auto") or not notice["opens_turn"]:
         return True
     alert = repo.get("alert", notice["alert_id"]) if notice.get("alert_id") else None
     return bool(alert) and alert["state"] in OPEN_STATES and now - parse(notice["at"]) <= config.ALERT_FALLBACK_AFTER

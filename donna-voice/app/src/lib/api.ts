@@ -69,11 +69,13 @@ export type Home = {
 
 /** 도나 알림. opens_turn: 소리를 내고 turn(event: notice)로 열어 도나가 묻는다 (아쉬운 리뷰). say: 소리를 내고 읽는다. */
 export type Notice = {
-  id: string; kind: 'staff_joined' | 'unconfirmed' | 'story' | 'negative_review' | 'staff_checked' | 'reply_fallback';
+  id: string; kind: 'staff_joined' | 'unconfirmed' | 'story' | 'negative_review' | 'staff_checked' | 'reply_fallback' | 'story_event' | 'instagram' | 'negative_auto' | 'hr_batch' | 'notebook';
   text: string; time_label: string; say?: string[]; opens_turn?: boolean; alert_id?: string | null;
 };
 
-export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'ask_action' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
+// ask_tasks: 알바생 할 일로 넣을지 묶어 묻는다 ("응, 넣어" / "두 번째는 빼" / "안 해", 2026-11-20)
+// ask_holiday: "○월 ○일을 쉬는 날로 적을게요. 맞아요?" (2026-11-20)
+export type TurnType = 'answer' | 'ask' | 'ask_permission' | 'ask_action' | 'ask_tasks' | 'ask_holiday' | 'show_detail' | 'end' | 'not_understood' | 'ignore' | 'stop' | 'navigate';
 
 export type Turn = {
   turn_id: string;
@@ -88,8 +90,13 @@ export type Turn = {
   tab?: 'sales' | 'week' | 'settings' | 'home';
   /** 앱이 열어야 하는 것 (카카오톡 공유, 인스타) */
   open?: 'kakao_share' | 'instagram';
-  /** ask_action: 도나가 아쉬운 리뷰 처리를 물었다 ("응, 진행해" / "쿠폰 빼고" / "안 해") */
-  action?: { kind: 'review_fix'; alert_id: string; compensation: boolean; staff_card: string | null; deadline_at: string };
+  /** ask_action: 도나가 아쉬운 리뷰 처리를 물었다 ("응, 진행해" / "쿠폰 빼고" / "안 해").
+   *  review_fix_task: 바로 답하기를 켠 가게에서 답글은 올렸고 알바생 할 일만 묻는다 */
+  action?:
+    | { kind: 'review_fix' | 'review_fix_task'; alert_id: string; compensation: boolean; staff_card: string | null; deadline_at: string }
+    /** batch: 인사과 직급대로 묻기 (인턴은 한 건씩 mode 'each', 사원은 묶어서 'batch'). 대답: "응" / "두 번째는 빼" / "안 해".
+     *  items 는 지금 묻는 것, rest 는 이어서 물을 것 (server/voice/jobs/batch_ask.py) */
+    | { kind: 'batch'; items: { job: string; ref: string }[]; rest: { job: string; ref: string }[]; mode: 'each' | 'batch' };
 };
 
 export type Actor = 'donna' | 'owner';

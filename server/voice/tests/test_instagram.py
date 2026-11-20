@@ -14,7 +14,7 @@ from voice import clock, config, repo, width
 from voice.instagram import graph, media, posts
 from voice.instagram.graph import InstagramError
 from voice.jobs import queue
-from voice.tests.conftest import FakeGraph
+from voice.tests.conftest import FakeGraph, hr_log, no_morning_tasks
 from voice.tests.test_v021_choongjang import FIXTURE, Choongjang
 
 
@@ -38,7 +38,7 @@ def run_publish(chj: Choongjang) -> dict:
 
 
 def to_instagram_step(chj: Choongjang) -> dict:
-    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (아쉬운 리뷰 허락은 "응")."""
+    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (묻는 단계는 대답하지 않고 넘긴다)."""
     response = chj.turn("오늘 일정 브리핑해 줘")
     for _ in range(10):
         if response["briefing"] and response["briefing"]["step_key"] == "instagram" or response["type"] == "end":
@@ -93,7 +93,10 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert event["intent"] == "instagram.post" and event["type"] == "ask"
     assert event["briefing"]["step_key"] == "story_event"  # 11/17 은 비 오는 날이라 스토리 이벤트를 이어서 묻는다 (test_story_event.py)
     assert [s["text"] for s in event["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
-    done = chj.turn("아니, 오늘은 안 해")
+    assert hr_log() == [("instagram_post", "approved")]
+    tasks = chj.turn("아니, 오늘은 안 해")
+    assert tasks["type"] == "ask_tasks"  # 2026-11-20: 마지막에 알바생 할 일을 묻는다
+    done = chj.turn("다음")
     assert done["type"] == "end"
     assert "인스타에 올리는 중" in [r["value"] for r in done["cards"][0]["rows"]]
     post = chj.get("/v1/instagram")["posts"][0]
@@ -108,7 +111,7 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert created[4]["media_type"] == "CAROUSEL" and created[4]["children"] == "child_1,child_2,child_3,child_4"
     assert created[4]["caption"].startswith("이번 달 가장 많이 나간 메뉴예요.\n1등 들깨옹심이메밀칼국수")
     assert "손님 한마디 “들깨 국물이 정말 고소해요”" in created[4]["caption"]
-    assert created[4]["caption"].endswith("\n\n초옹장 · 경기 화성시 남양읍\n#초옹장")
+    assert created[4]["caption"].endswith("\n\n초옹장 · 경기 화성시 남양읍\n영업시간 10:30 ~ 20:30\n#초옹장")  # 가게 정보는 코드가 붙인다
     assert posts.hashtag("새뱅이 국수 (본점)") == "#새뱅이국수본점"
     assert ("POST", "17841400000000000/media_publish", {"creation_id": "carousel_1"}) in fake.calls
 
@@ -135,11 +138,13 @@ def test_later_does_not_post(chj: Choongjang, ig_on):
     assert later["intent"] == "instagram.later" and later["briefing"]["step_key"] == "story_event"  # 비 오는 날 (test_story_event.py)
     assert later["say"][0]["text"] == "네, 내일 브리핑에서 다시 여쭤볼게요."
     assert chj.get("/v1/instagram")["posts"] == []
+    assert hr_log() == []  # "나중에"는 세지 않는다 (9-0 n)
 
 
 def test_story_outside_briefing(chj: Choongjang, ig_on):
     fake = ig_on(FakeGraph())
     connect(chj)
+    no_morning_tasks()  # 아침에 못 물은 알바생 할 일이 있으면 그것부터 묻는다 (test_staff_tasks.py)
     said = chj.turn("인스타 스토리 올려 줘", addressed=True)
     assert said["intent"] == "instagram.story" and said["headline"] == "인스타에 스토리를 올릴게요"
     run_publish(chj)
@@ -307,6 +312,7 @@ def test_do_not_post_in_briefing(chj: Choongjang, ig_on):
     said = chj.turn("인스타에 올리지 마")
     assert said["intent"] == "instagram.later"
     assert chj.get("/v1/instagram")["posts"] == []
+    assert hr_log() == [("instagram_post", "rejected")]  # "올리지 마"는 반려 (9-0 n)
 
 
 def test_unexpected_error_fails_instead_of_stuck(chj: Choongjang, ig_on, monkeypatch):

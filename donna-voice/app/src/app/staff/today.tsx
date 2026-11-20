@@ -13,8 +13,9 @@ import { colors, radius, space } from '@/theme/tokens';
 // F-06, F-09 할 일 (확정 포맷: 하루 순서형).
 //   머리: 가게 로고, 이름, 날짜, 내 이름 꼬리표 / 출퇴근 줄
 //   몸통: 오픈 전, 영업 중, 마감 순서. 왼쪽은 때, 오른쪽은 일 (삼성 캘린더 목록 보기). "지금" 선 위는 지난 때.
-//   "확인 필요"는 그 때 묶음 맨 위에 따로 있고 저마다 눌러야 사라진다.
-//   아쉬운 리뷰에서 나온 교정 카드(긴급, 2026-11-18)는 화면 맨 위에 붉게 뜨고, 확인해야 퇴근할 수 있다.
+//   "확인 필요"는 그 때 묶음 맨 위에 따로 있고 저마다 눌러야 사라진다. 아쉬운 리뷰에서 나온 교정 카드도 여기에 뜬다
+//   (2026-11-20 긴급에서 내림). 무엇을 할지(detail)를 보여 주고, 누르면 자세히로 간다.
+//   긴급(비 오는 날 이벤트 등, 오늘 안 하면 손님이 바로 겪는 일)은 화면 맨 위에 붉게 뜨고, 확인해야 퇴근할 수 있다.
 export default function StaffTodayScreen() {
   const router = useRouter();
   const [data, setData] = useState<StaffToday | null>(null);
@@ -85,10 +86,22 @@ export default function StaffTodayScreen() {
               <View style={{ flex: 1, gap: space.s8 }}>
                 {g.must.map((t) => (
                   <View key={t.id} style={styles.must}>
-                    <Txt variant="bodyStrong">{t.title}</Txt>
-                    <Txt variant="label" color="ink2">
-                      {t.sub}
-                    </Txt>
+                    <Pressable
+                      onPress={() => router.push(`/staff/task/${t.id}`)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.title} 자세히`}
+                      style={{ gap: space.s4 }}
+                    >
+                      <Txt variant="bodyStrong">{t.title}</Txt>
+                      {t.detail ? (
+                        <Txt variant="body" color="ink2">
+                          {t.detail}
+                        </Txt>
+                      ) : null}
+                      <Txt variant="label" color="ink2">
+                        {t.sub}
+                      </Txt>
+                    </Pressable>
                     <BigButton label="확인" onPress={() => confirm(t)} />
                   </View>
                 ))}
@@ -141,7 +154,7 @@ function TaskRow({ task, onToggle, onOpen }: { task: StaffTask; onToggle: () => 
   );
 }
 
-/** 긴급 교정 카드: 아쉬운 리뷰에서 나온 일. 붉은 표시, 무엇을 어떻게, 확인. */
+/** 긴급 카드: 오늘 안 하면 손님이 바로 겪는 일 (비 오는 날 이벤트 등). 붉은 표시, 무엇을 어떻게, 확인. */
 function UrgentCard({ task, onConfirm, onOpen }: { task: StaffTask; onConfirm: () => void; onOpen: () => void }) {
   const { scale } = useLayout();
   return (

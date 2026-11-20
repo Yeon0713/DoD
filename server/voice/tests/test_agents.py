@@ -3,7 +3,7 @@
 from Harness.tests.fakes import FakeClova, call
 from voice.agents import improve_tip, intent_judge, voice_reply
 from voice.context import load
-from voice.tests.conftest import Donna, baseline
+from voice.tests.conftest import Donna, baseline, new_agents_off
 from voice.tests.test_scenario_b import NIGHT_REVIEW
 
 GOOD = "배달이 늦어 식은 음식을 드시게 해서 정말 죄송합니다. 다음 주문은 더 빨리, 따뜻하게 보내 드릴게요."
@@ -98,6 +98,7 @@ def test_improve_tip_rejects_ungrounded_numbers(clova_on):
 def test_intent_judge_used_only_when_rules_cannot_decide(clova_on, monkeypatch):
     monkeypatch.setenv("VOICE_AGENT_REPLY", "false")  # 에이전트별 스위치: 답글·고칠 점은 템플릿으로, 뜻 판정만 LLM
     monkeypatch.setenv("VOICE_AGENT_IMPROVE", "false")
+    new_agents_off(monkeypatch)  # 2026-11-20 에 더한 사원·팀장도 끈다
     donna = loaded()
     donna.run("prepare_briefing")
     fake = clova_on(FakeClova(
@@ -126,7 +127,7 @@ def test_intent_judge_rejects_unknown_intent(clova_on):
 def test_scenario_b_with_agent_reply(clova_on):
     payload = baseline()
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
-    payload["settings"] = {"negative_review_auto_reply": True}
+    payload["hr"] = {**payload["hr"], "negative_reply": "assistant"}  # 묻지 않고 답한다 (인사과 4-a)
     donna = Donna()
     donna.clock("2026-11-16T22:40:00+09:00")
     donna.fixtures(payload)

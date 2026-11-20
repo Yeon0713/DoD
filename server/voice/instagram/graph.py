@@ -7,7 +7,7 @@
 - API 로 올린 게시물은 24시간에 한도가 있다 (GET /{ig-user-id}/content_publishing_limit). 캐러셀은 1개로 센다.
 - 오류 code 190 은 토큰이 만료되었거나 무효라는 뜻이다 (다시 연결해야 한다).
 
-post / get / sleep 은 테스트에서 가짜로 바꾼다 (voice/context.py 의 post 와 같은 방식).
+post / get / delete / sleep 은 테스트에서 가짜로 바꾼다 (voice/context.py 의 post 와 같은 방식).
 """
 
 import logging
@@ -28,6 +28,7 @@ CONNECT_INTERVAL = 1
 
 post = httpx.post
 get = httpx.get
+delete = httpx.delete
 sleep = time.sleep
 
 
@@ -53,6 +54,8 @@ def _call(method: str, path: str, params: dict) -> dict:
         try:
             if method == "POST":
                 response = post(url, data=params, timeout=TIMEOUT)
+            elif method == "DELETE":
+                response = delete(url, params=params, timeout=TIMEOUT)
             else:
                 response = get(url, params=params, timeout=TIMEOUT)
             break
@@ -116,6 +119,12 @@ def wait_ready(container_id: str) -> None:
 def publish(container_id: str) -> str:
     """게시하고 media id 를 돌려준다."""
     return _call("POST", f"{_user()}/media_publish", {"creation_id": container_id})["id"]
+
+
+def delete_media(media_id: str) -> None:
+    """올린 게시물을 지운다 (사후 취소, 인사과 5단계). Graph API 가 실제로 지우기를 받는지는 실제 계정으로 확인해야 한다
+    (donna-voice/docs/agent-structure.md 7장, hr-impl-notes.md). 안 되면 InstagramError 가 나고 부르는 쪽이 알린다."""
+    _call("DELETE", media_id, {})
 
 
 def permalink(media_id: str) -> str | None:

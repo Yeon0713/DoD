@@ -14,7 +14,7 @@ import logging
 import re
 import threading
 
-from voice import activity, clock, notices, repo
+from voice import activity, clock, hours, notices, repo
 from voice.clock import iso, parse
 from voice.context import VoiceStore
 from voice.instagram import graph, media
@@ -96,21 +96,55 @@ def hashtag(name: str) -> str:
     return "#" + re.sub(r"[^\w]", "", name)
 
 
+def _chosen(view: VoiceStore, plan: dict | None) -> dict:
+    """올릴 메뉴 3개: 마케팅 소재 사원이 고른 메뉴를 먼저, 모자라면 많이 나간 순서로 채운다 (voice/marketing.py)."""
+    top = top_menus(view, len(view.menus) or FEED_SLIDES)
+    if not plan or not plan.get("menu_ids"):
+        return {**top, "items": top["items"][:FEED_SLIDES]}
+    ranked = {m["id"]: m for m in top["items"]}
+    by_id = {m["id"]: m for m in view.menus if m.get("photo_url")}
+    items = [ranked.get(i) or {"id": i, "rank": None, "name": by_id[i]["name"], "count_label": None, "photo_url": by_id[i]["photo_url"]}
+             for i in plan["menu_ids"] if i in by_id]
+    items += [m for m in top["items"] if m["id"] not in plan["menu_ids"]]
+    return {**top, "items": items[:FEED_SLIDES], "angle": plan.get("angle")}
+
+
+def store_lines(view: VoiceStore) -> list[str]:
+    """글 끝 가게 정보 (코드가 붙인다. LLM 이 쓰지 않는다): 내일 쉬는 날, 가게 이름·주소, 영업시간, 가게 해시태그."""
+    store = view.store
+    tomorrow = view.now.date() + dt.timedelta(days=1)
+    lines = [f"내일({tomorrow.month}월 {tomorrow.day}일)은 쉬어요."] if hours.on(store, tomorrow) is None else []
+    lines.append(" · ".join(x for x in (store["name"], store.get("address")) if x))
+    open_days = [d for d in hours.week(store) if d]
+    if open_days and len({(d["open"], d["close"]) for d in open_days}) == 1:
+        lines.append(f"영업시간 {hours.summary(hours.week(store))}")
+    return lines + [hashtag(store["name"])]
+
+
 def build_feed(view: VoiceStore) -> dict | None:
-    """많이 나간 메뉴 3장 + 가게 소개 1장 캐러셀. 메뉴 사진이 3개보다 적으면 None."""
-    top = top_menus(view)
+    """메뉴 3장 + 가게 소개 1장 캐러셀. 메뉴 사진이 3개보다 적으면 None.
+    마케팅 계획(소재·글, voice/marketing.py)이 있으면 그 메뉴와 글을, 없으면 많이 나간 메뉴와 템플릿 글을 쓴다."""
+    from voice import marketing
+
+    plan = marketing.today(view)
+    top = _chosen(view, plan)
     if len(top["items"]) < FEED_SLIDES:
         return None
     store = view.store
-    slides = [{"src": m["photo_url"], "top_label": f"{top['period']} {m['rank']}등", "title": m["name"]} for m in top["items"]]
+    slides = [{"src": m["photo_url"], "top_label": f"{top['period']} {m['rank']}등" if m["rank"] else "오늘 추천", "title": m["name"]}
+              for m in top["items"]]
     if store.get("logo_url"):  # 가게 소개 장: 가게 사진이 없어서 지금은 로고를 쓴다
         slides.append({"src": store["logo_url"], "top_label": store.get("address") or store["name"], "title": store["name"], "store": True})
     said = quote(view)
-    lines = [f"{top['period']} 가장 많이 나간 메뉴예요."] + [f"{m['rank']}등 {m['name']}" for m in top["items"]]
-    if said:
-        lines += ["", f"손님 한마디 “{said}”"]
-    lines += ["", " · ".join(x for x in (store["name"], store.get("address")) if x), hashtag(store["name"])]
-    return {"kind": "feed", "slides": slides, "caption": "\n".join(lines), "quote": said, "menus": top}
+    if plan and plan.get("body"):
+        lines = [plan["body"], " ".join(plan.get("hashtags") or [])]
+    else:
+        lines = [f"{top['period']} 가장 많이 나간 메뉴예요."] + [f"{m['rank']}등 {m['name']}" for m in top["items"]]
+        if said:
+            lines += ["", f"손님 한마디 “{said}”"]
+    lines += ["", *store_lines(view)]
+    return {"kind": "feed", "slides": slides, "caption": "\n".join(line for line in lines if line is not None), "quote": said,
+            "menus": top}
 
 
 def build_story(view: VoiceStore) -> dict | None:
@@ -228,7 +262,19 @@ def publish(store_id: str, post_id: str) -> dict | None:
 
         story_event.on_post_done(store_id, post)
         return post
+    if post.get("auto"):  # 묻지 않고 올린 게시물 (인스타 게시 대리, 인사과 4-b)
+        from voice import hr
+
+        hr.record(store_id, "instagram_post", post["id"], "done")
     text = f"인스타에 {what} 올렸어요"
     activity.log(store_id, "donna", text, f"instagram_{post['kind']}")
     notices.push(store_id, "instagram", text)
     return post
+
+
+def delete(store_id: str, post_id: str) -> dict:
+    """올린 게시물을 지운다 (사후 취소, 인사과 5단계). 지우면 status deleted. 못 지우면 InstagramError 를 그대로 낸다."""
+    post = get(post_id)
+    if post.get("media_id"):
+        graph.delete_media(post["media_id"])
+    return save({**post, "status": "deleted", "deleted_at": iso(clock.now())})

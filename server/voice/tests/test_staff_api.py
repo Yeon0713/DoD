@@ -1,7 +1,9 @@
 """S: 알바생 화면 (donna-voice/docs/test-scenarios-closed-loop.md S). 옛 목업에만 있던 /v1/staff/* 를 실제 백엔드로 옮긴 것."""
 
+import pytest
 from fastapi.testclient import TestClient
 
+from voice import staff
 from voice.tests.conftest import choongjang
 
 
@@ -53,50 +55,63 @@ def test_s3_today_is_attendance_and_manual():
     assert today["urgent"] == []
 
 
-def test_s4_urgent_pinned():
+def must(today: dict) -> list[dict]:
+    return [t for g in today["groups"] for t in g["must"]]
+
+
+def test_s4_fix_card_must_confirm():
+    """교정 카드는 긴급이 아니라 영업 중 묶음의 '확인 필요'에 뜬다 (2026-11-20)."""
     donna = choongjang()
     approved(donna)
     today = donna.staff_today()
-    [card] = today["urgent"]
-    assert card["title"] == "배달 용기 이중 실링" and card["urgent"] is True and card["confirmed"] is False
+    assert today["urgent"] == []
+    [card] = must(today)
+    assert card["title"] == "배달 용기 이중 실링" and card["urgent"] is False and card["confirmed"] is False
     assert card["sub"] == "리뷰에서 나온 일" and card["fresh"] is True
-    assert card["id"] not in [t["id"] for g in today["groups"] for t in g["must"] + g["tasks"]]  # 맨 위에만 한 번
+    assert card["detail"] == "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여 주세요"  # 화면에서 무엇을 할지 보인다
+    assert next(g for g in today["groups"] if card in g["must"])["phase"] == "open"
 
 
 def test_s5_detail():
     donna = choongjang()
     approved(donna)
-    card = donna.staff_today()["urgent"][0]
+    card = must(donna.staff_today())[0]
     detail = donna.client.get(f"/v1/staff/tasks/{card['id']}", headers=donna.as_staff("st_harin")).json()
     assert detail["owner_words"] == "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여 주세요"
-    assert detail["owner_words_label"] == "도나가 리뷰를 보고 넣은 일" and detail["tag"] == "긴급"
+    assert detail["owner_words_label"] == "도나가 리뷰를 보고 넣은 일" and detail["tag"] == "확인 필요"
+    assert detail["until"] == "내일까지 보여요"
 
 
-def test_s6_checkout_blocked_until_confirmed():
+def test_s6_fix_card_does_not_block_checkout_but_urgent_does():
     donna = choongjang()
     approved(donna)
+    assert donna.staff_post("/checkout", staff_id="st_harin").json() == {"ok": True}  # 교정 카드는 퇴근을 막지 않는다
+    staff.add_task("s005", "[이벤트] 스토리 태그 손님 음료 1캔 드리기", "open", urgent=True, origin="story_event")
     blocked = donna.staff_post("/checkout", staff_id="st_harin")
     assert blocked.status_code == 409
-    assert blocked.json() == {"error": {"code": "urgent_unconfirmed", "message": "배달 용기 이중 실링을 먼저 확인해 주세요."}}
+    assert blocked.json() == {"error": {"code": "urgent_unconfirmed", "message": "[이벤트] 스토리 태그 손님 음료 1캔 드리기를 먼저 확인해 주세요."}}
 
 
-def test_s7_checkout_after_confirm():
+def test_s7_confirm_and_next_day():
     donna = choongjang()
     approved(donna)
-    card = donna.staff_today()["urgent"][0]
+    card = must(donna.staff_today())[0]
     donna.clock("2026-11-17T15:43:00+09:00")
     assert donna.staff_post(f"/tasks/{card['id']}/confirm", staff_id="st_harin").json() == {"ok": True}
     today = donna.staff_today()
-    assert today["urgent"] == []
+    assert must(today) == []
     moved = next(t for g in today["groups"] for t in g["tasks"] if t["id"] == card["id"])
     assert moved["sub"] == "오후 3시 43분에 확인함" and moved["done"] is True
-    assert donna.staff_post("/checkout", staff_id="st_harin").json() == {"ok": True}
-    assert donna.staff_today()["attendance"]["label"] == "퇴근"
-    # 확인 안 한 다른 알바생은 다음 날에도 맨 위에 보인다 (넣은 날과 다음 날)
+    # 확인 안 한 다른 알바생은 다음 날에도 '확인 필요'에 보인다 (넣은 날과 다음 날)
     donna.clock("2026-11-18T11:00:00+09:00")
-    assert [t["title"] for t in donna.staff_today("st_yang")["urgent"]] == ["배달 용기 이중 실링"]
+    assert [t["title"] for t in must(donna.staff_today("st_yang"))] == ["배달 용기 이중 실링"]
     donna.clock("2026-11-19T11:00:00+09:00")
-    assert donna.staff_today("st_yang")["urgent"] == []
+    assert must(donna.staff_today("st_yang")) == []
+
+
+def test_s8_add_task_needs_origin():
+    with pytest.raises(ValueError):
+        staff.add_task("s005", "출처 없는 일", "open")
 
 
 def test_s8_done_persists():

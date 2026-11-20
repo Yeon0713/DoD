@@ -90,14 +90,15 @@ def test_briefing_turns_never_call_clova(donna: Donna):
 
 def test_read_negative_review_moves_and_reads_first(donna: Donna):
     at_step_one(donna)
-    donna.turn("아쉬운 리뷰 어때")  # 허락 질문
-    donna.turn("아니 내가 볼게")  # 거절하면 3단계에 아쉬운 리뷰와 답글 초안이 생긴다
+    donna.turn("아쉬운 리뷰 어때")  # 3단계: 써 둔 사과 답글을 올릴까요? (부정 리뷰 답글 인턴, 인사과 4-a)
+    donna.turn("아니 내가 볼게")  # 올리지 않으면 초안으로 남는다
     response = donna.turn("아쉬운 리뷰 읽어줘")
     assert response["intent"] == "detail.read" and response["briefing"]["step_key"] == "negative"
     assert response["say"][0]["text"] == "손님 리뷰예요."
 
 
-def test_read_negative_review_without_draft_only_moves(donna: Donna):
-    at_step_one(donna)  # 허락을 아직 묻지 않아 3단계가 허락 질문이다
+def test_read_negative_review_reads_the_draft_being_asked(donna: Donna):
+    at_step_one(donna)  # 3단계가 "올릴까요?"로 묻는 중이다 (허락 질문 D-10 은 없앰)
     response = donna.turn("아쉬운 리뷰 읽어줘")
-    assert response["briefing"]["step_key"] == "negative" and response["permission"] == {"key": "negative_review_auto_reply"}
+    assert response["briefing"]["step_key"] == "negative" and response["say"][0]["text"] == "손님 리뷰예요."
+    assert response["say"][2]["text"] == "제가 써 둔 답글 초안이에요."

@@ -4,8 +4,10 @@
 할 일 종류
   매뉴얼  repeat=daily: 날마다 올라온다. 누른 기록은 그날만 센다
   오늘만  repeat=today: start_date ~ end_date 동안만
-  교정    urgent=True (2026-11-18 팀 개선안): 아쉬운 리뷰에서 나온 일. 넣은 날과 다음 날 맨 위에 따로 뜨고,
-          저마다 "확인"을 눌러야 내려간다. 확인하지 않으면 퇴근하기가 막힌다.
+  교정    origin=review, must_confirm (2026-11-18 팀 개선안, 2026-11-20 긴급에서 내림): 아쉬운 리뷰에서 나온 일.
+          넣은 날과 다음 날 "확인 필요"에 뜨고, 저마다 "확인"을 눌러야 내려간다. 퇴근은 막지 않는다.
+  긴급    urgent=True: 오늘 안 하면 손님이 바로 겪는 일 (비 오는 날 이벤트 카드). 맨 위에 따로 뜨고,
+          확인하지 않으면 퇴근하기가 막힌다.
   하지 말 것  kind=dont: "오늘은 장칼국수 주문 받지 마" (D-20)
 
 저장은 voice/staff_db.py 의 알바생 표에 한다. 화면이 받는 모양(today, detail)은 표로 옮기기 전과 같다.
@@ -24,6 +26,11 @@ from voice.clock import iso, parse
 
 PHASES = [("before_open", "오픈 전"), ("open", "영업 중"), ("closing", "마감")]
 FRESH = dt.timedelta(minutes=5)
+ORIGINS = ("manual", "owner", "review", "story_event", "field_variable")
+# 도나가 넣은 일: origin → (목록 줄 아래 글, 자세히의 설명). 처음 확인하면 사장님께 알린다 (review_loop.on_staff_confirm)
+FROM_DONNA = {"review": ("리뷰에서 나온 일", "도나가 리뷰를 보고 넣은 일"),
+              "story_event": ("오늘 이벤트", "도나가 이벤트를 올리고 넣은 일"),
+              "field_variable": ("오늘 날씨·예약", "도나가 오늘 날씨·예약을 보고 넣은 일")}
 LOGIN_ID_MIN, PASSWORD_MIN = 3, 8
 BAD_CODE = "코드가 맞지 않아요. 사장님에게 받은 코드를 확인해 주세요."
 
@@ -67,13 +74,16 @@ def add_task(store_id: str, title: str, phase: str, *, repeat: str = "today", mu
              detail: str | None = None, source: dict | None = None, owner_words: str | None = None,
              sent_at: dt.datetime | None = None, days: int = 1, kind: str = "do", to: str = "all",
              origin: str | None = None) -> dict:
-    """할 일 하나를 넣는다. 오늘만이면 오늘부터 days 일 동안 보인다."""
+    """할 일 하나를 넣는다. 오늘만이면 오늘부터 days 일 동안 보인다.
+    origin(누가 넣었나)은 넣는 쪽이 꼭 밝힌다: manual | owner | review | story_event | field_variable. 화면 문구와 확인 뒤 처리가 이것을 본다."""
+    if origin not in ORIGINS:
+        raise ValueError(f"할 일 origin 이 필요해요: {origin!r}")
     now = clock.now()
     task_id = f"tk_{_next_task_number(store_id):04d}"
     staff_db.add_task({
         "task_id": task_id, "store_id": store_id, "title": title, "phase": phase, "repeat": repeat, "kind": kind,
         "must_confirm": must_confirm or urgent, "urgent": urgent, "to_staff": to,
-        "origin": origin or ("review" if urgent else "manual" if repeat == "daily" and not owner_words else "owner"),
+        "origin": origin,
         "detail": detail, "owner_words": owner_words, "source": source,
         "start_date": now.date().isoformat(), "end_date": (now.date() + dt.timedelta(days=days - 1)).isoformat(),
         "sent_at": iso(sent_at if sent_at is not None else now) if repeat != "daily" or sent_at or owner_words else None,
@@ -200,8 +210,8 @@ def task_view(task: dict, staff_id: str, now: dt.datetime, marks: list[dict] | N
         sub = f"{_label(confirmed)}에 확인함"
     elif done:
         sub = f"{_label(done)}에 함"
-    elif task["urgent"]:
-        sub = "리뷰에서 나온 일"
+    elif task["origin"] in FROM_DONNA:
+        sub = FROM_DONNA[task["origin"]][0]
     elif task["must_confirm"]:
         sub = "모두 확인해야 해요"
     else:
@@ -283,13 +293,14 @@ def today(staff_id: str) -> dict:
 
 
 def detail(task_id: str, staff_id: str) -> dict:
-    """F-08. 사장님이 한 말, 또는 도나가 리뷰를 보고 넣은 일의 자세한 말."""
+    """F-08. 사장님이 한 말, 또는 도나가 리뷰·이벤트를 보고 넣은 일의 자세한 말."""
     task = _task(task_id)
     now = clock.now()
     view = task_view(task, staff_id, now)
-    if task["urgent"]:
-        return {**view, "tag": "긴급", "owner_words": task.get("detail"), "owner_words_label": "도나가 리뷰를 보고 넣은 일",
-                "until": "내일까지 맨 위에 보여요"}
+    if task["origin"] in FROM_DONNA:
+        return {**view, "tag": "긴급" if task["urgent"] else "확인 필요", "owner_words": task.get("detail"),
+                "owner_words_label": FROM_DONNA[task["origin"]][1],
+                "until": "내일까지 보여요" if task["until"] > now.date().isoformat() else "오늘만 보여요"}
     words = task.get("owner_words")
     return {**view, "tag": "오늘만" if task["repeat"] == "today" else "매일",
             "owner_words": f"“{words.replace('도나야,', '').strip()}”" if words else None,
@@ -449,7 +460,7 @@ def confirm(task_id: str, staff_id: str) -> dict:
     task = _task(task_id)
     first = not any(m["confirmed_at"] for m in _marks(task_id))
     staff_db.set_mark(task_id, staff_id, clock.now().date().isoformat(), me["store_id"], confirmed_at=_now_iso())
-    if task["urgent"] and first:
+    if task["origin"] in FROM_DONNA and first:  # 도나가 넣은 일은 처음 확인하면 사장님께 알린다
         from voice.jobs import review_loop
 
         review_loop.on_staff_confirm(task, me)

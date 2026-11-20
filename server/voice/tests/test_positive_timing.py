@@ -78,7 +78,12 @@ def test_p9_weather_changes_words_not_time():
 def test_p13_posted_replies_show_on_platform():
     from voice.tests.conftest import choongjang
 
+    from voice.context import load
+    from voice.jobs import batch_ask
+
     donna = choongjang(at=None)
+    for review_id in ("rv_0401", "rv_0405", "rv_0409"):  # s005 칭찬 답글은 사원: 브리핑에서 "응"한 것으로 둔다 (인사과 4-b)
+        batch_ask.KINDS["positive_reply"].approve(load("s005"), review_id)
     donna.clock("2026-11-17T11:00:00+09:00")
     items = {i["id"]: i for i in donna.get("/v1/dev/platform")["items"]}
     for review_id in ("rv_0401", "rv_0405"):

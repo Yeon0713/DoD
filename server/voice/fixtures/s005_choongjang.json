@@ -28,8 +28,19 @@
     ],
     "facts": []
   },
+  "_hr_comment": "업무별 출발 직급 (voice/hr.py). 지금 시연을 가장 적게 바꾸는 배치 (donna-voice/docs/agent-structure.md 9-2의 1). 없는 업무는 인턴",
+  "hr": {"negative_reply": "intern", "positive_reply": "staff", "instagram_post": "intern", "story_poster": "staff",
+         "review_fix_task": "staff", "field_task": "staff", "manual_task": "staff"},
+  "_hr_history_comment": "지난 2주 반응 기록 (agent-structure.md 9-2의 1). 시계가 11/17 에 고정이라 쌓을 수 없어 넣는다. 위 직급의 근거: 칭찬 답글·알바생 할 일은 그대로 승인 90% 이상이라 사원, 부정 답글·인스타는 고친 것이 많아 인턴",
+  "hr_history": [
+    {"job": "positive_reply", "from": "2026-11-03", "to": "2026-11-16", "approved": 21, "edited": 1},
+    {"job": "negative_reply", "from": "2026-11-03", "to": "2026-11-16", "approved": 5, "edited": 3, "rejected": 1},
+    {"job": "instagram_post", "from": "2026-11-03", "to": "2026-11-16", "approved": 3, "edited": 2},
+    {"job": "review_fix_task", "from": "2026-11-03", "to": "2026-11-16", "approved": 6},
+    {"job": "field_task", "from": "2026-11-03", "to": "2026-11-16", "approved": 5},
+    {"job": "manual_task", "from": "2026-11-03", "to": "2026-11-16", "approved": 2}
+  ],
   "settings": {
-    "negative_review_auto_reply": null,
     "compensation": {
       "packaging": "다음 주문 때 감자전 하나를 서비스로 드릴게요.",
       "missing": "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요.",
@@ -71,8 +82,8 @@
              "text": "주문하려고 불렀는데 직원분이 대답도 없이 지나가셨어요."}
   },
   "reservations": [
-    {"id": "rs_0031", "starts_at": "2026-11-17T12:00:00+09:00", "party_size": 12},
-    {"id": "rs_0032", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 4},
+    {"id": "rs_0031", "starts_at": "2026-11-17T12:00:00+09:00", "party_size": 12, "name": "박*수", "memo": "땅콩 알레르기 손님 1명 있어요"},
+    {"id": "rs_0032", "starts_at": "2026-11-17T18:00:00+09:00", "party_size": 4, "name": "이*영", "memo": "아이 의자 2개 부탁드려요"},
     {"id": "rs_0033", "starts_at": "2026-11-17T19:00:00+09:00", "party_size": 2},
     {"id": "rs_0034", "starts_at": "2026-11-18T18:00:00+09:00", "party_size": 3},
     {"id": "rs_0035", "starts_at": "2026-11-18T19:00:00+09:00", "party_size": 2},

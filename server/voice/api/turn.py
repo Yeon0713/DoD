@@ -26,7 +26,8 @@ def post_turn(body: TurnRequest):
 
 
 def settings_view(store_id: str) -> dict:
-    """설정 탭 (Figma v0.2.1 G-05 ~ G-08). 사장님이 바꿀 수 있는 것: 아쉬운 리뷰에 바로 답하기, 브리핑 알림, 장사 시간.
+    """설정 탭 (Figma v0.2.1 G-05 ~ G-08). 사장님이 바꿀 수 있는 것: 브리핑 알림, 장사 시간, 보상 문장.
+    "아쉬운 리뷰에 바로 답하기"는 없앴다. 부정 리뷰 답글 직급이 정한다 (voice/hr.py, 인사과 4-a).
 
     브리핑은 사장님이 부를 때 한다. 알림은 기본 문 열기 1시간 전이고 사장님이 고른다 (briefing_notify).
     알바생 수는 알바생 화면에 들어온 사람 수 (없으면 null, 앱은 줄을 숨긴다).
@@ -35,7 +36,6 @@ def settings_view(store_id: str) -> dict:
     saved = repo.settings(store_id)
     notify = hours.notify_view(store, saved)
     return {
-        "negative_review_auto_reply": saved.get("negative_review_auto_reply"),
         "store": {"id": store["id"], "name": store["name"]},
         "open_time_label": store_clock(store["open_time"]),
         "close_time_label": store_clock(store["close_time"]),
@@ -97,8 +97,6 @@ def patch_settings(body: SettingsPatch):
         return store_not_found()
     sent = body.model_fields_set
     saved = dict(repo.settings(body.store_id))
-    if "negative_review_auto_reply" in sent:
-        saved["negative_review_auto_reply"] = body.negative_review_auto_reply
     if body.briefing_notify is not None:
         notify = dict(saved.get("briefing_notify") or {})
         if "on" in body.briefing_notify.model_fields_set:

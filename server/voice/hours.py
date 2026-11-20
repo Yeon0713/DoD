@@ -48,7 +48,9 @@ def week(store: dict) -> list[dict | None]:
 
 
 def on(store: dict, day: dt.date) -> dict | None:
-    """그날의 장사 시간 {"open", "close"}. 쉬는 날이면 None."""
+    """그날의 장사 시간 {"open", "close"}. 쉬는 날(요일 휴무, 사장님이 확인한 임시 휴무)이면 None."""
+    if any(h["confirmed"] and h["date"] == day.isoformat() for h in store.get("holidays") or []):  # voice/holidays.py
+        return None
     return week(store)[day.weekday()]
 
 

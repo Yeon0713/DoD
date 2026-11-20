@@ -1,10 +1,12 @@
-"""등록한 가게 날씨를 3시간마다 새로 받는다.
+"""등록한 가게 날씨를 매일 자정(00:00, 서울)에 새로 받는다 (2026-11-20 결정. 전에는 3시간마다).
 
-서버가 켜져 있는 동안 백그라운드 스레드가 10분마다 등록한 가게를 훑어, 마지막으로 받은 지 3시간이 지난 가게만 다시 받는다
+서버가 켜져 있는 동안 백그라운드 스레드가 다음 자정까지 기다렸다가, 오늘 아직 받지 않은 가게를 모두 받는다
 (app/main.py 가 서버를 켤 때 시작한다. KMA_API_KEY 가 비어 있으면 켜지 않는다).
-마지막으로 받은 시각은 가게 파일(store_weather_fetch)에 있어서 서버를 다시 켜도 간격이 이어지고,
-키를 넣기 전에 등록한 가게도 다음 확인 때 채워진다.
+00:00 에 부르면 전날 23시 단기예보 발표를 받는다. 오늘 00~23시 시간별 예보와 최저·최고기온이 모두 들어 있다.
+어제 관측(ASOS 일자료)은 자정에는 아직 없을 수 있어 다음 자정에 채워진다.
 
+서버를 켰을 때 오늘 아직 받지 않은 가게가 있으면 바로 받는다 (마지막으로 받은 시각은 가게 파일 store_weather_fetch 에 있다).
+받지 못한 가게는 그날 안에 CHECK_EVERY_SECONDS 마다 다시 시도한다. 음성 백엔드(server/voice)는 이 저장본을 읽는다 (voice/weather.py).
 서버를 여러 개(worker 여러 개) 켜면 서버마다 따로 받는다. 지금 개발 서버는 하나라 괜찮다.
 """
 
@@ -20,8 +22,8 @@ from app.weather.client import KmaError
 
 logger = logging.getLogger(__name__)
 
-REFRESH_EVERY = dt.timedelta(hours=3)
-CHECK_EVERY_SECONDS = 600
+CHECK_EVERY_SECONDS = 600  # 그날 받지 못한 가게를 다시 시도하는 간격
+AFTER_MIDNIGHT = dt.timedelta(seconds=30)
 
 
 def refresh_store(store_id: str) -> bool:
@@ -36,13 +38,14 @@ def refresh_store(store_id: str) -> bool:
 
 
 def stores_due(now: dt.datetime) -> list[str]:
-    """날씨를 받을 때가 된 가게: 받은 적이 없거나 마지막으로 받은 지 REFRESH_EVERY 가 지났다."""
+    """날씨를 받을 때가 된 가게: 받은 적이 없거나 오늘(서울 날짜) 아직 받지 않았다."""
+    today = now.astimezone(SEOUL).date()
     due = []
     for store_id in read_store_db.list_store_ids():
         if not store_weather.can_fetch(store_id):
             continue
         fetch = read_store_db.read_store_weather_fetch(store_id)
-        if fetch is None or now - fetch["fetched_at"] >= REFRESH_EVERY:
+        if fetch is None or fetch["fetched_at"].astimezone(SEOUL).date() < today:
             due.append(store_id)
     return due
 
@@ -52,6 +55,13 @@ def refresh_due(now: dt.datetime | None = None) -> list[str]:
     # 기상청 자료는 실제 시각 기준이라 개발용 시계 앞당김(now_seoul)은 쓰지 않는다
     now = now or dt.datetime.now(SEOUL)
     return [store_id for store_id in stores_due(now) if refresh_store(store_id)]
+
+
+def seconds_until_next_run(now: dt.datetime) -> float:
+    """다음 자정(00:00:30)까지 남은 초."""
+    local = now.astimezone(SEOUL)
+    midnight = dt.datetime.combine(local.date() + dt.timedelta(days=1), dt.time(), SEOUL) + AFTER_MIDNIGHT
+    return (midnight - local).total_seconds()
 
 
 class AutoRefresh:
@@ -75,4 +85,7 @@ class AutoRefresh:
                 refresh_due()
             except Exception:  # 한 번 실패해도 다음 확인은 계속한다
                 logger.exception("날씨 자동 새로 고침 중 오류")
-            self._stop.wait(self._check_every)
+            now = dt.datetime.now(SEOUL)
+            # 오늘 받지 못한 가게가 남았으면 조금 뒤 다시, 다 받았으면 다음 자정까지 기다린다
+            left = stores_due(now)
+            self._stop.wait(self._check_every if left else seconds_until_next_run(now))

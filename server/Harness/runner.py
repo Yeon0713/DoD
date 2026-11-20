@@ -35,7 +35,8 @@ MIN_CALL_SECONDS = 0.5  # 엄격한 예산(Budget.strict)에서 남은 시간이
 
 
 def cache_key(spec: AgentSpec, task: dict, ctx: RunContext, system: str, user: str) -> tuple[str, str, str, str]:
-    return (spec.name, ctx.store_id, cache.digest([user, ctx.store_facts]), cache.digest(system))
+    # 프롬프트 칸에 도구 모양도 넣는다: 칸 순서·설명만 바꿔도 예전 모양으로 받은 결과를 다시 쓰지 않게 (2026-11-21)
+    return (spec.name, ctx.store_id, cache.digest([user, ctx.store_facts]), cache.digest([system, spec.tool_schemas()]))
 
 
 def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:

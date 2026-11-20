@@ -67,6 +67,11 @@ QUESTIONS = {
         "memory_judge", "memory_judge.txt", "이 답글에 손님을 아는 척한 부분이 있는지 검증해 줘.",
         "답글에 손님을 아는 척한 부분이 있으면 true", "답글에서 손님을 아는 척한 부분을 글자 그대로",
     ),
+    # 알바생 할 일 (voice/agents/fix_card.py, 2026-11-20): 알바생이 지금 매장에 있는 것으로 할 수 없는 일
+    "staff_scope": Question(
+        "staff_scope_judge", "staff_scope_judge.txt", "이 할 일에 알바생이 할 수 없는 일이 있는지 검증해 줘.",
+        "알바생이 할 수 없는 일이 있으면 true", "할 일에서 알바생이 할 수 없는 부분을 글자 그대로", subject="할 일",
+    ),
 }
 
 

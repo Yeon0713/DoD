@@ -4,14 +4,18 @@
   auto_reply        아쉬운 리뷰가 들어오고 10분 뒤 (허락은 돌 때 다시 본다)
   post_scheduled    예약한 답글을 올릴 시각
   review_alert      영업 중 아쉬운 리뷰: 바로 알림 / review_remind 15분 뒤 다시 알림 / review_fallback 25분 대답 없음 처리
+                    (review_fix_carry 는 예전 자동 답글 뒤 할 일 질문. 이미 잡힌 작업만 돈다)
+  hr_batch          사원 업무의 영업 중 묶음 창: 첫 건 30분 뒤 알림 한 번 (jobs/hr_batch.py)
   instagram_publish 인스타 게시물을 올릴 시각 (지금 올릴 것은 instagram/posts.kick 이 바로 돌린다)
   refresh_briefing  오늘 브리핑이 있으면 다시 만든다 (알림 줄의 작업이 브리핑을 바꿔야 할 때 이 줄로 넘긴다)
 
 run_due(지금까지) 는 예정 시각이 지난 작업을 시각 순서로 돌린다. 작업은 clock.at(예정 시각) 안에서 돌아서,
 dev/clock 으로 시계를 한꺼번에 옮겨도 그 작업이 원래 돌았어야 할 시각에 돈 것으로 적힌다.
+시계를 멈춰 둔 동안에는 fixtures 로 넣은 가게(가게 문서 fixture)의 작업만 돈다. 같은 서버에 앱으로 들어온 실제 가게가 있어도
+가짜 시각으로 그 가게 리뷰에 답글을 쓰지 않는다 (2026-11-21, 시계를 옮기면 실제 가게 작업까지 돌아 5분 넘게 멈췄다).
 
 줄(lane) 두 개
-  alert  아쉬운 리뷰 알림(review_alert·remind·fallback). 30분 골든타임 안에 알려야 해서, 브리핑 준비가
+  alert  아쉬운 리뷰 알림(review_alert·remind·fallback), 사원 업무 묶음 창 알림(hr_batch). 30분 안에 알려야 해서, 브리핑 준비가
          답글을 쓰느라(LLM, 리뷰마다 수십 초) 오래 걸려도 기다리지 않는다
   slow   나머지 (브리핑 준비, 바로 답하기, 예약 답글, 인스타 게시, 브리핑 다시 만들기)
 서버에서는 main.py 의 스레드가 줄마다 하나씩 30초마다 run_due(lane=…) 를 부른다.
@@ -32,13 +36,13 @@ from voice.clock import iso, parse
 
 logger = logging.getLogger(__name__)
 
-ALERT_KINDS = frozenset({"review_alert", "review_remind", "review_fallback"})
+ALERT_KINDS = frozenset({"review_alert", "review_remind", "review_fallback", "hr_batch"})  # hr_batch: 사원 업무 묶음 창 알림 (인사과 4-c)
 LANES = ("alert", "slow")  # 두 줄을 모두 잡을 때도 이 순서로 잡는다 (서로 기다리다 멈추지 않게)
 RETRY_DELAYS = (dt.timedelta(minutes=1), dt.timedelta(minutes=5))  # 첫 실패 뒤 1분, 두 번째 실패 뒤 5분. 세 번째 실패면 끝
 KIND_NAMES = {
     "prepare_briefing": "브리핑 준비", "auto_reply": "아쉬운 리뷰 바로 답하기", "post_scheduled": "예약한 답글 올리기",
     "review_alert": "아쉬운 리뷰 알림", "review_remind": "아쉬운 리뷰 다시 알림", "review_fallback": "아쉬운 리뷰 대답 없음 처리",
-    "instagram_publish": "인스타 게시", "refresh_briefing": "브리핑 다시 만들기",
+    "instagram_publish": "인스타 게시", "refresh_briefing": "브리핑 다시 만들기", "hr_batch": "묶어서 묻기 알림",
 }
 _locks = {lane: threading.Lock() for lane in LANES}
 
@@ -93,6 +97,8 @@ def reschedule_prepare(store_id: str) -> dict | None:
 def _pending(until: dt.datetime, lane: str | None = None) -> list[dict]:
     jobs = []
     for store_id in repo.store_ids():
+        if clock.fixed() and not (repo.store(store_id) or {}).get("fixture"):
+            continue  # 시계를 멈춘 동안(시연)은 fixtures 로 넣은 가게만. 앱으로 들어온 실제 가게는 실제 시각일 때만 돈다 (2026-11-21)
         jobs += [j for j in repo.all_of("job", store_id)
                  if not j["done"] and parse(j["due_at"]) <= until and (lane is None or lane_of(j["kind"]) == lane)]
     return sorted(jobs, key=lambda j: j["due_at"])
@@ -113,11 +119,16 @@ def run_job(job: dict) -> object:
         return reviewed is not None
     if job["kind"] == "post_scheduled":
         return auto_reply.post_scheduled(store_id)
-    if job["kind"] in ("review_alert", "review_remind", "review_fallback"):  # 영업 중 아쉬운 리뷰 (jobs/review_loop.py)
+    if job["kind"] in ("review_alert", "review_remind", "review_fallback", "review_fix_carry"):  # 영업 중 아쉬운 리뷰 (jobs/review_loop.py)
         from voice.jobs import review_loop
 
-        step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback}[job["kind"]]
+        step = {"review_alert": review_loop.alert, "review_remind": review_loop.remind, "review_fallback": review_loop.fallback,
+                "review_fix_carry": review_loop.carry}[job["kind"]]
         return step(store_id, job["payload"]["review_id"]) is not None
+    if job["kind"] == "hr_batch":  # 사원 업무의 영업 중 묶음 창 (jobs/hr_batch.py)
+        from voice.jobs import hr_batch
+
+        return hr_batch.send(store_id, job["payload"]["batch_id"]) is not None
     if job["kind"] == "instagram_publish":
         from voice.instagram import posts
 

@@ -11,7 +11,7 @@ import httpx
 
 from app.core.clova import Post
 from Harness.spec import RunContext
-from voice import clock, repo
+from voice import clock, config, repo, weather
 
 post: Post = httpx.post  # 테스트에서 가짜를 넣는다
 
@@ -39,7 +39,12 @@ def load(store_id: str) -> VoiceStore | None:
     store = repo.store(store_id)
     if store is None:
         return None
-    return VoiceStore(store_id, store, repo.kinds_of(store_id), clock.now())
+    data = repo.kinds_of(store_id)
+    if store_id != config.DEMO_STORE_ID:  # 시연 가게는 시계를 고정한 시나리오 날씨를 그대로 쓴다
+        found = weather.from_db(store_id)  # 메인 서버가 매일 자정에 받아 둔 기상청 날씨 (voice/weather.py)
+        if found:
+            data["weather"] = found
+    return VoiceStore(store_id, store, data, clock.now())
 
 
 def run_context(view: VoiceStore, now: dt.datetime | None = None) -> RunContext:

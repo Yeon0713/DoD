@@ -20,6 +20,7 @@ from db import models, session
 from kma_samples import FakeKma
 
 NOW = dt.datetime(2026, 11, 13, 14, 5, tzinfo=SEOUL)
+NEXT_MIDNIGHT = dt.datetime(2026, 11, 14, 0, 0, tzinfo=SEOUL)
 CHUNCHEON = (37.8813, 127.7298)
 
 
@@ -199,7 +200,7 @@ def test_registered_mock_store_gets_its_region_weather_without_touching_mock_fil
     summary = store_weather.update_store_weather(store_id, client=FakeKma(), now=NOW)
     assert summary["observed_days"] == 30 and summary["forecast_days"] == 4
     assert (tmp_path / "weather" / f"{store_id}.db").exists() and mock_file.read_bytes() == before  # 목업 파일은 그대로
-    assert store_id not in auto_refresh.stores_due(NOW + dt.timedelta(hours=2)) and store_id in auto_refresh.stores_due(NOW + dt.timedelta(hours=3))
+    assert store_id not in auto_refresh.stores_due(NOW + dt.timedelta(hours=9)) and store_id in auto_refresh.stores_due(NEXT_MIDNIGHT)
 
     common, rows = read_store_db.read_weather(), read_store_db.read_weather(store_id)
     got = {r["date"] for r in read_store_db.read_store_weather(store_id)}
@@ -209,14 +210,16 @@ def test_registered_mock_store_gets_its_region_weather_without_touching_mock_fil
 
 
 
-def test_store_is_due_three_hours_after_last_fetch(store_s150, monkeypatch):
+def test_store_is_due_once_a_day_at_midnight(store_s150, monkeypatch):
+    """매일 자정에 받는다 (2026-11-20 결정). 같은 날 안에는 다시 받지 않는다."""
     from app.weather import auto_refresh
 
     monkeypatch.setattr(settings, "kma_api_key", "test-key")
     assert auto_refresh.stores_due(NOW) == ["s150"]  # 받은 적 없음
     store_weather.update_store_weather(store_s150, client=FakeKma(), now=NOW)
-    assert auto_refresh.stores_due(NOW + dt.timedelta(hours=2, minutes=59)) == []
-    assert auto_refresh.stores_due(NOW + dt.timedelta(hours=3)) == ["s150"]
+    assert auto_refresh.stores_due(NOW + dt.timedelta(hours=9, minutes=50)) == []  # 23:55
+    assert auto_refresh.stores_due(NEXT_MIDNIGHT) == ["s150"]
+    assert auto_refresh.seconds_until_next_run(NOW) == (NEXT_MIDNIGHT - NOW).total_seconds() + 30
 
 
 def test_refresh_due_refetches_and_skips_already_observed_days(store_s150, monkeypatch):
@@ -224,7 +227,7 @@ def test_refresh_due_refetches_and_skips_already_observed_days(store_s150, monke
 
     monkeypatch.setattr(settings, "kma_api_key", "test-key")
     store_weather.update_store_weather(store_s150, client=FakeKma(), now=NOW)
-    later, fake = NOW + dt.timedelta(hours=3), FakeKma(short_no_data_bases=())
+    later, fake = NEXT_MIDNIGHT + dt.timedelta(hours=17), FakeKma(short_no_data_bases=())  # 다음 날
     real_update = store_weather.update_store_weather
     monkeypatch.setattr(store_weather, "update_store_weather", lambda sid: real_update(sid, client=fake, now=later))
     invalidated = []
@@ -234,8 +237,8 @@ def test_refresh_due_refetches_and_skips_already_observed_days(store_s150, monke
     daily_calls = [p for p, params in fake.calls if p.endswith("kma_sfcdd.php")]
     assert len(daily_calls) == 1  # 저장해 둔 29일은 건너뛰고 어제만 다시 부른다
     fetch = read_store_db.read_store_weather_fetch(store_s150)
-    assert fetch["fetched_at"] == later and fetch["payload"]["metadata"]["short_forecast_issued_at"] == "2026-11-13T14:00:00+09:00"  # 17:05 기준 최신 발표
-    assert len(read_store_db.read_store_weather(store_s150)) == 30 + 4  # 관측은 그대로 남는다
+    assert fetch["fetched_at"] == later and fetch["payload"]["metadata"]["short_forecast_issued_at"] == "2026-11-14T14:00:00+09:00"  # 다음 날 17:00 기준 최신 발표
+    assert len(read_store_db.read_store_weather(store_s150)) == 31 + 4  # 관측은 그대로 남고, 하루 지나 어제(13일) 관측이 더해진다
 
 
 def test_refresh_store_failure_is_logged_not_raised(monkeypatch):

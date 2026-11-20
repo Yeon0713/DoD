@@ -36,7 +36,7 @@ def one_run(number: int) -> dict:
     donna.client.post("/v1/dev/reset")
     payload = baseline()
     payload["reviews"] = [r for r in payload["reviews"] if r["id"] != "rv_0412"]
-    payload["settings"] = {"negative_review_auto_reply": True}
+    payload["hr"] = {**payload.get("hr", {}), "negative_reply": "assistant"}  # 밤사이 묻지 않고 답한다 (인사과 대리)
     donna.clock("2026-11-16T21:40:00+09:00")
     donna.fixtures(payload)
     donna.review(**NIGHT_REVIEW)

@@ -21,7 +21,7 @@ from Harness.agents.reply_agent import SUBMIT
 from Harness.grounding import Evidence
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS
-from voice import config, speech
+from voice import config, notebook, speech
 from voice.agents import load_prompt
 from voice.clock import parse
 from voice.context import VoiceStore, run_context
@@ -109,9 +109,15 @@ REPLY_OCCASION = Tool("get_reply_occasion", "이 답글을 언제, 왜 올리는
 # ── 프롬프트 ──
 
 
+def _agent(task: dict, ctx: RunContext) -> str:
+    """업무 수첩 칸: 아쉬운 리뷰면 부정 리뷰 담당, 아니면 재방문 유도 담당 (voice/hr.py JOBS)."""
+    review = _view(ctx).review(task["review_id"]) or {}
+    return "negative_review" if review.get("sentiment") == "negative" else "revisit"
+
+
 def system_prompt(task: dict, ctx: RunContext) -> str:
     base = writer.load_prompt("review_reply_prompt.txt", ctx.store)  # 팀이 다듬어 온 답글 말투 프롬프트를 그대로 쓴다
-    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}"
+    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}{notebook.section(ctx.store_id, _agent(task, ctx))}"
 
 
 def user_message(task: dict, ctx: RunContext) -> str:
@@ -130,6 +136,9 @@ def user_message(task: dict, ctx: RunContext) -> str:
     if task.get("fix"):
         rows.append(f"\n원인: {task['fix']['cause']}. 가게가 오늘부터 할 조치: {task['fix']['action']}. "
                     "사과와 함께 이 조치를 한 문장으로 적어. 보상은 쓰지 마 (보상 문장은 사장님이 정한 것을 따로 붙여).")
+    if task.get("revise"):  # 사장님 고침 지시 (인사과 6단계). 지시에 보상 말이 있어도 보상은 쓰지 않는다 (코드가 붙인다)
+        rows.append(f'\n지난 답글: "{task["revise"]["previous"]}"\n사장님 고침 지시: "{task["revise"]["instruction"]}"\n'
+                    "지난 답글을 이 지시대로 고쳐 써. 지시에 없는 것은 바꾸지 마. 보상·할인은 지시에 있어도 쓰지 마.")
     return "\n".join(rows)
 
 
@@ -152,6 +161,7 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
         guards.price_or_discount(text),
         guards.not_in(menus, [m["name"] for m in view.menus], "메뉴 이름"),
         guards.not_in(facts, ctx.store_facts, "가게 사실(get_store_facts 에 있는 문장만 쓸 수 있어요)"),
+        notebook.checks(ctx.store_id, _agent(task, ctx), text),  # 사장님 수첩의 금지 낱말·이모티콘
     )
     if reason:
         return reason
@@ -189,12 +199,26 @@ SPEC = AgentSpec(
     tools=[MENU_LIST, STORE_FACTS, REPLY_OCCASION],
     submit=SUBMIT,
     check=check,
-    task_id=lambda task: f"{task['kind']}:{task['review_id']}",
+    task_id=lambda task: f"{task['kind']}:{task['review_id']}" + (":revise" if task.get("revise") else ""),
     fallback=fallback,
     finalize=finalize,
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.5,
 )
+
+
+def revise(view: VoiceStore, review: dict, kind: str, previous: str, instruction: str, occasion: dict | None = None,
+           fix: dict | None = None) -> dict | None:
+    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes}. 에이전트가 끄였거나 실패하면 None (템플릿으로 바꾸면 지시를 무시하게 되므로).
+    검사는 처음 쓸 때와 같다 (보상·가격 금지, reply_critic). 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
+    if not config.agent_on("reply"):
+        return None
+    task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix,
+            "revise": {"previous": previous, "instruction": instruction}}
+    proposal = runner.run(SPEC, task, run_context(view))
+    if proposal is None or proposal.source != "AGENT":
+        return None
+    return {"text": proposal.content["text"], "source": "AGENT", "notes": proposal.notes}
 
 
 def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:

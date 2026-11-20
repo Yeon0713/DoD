@@ -164,6 +164,11 @@ def tasks(store_id: str) -> list[dict]:
     return [_task_out(row) for row in _rows("SELECT * FROM staff_tasks WHERE store_id = ? ORDER BY created_at, rowid", (store_id,))]
 
 
+def update_task_source(task_id: str, source: dict) -> None:
+    """출처 기록을 고친다 (같은 일로 묶인 제안 merged, 매뉴얼로 올린 promoted_at)."""
+    _write("UPDATE staff_tasks SET source = ? WHERE task_id = ?", (json.dumps(source, ensure_ascii=False), task_id))
+
+
 def cancel_task(task_id: str, now_iso: str) -> None:
     _write("UPDATE staff_tasks SET canceled_at = ? WHERE task_id = ?", (now_iso, task_id))
 

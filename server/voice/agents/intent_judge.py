@@ -19,7 +19,7 @@ INTENTS = [
     "briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
     "detail.show", "detail.read", "detail.back", "permission.yes", "permission.no", "stop", "question", "unknown", "not_for_donna",
     "navigate.sales", "navigate.week", "navigate.settings",
-    "action.approve", "action.edit", "action.cancel",
+    "action.approve", "action.edit", "action.cancel", "action.revise",
     # 알바생 (2026-11-18, voice/staff_orders.py)
     "staff.order", "staff.status", "staff.cancel", "staff.invite", "staff.remove", "staff.share", "staff.list", "staff.manual",
     "staff.yes", "staff.no", "staff.daily",

@@ -9,28 +9,20 @@
 짧은 대답("응", "보내 줘")과 대답 모양의 말("카카오톡으로 보내 줘", "오늘만", "쿠폰 빼고 사과만 올려", "인스타에 올리지 마")은 거르지 않는다.
 """
 
-import re
 import threading
 import time
+
+from voice.similar import pairs as _pairs, squash as _squash
 
 RECENT_S = 120
 MIN_CHARS = 8
 OVERLAP = 0.7  # "저녁 계약은 두 팀이고"(도나: "저녁 예약은 두 팀이고")처럼 일부를 잘못 받아 적은 것도 거른다
-_PUNCT = re.compile(r"[\s.,!?~…'\"“”‘’·()\[\]]+")
 
 # 앱이 서버 없이 스스로 하는 말 (donna-voice/app/src/lib/conversation.tsx)
 APP_LINES = ["네.", "잘 못 들었어요. 한 번 더 말씀해 주세요.", "지금은 답하기 어려워요. 조금 뒤에 다시 말씀해 주세요."]
 
 _said: dict[str, list[tuple[float, str]]] = {}
 _lock = threading.Lock()
-
-
-def _squash(text: str) -> str:
-    return _PUNCT.sub("", text or "")
-
-
-def _pairs(text: str) -> set[str]:
-    return {text[i:i + 2] for i in range(len(text) - 1)}
 
 
 def remember(store_id: str, texts: list[str]) -> None:

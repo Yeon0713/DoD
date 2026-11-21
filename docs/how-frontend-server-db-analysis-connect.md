@@ -1,5 +1,5 @@
 도나(DONNA) 프로젝트를 처음 보는 사람이 **네 파트가 어떻게 연결되어 움직이는지** 이해하도록 쓴 문서입니다.
-서버와 앱을 켜는 법은 [README.md](../README.md) 2장에 있습니다.
+서버와 앱을 켜는 법은 [development.md](development.md) 2장에 있습니다.
 
 > 기준: 2026-11-12
 
@@ -248,8 +248,8 @@ Expo(React Native)로 만든 앱입니다. 한 코드로 웹, iOS, 안드로이�
 | DB 칸 → 분석 칸 번역 | `server/app/data_pipeline/db_rows_to_analysis_inputs.py` |
 | 화면에 보낼 응답 모양 | `server/app/modules/<기능>/response_format.py` (영웅과 상의) |
 | 화면 모양, 문구 | `mobile/src/components/` (영웅과 상의) |
-| 다시 계산 간격, 기본 가게, 문장 다듬기 켜기 | 서버 `.env` (README 2-2) |
-| 앱이 실제 서버를 볼지 예시 데이터를 볼지 | `mobile/.env.local` (README 2-5) |
+| 다시 계산 간격, 기본 가게, 문장 다듬기 켜기 | 서버 `.env` (development.md 2-2) |
+| 앱이 실제 서버를 볼지 예시 데이터를 볼지 | `mobile/.env.local` (development.md 2-5) |
 
 **테스트**: 서버 코드를 고친 뒤 `server/` 폴더에서 `python -m pytest`를 실행합니다.
 

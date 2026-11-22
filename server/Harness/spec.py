@@ -108,9 +108,24 @@ class Proposal:
     run_id: str
     evidence: list[str] = field(default_factory=list)  # 본 근거의 출처(input, 도구 이름)
     notes: list[str] = field(default_factory=list)  # 예) "검토 안 됨"
+    # 2차 감사 결과 {passed: True | False | None, rounds, reasons, trail}. 감사 자리(AgentSpec.audit)가 없거나 물러나기면 None.
+    # passed False 는 되돌림을 다 쓰고도 불합격(끝내 불합격), None 은 감사를 못 함. trail 은 회차마다 {round, status, criterion, reason, quotes, calls, ms}
+    audit: dict | None = None
 
 
 CheckFunc = Callable[[dict, Evidence, dict, RunContext, list[str]], str | None]  # (제출 인자, 근거, task, 맥락, notes)
+
+
+@dataclass
+class AuditVerdict:
+    """2차 감사 한 회차의 판정. 하네스는 누가 감사하는지 모른다 (음성 백엔드의 감사팀이 채운다, voice/audit/inspector.py)."""
+
+    status: Literal["pass", "fail", "unchecked"]
+    reason: str | None = None  # fail 일 때 담당에게 돌려줄 지적
+    detail: dict = field(default_factory=dict)  # 기록용: criterion, quotes, calls
+
+
+AuditFunc = Callable[[dict, Evidence, dict, RunContext], AuditVerdict]  # (1차를 통과한 제출 인자, 근거, task, 맥락)
 
 
 @dataclass
@@ -133,6 +148,10 @@ class AgentSpec:
     cache_scope: Callable[[dict], object] | None = None
     # 시간 예산(마감)이 지난 뒤에도 물러나기(fallback)를 부를지. 사장님이 기다리는 에이전트는 False 로 둘 수 있다 (H7)
     fallback_after_deadline: bool = True
+    # 2차 감사 자리: 1차 코드 검사(check)를 통과한 제출을 부를 함수. None 이면 지금과 같다 (메인 서버 하네스 에이전트)
+    audit: AuditFunc | None = None
+    audit_returns: int = 2  # 2차 불합격 뒤 같은 대화로 지적을 돌려줄 최대 횟수. 1차 거절(budget.max_rejections)과 따로 센다
+    audit_seconds: float = 60.0  # 감사 한 회차의 상한. 넘으면 그 회차는 감사 못 함 (안전장치)
 
     def tool_schemas(self) -> list[dict]:
         return [tool.schema() for tool in self.tools] + [self.submit.schema()]

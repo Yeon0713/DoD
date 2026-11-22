@@ -45,11 +45,15 @@ const AUTO_NEXT_MS = 3000;
 const FOLLOW_MS = 8000;
 
 // 부르는 말. 받아쓰기가 "돈아야", "또나야"로 적는 경우까지 받는다.
-const CALL = /^[\s"'“”]*(도\s*나\s*[야아]?|돈\s*아\s*야?|또\s*나\s*야)[\s,.!?~]*/;
-/** 말이 "도나야"로 시작하는지, 그리고 그 뒤에 남은 말. */
+// 문장 어디에 있어도 부른 말로 본다. 가게 소리가 앞뒤에 붙어 "알람 도나야", "어 도나야 매출 어때"처럼 적히기 때문이다 (2026-11-22).
+// 낱말 첫머리에서만 찾는다: "기도 나야", "포도나무"의 '도나'는 부른 말이 아니다. 끝에 '야'가 없는 "도나"는 낱말이 끝날 때만 받는다.
+const CALL = /(?<=^|[\s"'“”,.!?~])(?:도\s*나\s*[야아]|돈\s*아\s*야|또\s*나\s*야|도나(?=$|[\s"'“”,.!?~]))[\s"'“”,.!?~]*/g;
+/** 말에 "도나야"가 있는지, 그리고 마지막 "도나야" 뒤에 남은 말 (그 앞은 가게 소리로 보고 버린다). */
 export function splitCall(text: string): { called: boolean; rest: string } {
-  const m = CALL.exec(text);
-  return m ? { called: true, rest: text.slice(m[0].length).trim() } : { called: false, rest: text.trim() };
+  let last: RegExpExecArray | null = null;
+  for (const m of text.matchAll(CALL)) last = m as RegExpExecArray;
+  if (!last) return { called: false, rest: text.trim() };
+  return { called: true, rest: text.slice(last.index + last[0].length).trim() };
 }
 
 export function ConversationProvider({ children }: { children: ReactNode }) {

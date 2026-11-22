@@ -5,23 +5,24 @@ task 키
   review_id  답글을 달 리뷰
   occasion   F6: {kind, label, explanation, post_at} 올릴 때와 이유
 
-검사 순서 (Harness 리뷰 응대 에이전트와 같다)
-  1. 코드 검사: 길이, 빈칸, 메뉴·사실 메모 대조, quoted_review_words 가 리뷰에 글자 그대로 있는지, 가격·할인 지어내기
-  2. LLM 검토 Harness.agents.reply_critic.inspect (보상, 고칠 점, 지어낸 사정, 변명, 아는 척, 리뷰와 상관없는 말)
-     검토를 부를 수 없으면 '검토 안 됨'을 남기고 금지어 정규식으로 대신 거른다
+검사는 감사팀이 한다 (voice/audit/, 감사팀 계획)
+  1. 1차 코드 감사 rules.reply: 길이, 빈칸, 메뉴·사실 메모 대조, quoted_review_words 가 리뷰에 글자 그대로 있는지, 가격·할인 지어내기
+  2. 2차 LLM 감사 inspector.reply: reply_critic.inspect (보상, 고칠 점, 지어낸 사정, 변명, 아는 척, 리뷰와 상관없는 말).
+     불합격이면 같은 대화로 지적을 돌려준다 (최대 2번). 검토를 부를 수 없으면 '검토 안 됨'을 남기고 금지어 정규식으로 대신 거른다
 물러나기: 주제·이유별 안전 템플릿 (template). 에이전트를 끈 때도 템플릿을 쓴다.
 """
 
 from app.analysis.review.hcx_classifier import mask_personal_info
 from app.review_reply_writer import write_reply_with_clova as writer
-from app.review_reply_writer.write_reply_with_clova import MAX_LENGTH, MIN_LENGTH, clean_answer
+from app.review_reply_writer.write_reply_with_clova import clean_answer
 from Harness import guards, runner
-from Harness.agents import reply_critic
 from Harness.agents.reply_agent import SUBMIT
-from Harness.grounding import Evidence
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS
 from voice import config, notebook, speech
+from voice import audit
+from voice.audit import inspector, rules
+from voice.audit import log as audit_log
 from voice.agents import load_prompt
 from voice.clock import parse
 from voice.context import VoiceStore, run_context
@@ -109,7 +110,7 @@ REPLY_OCCASION = Tool("get_reply_occasion", "이 답글을 언제, 왜 올리는
 # ── 프롬프트 ──
 
 
-def _agent(task: dict, ctx: RunContext) -> str:
+def notebook_agent(task: dict, ctx: RunContext) -> str:
     """업무 수첩 칸: 아쉬운 리뷰면 부정 리뷰 담당, 아니면 재방문 유도 담당 (voice/hr.py JOBS)."""
     review = _view(ctx).review(task["review_id"]) or {}
     return "negative_review" if review.get("sentiment") == "negative" else "revisit"
@@ -117,7 +118,7 @@ def _agent(task: dict, ctx: RunContext) -> str:
 
 def system_prompt(task: dict, ctx: RunContext) -> str:
     base = writer.load_prompt("review_reply_prompt.txt", ctx.store)  # 팀이 다듬어 온 답글 말투 프롬프트를 그대로 쓴다
-    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}{notebook.section(ctx.store_id, _agent(task, ctx))}"
+    return f"{base}\n\n{load_prompt('voice_reply.txt', ctx.store)}{notebook.section(ctx.store_id, notebook_agent(task, ctx))}"
 
 
 def user_message(task: dict, ctx: RunContext) -> str:
@@ -142,47 +143,6 @@ def user_message(task: dict, ctx: RunContext) -> str:
     return "\n".join(rows)
 
 
-# ── 검사 ──
-
-
-def _texts(args: dict, key: str) -> list[str]:
-    value = args.get(key) or []
-    return [str(v).strip() for v in value if str(v).strip()] if isinstance(value, list) else []
-
-
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    view = _view(ctx)
-    review = view.review(task["review_id"]) or {}
-    text = clean_answer(str(args.get("text") or ""))
-    quoted, menus, facts = _texts(args, "quoted_review_words"), _texts(args, "menus_mentioned"), _texts(args, "facts_used")
-    reason = guards.first(
-        guards.length(text, MIN_LENGTH, MAX_LENGTH, "답글"),
-        guards.placeholder(text),
-        guards.price_or_discount(text),
-        guards.not_in(menus, [m["name"] for m in view.menus], "메뉴 이름"),
-        guards.not_in(facts, ctx.store_facts, "가게 사실(get_store_facts 에 있는 문장만 쓸 수 있어요)"),
-        notebook.checks(ctx.store_id, _agent(task, ctx), text),  # 사장님 수첩의 금지 낱말·이모티콘
-    )
-    if reason:
-        return reason
-    if not quoted:
-        return "quoted_review_words 에 답글이 대답한 리뷰 속 말을 1개 이상 적어 주세요"
-    original = review.get("text", "")
-    missing = [q for q in quoted if q not in original]
-    if missing:
-        return (f"quoted_review_words 의 {', '.join(repr(q) for q in missing)} 는 리뷰에 글자 그대로 없어요. "
-                f'리뷰 원문 "{mask_personal_info(original)}" 에서 그대로 옮겨 주세요. 답글(text)은 바꾸지 않아도 돼요')
-    verdict = reply_critic.inspect(
-        text, ctx, review_text=mask_personal_info(original), has_complaint=review.get("sentiment") == "negative",
-    )
-    if verdict is None:
-        notes.append("검토 안 됨")
-        return guards.first(guards.memory(text), None if any(f in text for f in facts) else guards.made_up_fact(text))
-    if not verdict.ok:
-        return "검토에서 걸렸어요: " + "; ".join(v.describe() for v in verdict.violations)
-    return None
-
-
 def finalize(args: dict, task: dict, ctx: RunContext) -> dict:
     return {"text": clean_answer(str(args.get("text") or ""))}
 
@@ -198,7 +158,11 @@ SPEC = AgentSpec(
     user_message=user_message,
     tools=[MENU_LIST, STORE_FACTS, REPLY_OCCASION],
     submit=SUBMIT,
-    check=check,
+    check=rules.reply,  # 1차 코드 감사 (감사팀)
+    audit=inspector.reply,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),  # 감사 기준이 바뀌면 예전 결과를 다시 쓰지 않는다
     task_id=lambda task: f"{task['kind']}:{task['review_id']}" + (":revise" if task.get("revise") else ""),
     fallback=fallback,
     finalize=finalize,
@@ -207,30 +171,45 @@ SPEC = AgentSpec(
 )
 
 
+def _run(view: VoiceStore, review: dict, task: dict):
+    """담당을 돌리고 이번에 새로 감사한 회차를 감사 기록에 남긴다."""
+    ctx = run_context(view)
+    proposal = runner.run(SPEC, task, ctx)
+    audit_log.record_run(view.store_id, inspector.reply_job(review), review["id"], proposal, ctx.run_id)
+    return proposal
+
+
+def _notes(proposal) -> list[str]:
+    unchecked = proposal.audit is not None and proposal.audit["passed"] is None and rules.UNCHECKED not in proposal.notes
+    return [*proposal.notes, rules.UNCHECKED] if unchecked else list(proposal.notes)
+
+
 def revise(view: VoiceStore, review: dict, kind: str, previous: str, instruction: str, occasion: dict | None = None,
            fix: dict | None = None) -> dict | None:
-    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes}. 에이전트가 끄였거나 실패하면 None (템플릿으로 바꾸면 지시를 무시하게 되므로).
-    검사는 처음 쓸 때와 같다 (보상·가격 금지, reply_critic). 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
+    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes, audit}. 에이전트가 끄였거나 실패하거나 감사를 끝내 통과하지 못하면 None
+    (템플릿으로 바꾸면 지시를 무시하게 되므로). 검사는 처음 쓸 때와 같다. 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
     if not config.agent_on("reply"):
         return None
     task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix,
             "revise": {"previous": previous, "instruction": instruction}}
-    proposal = runner.run(SPEC, task, run_context(view))
-    if proposal is None or proposal.source != "AGENT":
+    proposal = _run(view, review, task)
+    if proposal is None or proposal.source != "AGENT" or (proposal.audit or {}).get("passed") is False:
         return None
-    return {"text": proposal.content["text"], "source": "AGENT", "notes": proposal.notes}
+    return {"text": proposal.content["text"], "source": "AGENT", "notes": _notes(proposal), "audit": audit.brief(proposal.audit)}
 
 
 def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:
-    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes}. 언제나 글이 나온다.
+    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes, audit}. 언제나 글이 나온다.
+    audit 은 감사 결과 (Proposal.audit, 템플릿이면 None). 끝내 불합격(passed False)이면 걸린 글 그대로 돌려주고, 처리는 부르는 쪽이
+    audit.settle 로 정한다 (보류·템플릿).
     fix: 원인을 안 아쉬운 리뷰 {cause, action, reply} (jobs/cause.py). 에이전트에게 조치를 알려 주고, 템플릿은 reply 를 쓴다."""
     if not config.agent_on("reply"):
-        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": [], "audit": None}
     task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix}
-    proposal = runner.run(SPEC, task, run_context(view))
+    proposal = _run(view, review, task)
     if proposal is None:
-        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
-    return {"text": proposal.content["text"], "source": proposal.source, "notes": proposal.notes}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": [], "audit": None}
+    return {"text": proposal.content["text"], "source": proposal.source, "notes": _notes(proposal), "audit": audit.brief(proposal.audit)}
 
 
 # ── 사장님이 정한 보상 문장 (2026-11-18) ──

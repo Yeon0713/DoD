@@ -59,3 +59,8 @@ HR_BATCH_WINDOW = dt.timedelta(minutes=30)  # 사원 업무의 영업 중 묶음
 def hr_on() -> bool:
     """VOICE_HR=false (셸 또는 server/.env) 면 반응 기록·평가·강등·수첩 판정을 멈춘다. 직급은 저장된 그대로 읽는다 (9-0 r)."""
     return env("VOICE_HR", "true").lower() != "false"
+
+
+# 감사팀 (2026-11-22, donna-voice/docs/audit-team-plan.md). 실행 중 스위치는 두지 않는다 (18장 3번)
+AUDIT_RETURNS = 2  # 2차 감사 불합격 뒤 같은 대화로 되돌리는 최대 횟수 (결정 6). 1차 코드 거절과 따로 센다
+AUDIT_ROUND_SECONDS = 60  # 2차 감사 한 회차의 상한. 넘으면 그 회차는 감사 못 함 (서버가 멈추지 않게 하는 안전장치)

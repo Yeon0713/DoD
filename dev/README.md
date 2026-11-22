@@ -33,6 +33,7 @@
 | 알림 타임라인 | 어제 ~ 7일 뒤 알림 시각별 할 일, CLOVA 답글 초안, 알림 규칙. 분석 탭처럼 계산해 둔 결과 | `/api/dev_tools/timeline` |
 | AI | CLOVA 호출·입력/출력 토큰·비용 (날짜별, 기능별, 가게별) + 품질(기능별 통과·버림·실패, 버린 이유, 최근 호출의 보낸 글과 받은 답) | `/api/dev_tools/ai_usage`, `ai_quality` |
 | 에이전트 | LLM 방식 스위치(에이전트 하네스 ↔ 기존 단일 호출), 지금 도는 에이전트, 가게별 에이전트 작업, 에이전트별 통과·물러남 통계, 최근 실행과 단계 펼치기. 기존 서버와 음성 백엔드(`server/voice`)의 실행이 함께 보이고, 이 탭을 보는 동안 5초마다 새로 그립니다 | `/api/dev_tools/agents`, `agents/run`, `POST agents/mode` |
+| 감사 | 음성 백엔드 감사팀(`server/voice/audit`) 기록. 가게·날마다 업무별 결과물 수, 한 번에 합격, 되돌림 뒤 합격, 끝내 불합격, 보류, 감사 못 함, 기준별 불합격, 걸린 시간, 질문 호출 수. 결과물을 펼치면 회차마다 지적·옮겨 온 부분과 실행 단계(고치기 전·후 제출). 사장님 앱에는 보이지 않는다 | `/api/dev_tools/audit` |
 | 조작 | 다시 계산, 서버 시계 실제 시각으로, 문장 다듬기 켜기/끄기, 데모 초기화, 앱 열기 | `POST` API |
 | 화면 글 | 앱 화면의 글(제목, 설명, 버튼, 띠, 시트, 오류)을 화면별로 보고 [수정] 칸에 적어 앱 코드에 넣기. 밖에서 고치는 JSON 내려받기·등록 | `/api/dev_tools/ui_text`, `ui_text/save`, `ui_text/apply`, `ui_text/export`, `ui_text/import` |
 | 평가 | 평가 스위트(`python -m Harness.evals …`) 결과 폴더 `server/db/app_data/harness_eval/` 를 본다. 실행 목록(대표 지표, 기준점) → 질문별 지표 표(A·B 값, 분자/분모, 차이, 좋은 방향), 지표 추세(실행별, 커밋 표시), 사례(실패만 기본, 입력·출력·코드 검사·심판 투표, 단계 펼치기), 짝 비교, 심판 검증. 운영 기록과 섞지 않는다. CLOVA 를 부르지 않는다 | `/api/dev_tools/evals`, `evals/run`, `evals/trend`, `evals/trace` |

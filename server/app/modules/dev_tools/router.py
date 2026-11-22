@@ -14,6 +14,7 @@ POST /api/dev_tools/polish                  문장 다듬기 켜기/끄기 {"ena
 GET  /api/dev_tools/agents                  에이전트: 하네스 스위치, 지금 도는 실행, 최근 실행, 에이전트별 통계 (기존 서버 + 음성 백엔드)
 GET  /api/dev_tools/agents/run?run_id=      에이전트: 실행 하나의 단계 (supervisor 아래 일꾼 실행 포함)
 POST /api/dev_tools/agents/mode             에이전트: 하네스 ↔ 기존 단일 호출 {"enabled": true}
+GET  /api/dev_tools/audit?store_id=&day=    감사: 음성 백엔드 감사팀 기록과 업무별 요약 (가게·날을 비우면 첫 가게·마지막 날)
 GET  /api/dev_tools/demo_steps?store_id=    시연: Figma UC01~UC16 단계 (그 가게 시연 기간에서 찾은 시각과 앱 화면)
 POST /api/dev_tools/demo_go                 시연: 서버 시계를 그 단계 시각으로 맞추고 가게를 다시 계산 {"store_id", "at"}
 POST /api/dev_tools/demo_clock_reset        시연: 서버 시계를 실제 시각으로
@@ -111,6 +112,11 @@ def agents(limit: int = Query(80, ge=1, le=500)):
 @router.get("/agents/run", summary="에이전트: 실행 하나의 단계")
 def agent_run(run_id: str):
     return data_provider.agent_run(run_id)
+
+
+@router.get("/audit", summary="감사: 음성 백엔드 감사팀 기록과 업무별 요약")
+def audit(store_id: str | None = None, day: str | None = None):
+    return data_provider.audit(store_id, day)
 
 
 @router.post("/agents/mode", summary="에이전트: 하네스 ↔ 기존 단일 호출")

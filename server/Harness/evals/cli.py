@@ -48,6 +48,12 @@ def _run_critic(args: argparse.Namespace) -> object:
     return critic_eval.run(args.runs, _ids(args), args.workers)
 
 
+def _run_audit(args: argparse.Namespace) -> object:
+    from Harness.evals import audit_eval
+
+    return audit_eval.run(args)
+
+
 def _run_live(args: argparse.Namespace) -> object:
     from Harness import live_eval
 
@@ -188,6 +194,9 @@ def _guards_systems(text: str) -> list[str]:
 
 SUITES: dict[str, Suite] = {suite.name: suite for suite in (
     Suite("critic", "LLM 검토기(reply_critic) 정확도: 판정 세트 놓침·오탐 (--ids 로 사례 고르기, 예전 결과 모양)", _run_critic),
+    Suite("audit", "감사팀 2차 감사 판정(audit-team-plan.md 13장): 기준마다 놓침(목표 5% 이하)·오탐(10% 이하)·못 부름·흔들림. "
+                   "세트 critic_cases.json + Harness/evals/data/audit_cases.json (--job 으로 업무 거르기)",
+          _run_audit),
     Suite("live", "에이전트 실제 호출: 가상 가게 t001 사례 7개의 과제 완료·호출 수·시간 (--ids 로 사례 이름, 예전 결과 모양)", _run_live),
     Suite("label", "리뷰 분류(질문 1): 분류기 rule, hcx, voice 의 아쉬운 리뷰 재현율·정밀도, 감정·불만 유형 F1. 정답지 필요 "
                    "(--systems 기본 rule,voice. hcx 는 실제 CLOVA. --scope balanced 면 64건만)",
@@ -262,6 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--systems", default=None,
                         help="비교할 시스템. 보통 A 단일 에이전트, B 멀티 에이전트 하네스(기본 A,B). label 은 rule,hcx,voice")
     parser.add_argument("--ids", default="", help="쉼표로 구분한 사례 id (비우면 전체)")
+    parser.add_argument("--job", default=None, help="audit: 이 업무의 사례만 (reply, negative_reply, field_task …)")
     parser.add_argument("--workers", type=int, default=4, help="동시에 돌리는 사례 수 (1 이면 하나씩)")
     parser.add_argument("--concurrency", type=int, default=limiter.MAX_CONCURRENT,
                         help="CLOVA 동시 호출 한도. 4 는 429 가 많이 났다 (2026-11-15)")

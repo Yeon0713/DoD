@@ -18,6 +18,14 @@ CAPTION = {"body": "비 오는 날엔 고소한 들깨 국물 한 그릇 어떠�
            "hashtags": ["#초옹장", "#들깨옹심이", "#비오는날"]}
 
 
+def judged(*quotes):
+    return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
+
+
+TOPIC_OK = [judged()]  # 2차 감사(감사팀): 고른 메뉴가 아닌 음식 (angle_menu)
+CAPTION_OK = [judged(), judged()]  # 메뉴·이야기 밖 이야기 (caption_off) → 가게 사실 주장 (store_claim)
+
+
 @pytest.fixture
 def agents(chj: Choongjang, ig_on, clova_on, monkeypatch):
     ig_on(FakeGraph())
@@ -31,7 +39,7 @@ def agents(chj: Choongjang, ig_on, clova_on, monkeypatch):
 
 
 def test_plan_picks_menus_and_writes_caption(agents):
-    fake = agents(LOOK, [call("submit_topic", TOPIC)], [call("submit_caption", CAPTION)])
+    fake = agents(LOOK, [call("submit_topic", TOPIC)], *TOPIC_OK, [call("submit_caption", CAPTION)], *CAPTION_OK)
     plan = marketing.plan_today(load("s005"))
     assert plan["menu_ids"] == ["m_1", "m_3"] and plan["body"] == CAPTION["body"] and fake.done()
     built = posts.build_feed(load("s005"))
@@ -43,24 +51,24 @@ def test_plan_picks_menus_and_writes_caption(agents):
 
 def test_topic_needs_menus_with_photos(agents):
     no_photo = {**TOPIC, "menu_ids": ["m_9"]}  # 없는 메뉴
-    fake = agents(LOOK, [call("submit_topic", no_photo)], [call("submit_topic", TOPIC)], [call("submit_caption", CAPTION)])
+    fake = agents(LOOK, [call("submit_topic", no_photo)], [call("submit_topic", TOPIC)], *TOPIC_OK, [call("submit_caption", CAPTION)], *CAPTION_OK)
     assert marketing.plan_today(load("s005"))["menu_ids"] == ["m_1", "m_3"]
     assert "사진이 있는 메뉴" in fake.tool_messages(2)[-1]
 
 
 def test_sales_claim_needs_sales_data(agents):
     bragging = {**TOPIC, "angle": "요즘 제일 인기 많은 들깨 국물"}
-    fake = agents([call("get_liked", {})], [call("submit_topic", bragging)], [call("submit_topic", TOPIC)],
-                  [call("submit_caption", CAPTION)])
+    fake = agents([call("get_liked", {})], [call("submit_topic", bragging)], [call("submit_topic", TOPIC)], *TOPIC_OK,
+                  [call("submit_caption", CAPTION)], *CAPTION_OK)
     assert marketing.plan_today(load("s005"))["angle"] == TOPIC["angle"]
     assert "매출을 본 뒤에만" in fake.tool_messages(2)[-1]
 
 
 def test_too_many_hashtags_rejected(agents):
     tags = {**CAPTION, "hashtags": [f"#태그{i}" for i in range(9)]}
-    fake = agents(LOOK, [call("submit_topic", TOPIC)], [call("submit_caption", tags)], [call("submit_caption", CAPTION)])
+    fake = agents(LOOK, [call("submit_topic", TOPIC)], *TOPIC_OK, [call("submit_caption", tags)], [call("submit_caption", CAPTION)], *CAPTION_OK)
     assert marketing.plan_today(load("s005"))["hashtags"] == CAPTION["hashtags"]
-    assert "8개까지만" in fake.tool_messages(3)[-1]
+    assert "8개까지만" in fake.tool_messages(4)[-1]  # 요청 2 는 소재 감사 질문
 
 
 def test_no_plan_keeps_the_rule_feed(chj: Choongjang, ig_on):

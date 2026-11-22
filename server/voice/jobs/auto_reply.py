@@ -4,11 +4,12 @@
 reply_summary(화면 폭 32 안)는 주제별 템플릿이다. 답글 본문을 줄이는 LLM 호출은 하지 않는다.
 밤사이 아쉬운 리뷰 (2026-11-20, 안 B): 교정 카드(부정 리뷰 사원)를 먼저 정해 답글이 같은 조치를 약속하게 하고,
 할 일은 바로 넣지 않고 다음 아침 브리핑에서 묻도록 제안으로 남긴다 (jobs/staff_tasks.py).
+감사팀이 답글을 끝내 통과시키지 않으면(보류) 올리지 않고 걸린 초안을 써 둔 채(reply_ready, audit_hold) 아침 브리핑에서 묻는다.
 """
 
 import datetime as dt
 
-from voice import clock, config, hr, proposals, repo
+from voice import audit, clock, config, hr, proposals, repo
 from voice.agents import fix_card, voice_reply
 from voice.clock import parse
 from voice.context import load
@@ -54,6 +55,16 @@ def _reply(store_id: str, view, review: dict, now: dt.datetime) -> dict:
     fix = {"cause": found["summary"], "action": found["card"]["detail"], "reply": found["reply"]} if found["card"] else None
     written = voice_reply.write(view, review, "AUTO", fix=fix)
     propose_overnight(store_id, review, found, now)
+    settled = audit.settle(store_id, "negative_reply", written.get("audit"))
+    if settled == "hold":  # 올리지 않는다. 아침 브리핑 아쉬운 리뷰 단계가 묻는다 (briefing.step_negative)
+        from voice.audit import log as audit_log
+
+        review.update({"reply_ready": {**written, "plain": found["plain"]} if fix else written, "audit_hold": True})
+        repo.save_review_if(review, "none")
+        audit_log.mark_hold(store_id, review_id)
+        return None
+    if settled == "template":  # 직급이 그사이 바뀐 경우 (이 길은 대리·과장만 돈다)
+        written = {**written, "text": voice_reply.template(view, review, None, fix), "source": "TEMPLATE"}
     posted = clock.now()  # 에이전트가 도는 동안 흐른 시간까지 (실제 시계일 때)
     review.update({
         "reply_status": "posted", "reply_by": "donna", "reply_text": written["text"], "reply_source": written["source"],
@@ -87,8 +98,8 @@ def post_ready(store_id: str) -> list[str]:
     posted = []
     for review in view.reviews() if view else []:
         if (review.get("sentiment") != "negative" or review.get("reply_status", "none") != "none"
-                or review.get("reply_deleted_at") or not review.get("reply_ready")):
-            continue
+                or review.get("reply_deleted_at") or not review.get("reply_ready") or review.get("audit_hold")):
+            continue  # 감사 보류 건은 올리지 않고 묻는다
         text, source = ready_reply(view, review)
         now = clock.now()
         review.update({

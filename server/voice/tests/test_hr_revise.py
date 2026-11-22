@@ -1,4 +1,7 @@
-"""자유로운 수정 ("좀 더 부드럽게", 인사과 9장 6단계). 고친 글은 다시 묻고, 인사과에는 '조금 수정'(edited)으로 남는다."""
+"""자유로운 수정 ("좀 더 부드럽게", 인사과 9장 6단계). 고친 글은 다시 묻고, 인사과에는 '조금 수정'(edited)으로 남는다.
+
+고쳐 쓰기는 뒤에서 하고 알림으로 다시 묻는다 (감사팀 9장, jobs/revise_jobs.py): 말에는 바로 "고쳐서 알려 드릴게요"라고 답하고,
+알림(revise_ready)을 열면 고친 글로 묻는다. 시험은 뒤에서 돌리지 않고 바로 돌린다 (conftest). 인사과 기록은 지시를 받은 때 남는다."""
 
 from Harness.tests.fakes import FakeClova, call
 from voice import config, repo
@@ -44,8 +47,10 @@ def test_alert_reply_is_revised_then_posted_and_counted_as_edited(monkeypatch):
     monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
     fake = FakeClova(*reply_turns())
     monkeypatch.setattr(context, "post", fake)
-    revised = donna.turn("좀 더 부드럽게 써 줘")
-    assert revised["intent"] == "action.revise" and revised["type"] == "ask_action" and revised["say"][0]["text"] == "이렇게 고쳤어요."
+    told = donna.turn("좀 더 부드럽게 써 줘")
+    assert told["intent"] == "action.revise" and told["say"][0]["text"] == "네, 고쳐서 알려 드릴게요."
+    revised = donna.open_notice()  # 다 고치면 알림이 온다
+    assert revised["type"] == "ask_action" and revised["say"][0]["text"] == "이렇게 고쳤어요."
     assert revised["cards"][0]["reply"]["text"].startswith(SOFT) and fake.done()
     assert "좀 더 부드럽게" in fake.requests[0]["messages"][-1]["content"]  # 지시와 지난 답글을 에이전트에게 준다
     donna.turn("응, 진행해")
@@ -54,7 +59,8 @@ def test_alert_reply_is_revised_then_posted_and_counted_as_edited(monkeypatch):
 
 
 def test_revise_that_promises_compensation_is_not_used(monkeypatch):
-    """고친 글에 보상 약속이 있으면(코드 검사 safe_reply) 쓰지 않고 '고치지 못했어요'라고 한다. 인사과 기록도 남기지 않는다."""
+    """고친 글에 보상 약속이 있으면 감사팀이 되돌리고, 끝내 불합격이면 쓰지 않고 '고치지 못했어요'라고 한다.
+    인사과 '조금 수정'은 지시를 받은 때 남는다 (감사팀 9-2)."""
     from app.core.config import settings
     from voice import context
 
@@ -65,18 +71,21 @@ def test_revise_that_promises_compensation_is_not_used(monkeypatch):
     promise = SOFT.replace("보낼게요", "보내 드릴게요")
     submit = [call("submit_reply", {"text": promise, "quoted_review_words": ["국물이 다 새서"], "menus_mentioned": [], "facts_used": []})]
     caught = judged("오늘부터 국물 메뉴는 랩을 두 번 씌워 보내 드릴게요.")  # 검토 첫 질문(보상)에서 걸린다
-    monkeypatch.setattr(context, "post", FakeClova(submit, caught, submit, caught, submit, caught))  # 세 번 거절 → 물러남
-    asked = donna.turn("좀 더 부드럽게 써 줘")
+    fake = FakeClova(submit, caught, submit, submit)  # 첫 제출 + 되돌림 2번 → 끝내 불합격 (같은 글의 판정은 캐시)
+    monkeypatch.setattr(context, "post", fake)
+    donna.turn("좀 더 부드럽게 써 줘")
+    asked = donna.open_notice()
     assert asked["say"][0]["text"] == "지금은 고치지 못했어요." and repo.get("alert", f"al_{rid}")["reply_base"] == before
-    assert hr_log() == []
+    assert hr_log() == [("negative_reply", "edited")] and fake.done()
 
 
 def test_revise_without_agent_keeps_the_reply_and_asks_again():
     donna, rid = leak_alert()
     before = repo.get("alert", f"al_{rid}")["reply_base"]
-    asked = donna.turn("좀 더 부드럽게 써 줘")
+    donna.turn("좀 더 부드럽게 써 줘")
+    asked = donna.open_notice()
     assert asked["say"][0]["text"] == "지금은 고치지 못했어요." and repo.get("alert", f"al_{rid}")["reply_base"] == before
-    assert hr_log() == [] and repo.review(rid)["reply_status"] == "proposed"  # 올리지 않았다
+    assert repo.review(rid)["reply_status"] == "proposed"  # 올리지 않았다
 
 
 def test_unknown_action_on_poster_does_not_post():
@@ -97,10 +106,11 @@ def test_instagram_caption_is_revised(chj: Choongjang, ig_on, clova_on, monkeypa
     to_instagram_step(chj)
     monkeypatch.setattr(config, "agent_on", lambda name: name == "caption")
     caption = {"body": "비 오는 날 따뜻한 들깨옹심이 한 그릇 어떠세요?", "hashtags": ["#초옹장"]}
-    clova_on(FakeClova([call("submit_caption", caption)]))
-    revised = chj.turn("좀 더 짧게 써 줘")
-    assert revised["intent"] == "instagram.revise" and revised["say"][0]["text"] == "이렇게 고쳤어요."
-    assert revised["briefing"]["step_key"] == "instagram"
+    clova_on(FakeClova([call("submit_caption", caption)], judged()))  # 2차 감사: 메뉴·이야기 밖 이야기 없음
+    told = chj.turn("좀 더 짧게 써 줘")
+    assert told["intent"] == "instagram.revise" and told["say"][0]["text"] == "네, 고쳐서 알려 드릴게요."
+    revised = chj.open_notice()
+    assert revised["say"][0]["text"] == "이렇게 고쳤어요." and revised["briefing"]["step_key"] == "instagram"
     plan = repo.get("marketing_plan", "s005:2026-11-17")
     assert plan["body"] == caption["body"] and plan["sources"]["caption"] == "REVISED"
     assert hr_log() == [("instagram_post", "edited")]
@@ -198,8 +208,8 @@ def test_revise_does_not_hold_the_repo_lock(monkeypatch):
     monkeypatch.setattr(voice_reply, "revise", fake_revise)
     donna, rid = leak_alert()
     before = repo.get("alert", f"al_{rid}")
-    revised = donna.turn("좀 더 부드럽게 써 줘")
-    assert revised["intent"] == "action.revise" and revised["say"][0]["text"] == "이렇게 고쳤어요."
+    donna.turn("좀 더 부드럽게 써 줘")
+    assert donna.open_notice()["say"][0]["text"] == "이렇게 고쳤어요."
     assert seen == {"other_thread_got_lock": True}
     assert repo.get("alert", f"al_{rid}")["reply_base"] == before["reply_base"] + " 고침"
 
@@ -215,9 +225,8 @@ def test_revise_result_dropped_if_fallback_ran_meanwhile(monkeypatch):
     monkeypatch.setattr(voice_reply, "revise", fake_revise)
     donna, rid = leak_alert()
     before = repo.get("alert", f"al_{rid}")
-    revised = donna.turn("좀 더 부드럽게 써 줘")
-    assert revised["type"] != "ask_action" and revised["say"][0]["text"] == "그 리뷰는 이미 처리했어요."
+    donna.turn("좀 더 부드럽게 써 줘")
     after = repo.get("alert", f"al_{rid}")
     assert after["state"] == "left_draft"
     assert (after["reply_base"], after["reply_plain"]) == (before["reply_base"], before["reply_plain"])
-    assert ("negative_reply", "edited") not in hr_log()
+    assert [n for n in donna.notices() if n["kind"] == "revise_ready"] == []  # 고친 글을 버리고 다시 묻지 않는다

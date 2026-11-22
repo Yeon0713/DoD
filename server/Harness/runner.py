@@ -13,6 +13,10 @@
      한 응답의 조회가 모두 되풀이였으면 다음 요청은 제출을 강제한다 (실제 CLOVA 가 같은 조회를 반복하다 예산을 다 쓴 일이 있었다)
    - 마지막 단계는 언제나 제출을 강제한다
    - length 로 끝남: 실패
+   - 제출이 검사를 통과하고 감사 자리(spec.audit)가 있으면 2차 감사를 부른다. 불합격이면 "감사팀 지적: <이유>"를 같은 대화의
+     tool 메시지로 돌려주고(되돌림, 최대 spec.audit_returns 번) 다음 제출은 다시 1차부터 거친다. 되돌림 한 번에 단계를 하나 더 준다.
+     되돌림을 다 쓰고도 불합격이면 그 제출을 audit.passed=False 로 돌려주고 캐시에 넣지 않는다. 감사를 못 하면 passed=None.
+     감사에 쓴 시간은 담당의 시간 예산(마감)에서 빼지 않는다
 4. 예산(최대 단계, 거절 횟수, 시간, 함께 쓰는 호출 수)을 넘기면 멈추고 spec.fallback(지금의 단일 호출)을 부른다.
    그것도 실패하면 None 이고, 화면은 기본 문장을 쓴다.
 5. 단계마다 trace 에 기록하고, 통과한 제안은 캐시에 넣는다.
@@ -22,11 +26,13 @@ import dataclasses
 import json
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 from functools import partial
 
 from Harness import cache, clova_tools, trace
 from Harness.grounding import Evidence
-from Harness.spec import AgentSpec, Proposal, RunContext
+from Harness.spec import AgentSpec, AuditVerdict, Proposal, RunContext
 from Harness.tools import to_content
 
 logger = logging.getLogger(__name__)
@@ -61,14 +67,17 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
     messages: list[dict] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     evidence = Evidence([user])
     rejections, nudged, force_submit, started = 0, False, False, clock()
+    returns, audit_spent, trail = 0, 0.0, []  # 2차 감사 되돌림 수, 감사에 쓴 시간(마감에서 뺀다), 회차 기록
     # 마감: 이 실행의 예산 끝과, 이미 있으면(supervisor 아래 일꾼) 부모 마감 중 이른 쪽. 도구·검사·일꾼에게도 물려준다 (H7)
     deadline = started + spec.budget.max_seconds if ctx.deadline is None else min(started + spec.budget.max_seconds, ctx.deadline)
     ctx = dataclasses.replace(ctx, deadline=deadline)
     seen_calls: set[str] = set()
     submit_only = {"type": "function", "function": {"name": spec.submit.name}}
 
-    for step in range(1, spec.budget.max_steps + 1):
-        now = clock()
+    step = 0
+    while step < spec.budget.max_steps + returns:  # 되돌림 한 번에 담당 호출이 한 번 더 필요하다
+        step += 1
+        now = clock() - audit_spent
         if now > deadline:
             log(step=step, kind="end", name="time_budget")
             break
@@ -76,7 +85,7 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
             log(step=step, kind="end", name="call_budget")
             break
         # 글로만 답했거나, 조회만 되풀이했거나, 마지막 단계면 제출 도구를 강제한다
-        forced = force_submit or step == spec.budget.max_steps
+        forced = force_submit or step == spec.budget.max_steps + returns
         strict = spec.budget.strict
         left = max(MIN_CALL_SECONDS, deadline - now)
         # 엄격하지 않아도 호출 하나를 남은 시간으로 묶는다 (재시도 규칙은 그대로, H7). 검사 안의 LLM 검토는 마감을 보지 않는다
@@ -110,10 +119,25 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
                 clova_tools.mark_verdict(call_id, reason is None, reason)
                 log(step=step, kind="submit", name=spec.submit.name, detail={"accepted": reason is None, "reason": reason})
                 if reason is None:
+                    verdict, spent = _audit(spec, call.arguments, evidence, task, ctx)
+                    audit_spent += spent
+                    if verdict is not None:
+                        trail.append({"round": returns, "status": verdict.status, "reason": verdict.reason,
+                                      **verdict.detail, "ms": round(spent * 1000)})
+                        log(step=step, kind="audit", name=verdict.status, detail=trail[-1])
+                    if verdict is not None and verdict.status == "fail" and returns < spec.audit_returns:
+                        returns += 1
+                        result = f"감사팀 지적: {verdict.reason}\n{spec.retry_hint.format(submit=spec.submit.name)}"
+                        messages.append({"role": "tool", "toolCallId": call.id, "content": result})
+                        continue  # 같은 대화에 이어서 다시 제출받는다. 다음 제출도 1차부터 거친다
                     content = spec.finalize(call.arguments, task, ctx) if spec.finalize else dict(call.arguments)
-                    proposal = Proposal(spec.name, task_id, content, "AGENT", ctx.run_id, evidence.sources(), notes)
-                    cache.put(key, proposal)
-                    log(step=step, kind="end", name="accepted")
+                    audit = None if verdict is None else {
+                        "passed": {"pass": True, "fail": False, "unchecked": None}[verdict.status], "rounds": returns,
+                        "reasons": [t["reason"] for t in trail if t["status"] == "fail"], "trail": trail}
+                    proposal = Proposal(spec.name, task_id, content, "AGENT", ctx.run_id, evidence.sources(), notes, audit)
+                    if audit is None or audit["passed"] is not False:  # 끝내 불합격은 캐시에 넣지 않는다 (다음에 다시 써 본다)
+                        cache.put(key, proposal)
+                    log(step=step, kind="end", name="accepted" if audit is None or audit["passed"] is not False else "audit_failed")
                     return proposal
                 rejections += 1
                 result = f"거절: {reason}\n{spec.retry_hint.format(submit=spec.submit.name)}"
@@ -134,7 +158,7 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
             log(step=step, kind="end", name="too_many_rejections")
             break
 
-    if not spec.fallback_after_deadline and clock() > deadline:
+    if not spec.fallback_after_deadline and clock() - audit_spent > deadline:
         log(step=0, kind="fallback", name="deadline")
         return None
     return _fallback(spec, task, ctx, task_id, log)
@@ -146,6 +170,25 @@ def _check(spec: AgentSpec, args: dict, evidence: Evidence, task: dict, ctx: Run
     except Exception as error:  # 검사기가 모양이 틀린 인자로 터지면 그 사실을 모델에게 알린다
         logger.exception("%s 검사 실패", spec.name)
         return f"제출 모양이 틀렸어요 ({type(error).__name__})"
+
+
+def _audit(spec: AgentSpec, args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> tuple[AuditVerdict | None, float]:
+    """2차 감사 한 회차 → (판정, 쓴 시간). 감사 자리가 없으면 (None, 0). 터지거나 spec.audit_seconds 를 넘으면 감사 못 함."""
+    if spec.audit is None:
+        return None, 0.0
+    started = clock()
+    pool = ThreadPoolExecutor(max_workers=1)
+    try:
+        verdict = pool.submit(spec.audit, args, evidence, task, ctx).result(timeout=spec.audit_seconds)
+    except FutureTimeout:
+        logger.warning("%s 감사가 %s초를 넘었어요", spec.name, spec.audit_seconds)
+        verdict = AuditVerdict("unchecked", detail={"criterion": "timeout"})
+    except Exception:
+        logger.exception("%s 감사 실패", spec.name)
+        verdict = AuditVerdict("unchecked", detail={"criterion": "error"})
+    finally:
+        pool.shutdown(wait=False)
+    return verdict, clock() - started
 
 
 def _run_tool(spec: AgentSpec, name: str, args: dict, task: dict, ctx: RunContext, evidence: Evidence) -> str:

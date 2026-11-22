@@ -5,9 +5,12 @@
 instagram/posts.build_feed 가 읽는다.
   {store_id, date, menu_ids, angle, body, hashtags, sources: {topic, caption}, lead}
 사원이 실패하면 그 부분만 지금 규칙(이번 달 많이 나간 메뉴 3개, 템플릿 글)으로 둔다. 올리는 것은 사장님이 "올려" 한 뒤다.
+감사팀(voice/audit/)이 끝내 통과시키지 않으면: 인턴·사원은 소재면 계획 없음(지금 규칙), 캡션이면 템플릿 글.
+대리는 걸린 것 그대로 두고 audit_hold 를 적어 묻지 않고 올리지 않게 한다 (briefing.auto_instagram, step_instagram).
+  + {audit: {topic, caption}, audit_hold}
 """
 
-from voice import clock, repo
+from voice import audit, clock, repo
 
 KIND = "marketing_plan"
 
@@ -31,12 +34,24 @@ def plan_today(view) -> dict | None:
     if not posts.connection(view.store_id)["connected"] or repo.get(KIND, plan_id(view.store_id, day)):
         return None
     topic = topic_finder.suggest(view)
-    if topic is None:
+    settled = audit.settle(view.store_id, "instagram_post", topic["audit"]) if topic else "ok"
+    if topic is None or settled == "template":
         return None
     names = [m["name"] for m in view.menus if m["id"] in topic["menu_ids"]]
     caption = caption_writer.write(view, names, topic["angle"], posts.quote(view))
+    caption_settled = audit.settle(view.store_id, "instagram_post", caption["audit"]) if caption else "ok"
+    hold = "hold" in (settled, caption_settled)
+    if caption_settled == "template":  # 캡션만 템플릿 글로 (캡션 담당에게만 되돌렸다)
+        caption = None
+    if hold:
+        from voice.audit import log as audit_log
+
+        for ref, found in ((f"topic:{day}", settled), (f"caption:{day}", caption_settled)):
+            if found == "hold":
+                audit_log.mark_hold(view.store_id, ref)
     return repo.put(KIND, plan_id(view.store_id, day), view.store_id, {
         "store_id": view.store_id, "date": day, "menu_ids": topic["menu_ids"], "angle": topic["angle"],
         "body": caption["body"] if caption else None, "hashtags": caption["hashtags"] if caption else [],
         "sources": {"topic": "AGENT", "caption": "AGENT" if caption else "TEMPLATE"}, "lead": None, "created_at": clock.iso(clock.now()),
+        "audit": {"topic": topic["audit"], "caption": caption["audit"] if caption else None}, "audit_hold": hold,
     })

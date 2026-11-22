@@ -22,6 +22,12 @@ def judged(*quotes):
     return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
 
 
+# 2차 감사(감사팀)의 판정 차례: 할 일마다 알바생이 할 수 있나 → 행동마다 근거 때문에 필요한가 → (today_impact 면) 오늘 꼭 해야 하나
+# (두 할 일 모두 행동이 하나다. 근거·오늘 질문은 예·아니오만 본다)
+ALLERGY_OK = [judged(), judged("필요"), judged("오늘")]
+UMBRELLA_OK = [judged(), judged("필요")]
+
+
 def submit(*items):
     return [call("submit_field_tasks", {"items": list(items)})]
 
@@ -43,7 +49,7 @@ def field_proposals() -> list[dict]:
 
 
 def test_proposes_from_weather_and_reservation_memo_once(agent):
-    fake = agent(LOOK, submit(ALLERGY, UMBRELLA), judged(), judged())
+    fake = agent(LOOK, submit(ALLERGY, UMBRELLA), *ALLERGY_OK, *UMBRELLA_OK)
     made = field_tasks.propose_today(load("s005"))
     assert [p["payload"]["title"] for p in made] == ["땅콩 알레르기 확인", "우산꽂이 내놓기"] and fake.done()
     assert all(p["ask_on"] == "2026-11-17" and p["dept"] == "quality" for p in made)
@@ -53,14 +59,14 @@ def test_proposes_from_weather_and_reservation_memo_once(agent):
 
 def test_allergy_must_match_the_memo(agent):
     shrimp = {**ALLERGY, "title": "새우 알레르기 확인", "detail": "단체 손님 중 새우 알레르기 손님 음식을 따로 담아 주세요"}
-    fake = agent(LOOK, submit(shrimp), submit(ALLERGY), judged())
+    fake = agent(LOOK, submit(shrimp), submit(ALLERGY), *ALLERGY_OK)
     assert [p["payload"]["title"] for p in field_tasks.propose_today(load("s005"))] == ["땅콩 알레르기 확인"]
     assert "메모에 적힌 그대로" in fake.tool_messages(2)[-1] and fake.done()
 
 
 def test_quote_must_come_from_its_source(agent):
     wrong = {**UMBRELLA, "quote": "하루 종일 눈"}
-    fake = agent(LOOK, submit(wrong), submit(UMBRELLA), judged())
+    fake = agent(LOOK, submit(wrong), submit(UMBRELLA), *UMBRELLA_OK)
     assert len(field_tasks.propose_today(load("s005"))) == 1
     assert "글자 그대로" in fake.tool_messages(2)[-1] and fake.done()
 
@@ -72,7 +78,7 @@ def test_nothing_needed_is_fine(agent):
 
 
 def test_today_impact_becomes_urgent_when_applied(agent):
-    agent(LOOK, submit(ALLERGY), judged())
+    agent(LOOK, submit(ALLERGY), *ALLERGY_OK)
     [made] = field_tasks.propose_today(load("s005"))
     task = proposals.apply(made["id"], "owner_yes")
     assert task["origin"] == "field_variable" and task["urgent"] is True and task["must_confirm"] is True
@@ -82,7 +88,7 @@ def test_today_impact_becomes_urgent_when_applied(agent):
 
 def test_today_impact_is_asked_first(agent):
     """today_impact 는 팀장 없이 그대로 긴급이다 (2026-11-21 팀장 없앰). 브리핑에서도 먼저 묻는다."""
-    agent(LOOK, submit(UMBRELLA, ALLERGY), judged(), judged())
+    agent(LOOK, submit(UMBRELLA, ALLERGY), *UMBRELLA_OK, *ALLERGY_OK)
     field_tasks.propose_today(load("s005"))
     asked = [p["payload"]["title"] for p in proposals.for_briefing("s005", "2026-11-17") if p["by"] == "field_variable"]
     assert asked == ["땅콩 알레르기 확인", "우산꽂이 내놓기"]
@@ -91,7 +97,7 @@ def test_today_impact_is_asked_first(agent):
 def test_allergy_cannot_ride_on_the_weather(agent):
     """알레르기 손님 정보는 그 예약 메모를 근거로 한 할 일에만 (날씨를 근거로 한 할 일에 섞으면 거절)."""
     mixed = {**UMBRELLA, "title": "땅콩 알레르기 손님 우산 준비", "detail": "땅콩 알레르기 손님이 비를 맞지 않게 우산을 준비하세요"}
-    fake = agent(LOOK, submit(mixed), submit(UMBRELLA), judged())
+    fake = agent(LOOK, submit(mixed), submit(UMBRELLA), *UMBRELLA_OK)
     assert [p["payload"]["title"] for p in field_tasks.propose_today(load("s005"))] == ["우산꽂이 내놓기"]
     assert "그 할 일의 근거에 없어요" in fake.tool_messages(2)[-1] and fake.done()
 
@@ -99,7 +105,7 @@ def test_allergy_cannot_ride_on_the_weather(agent):
 def test_too_long_title_says_which_field_and_how_long(agent):
     """폭 거절은 어느 칸이 지금 몇 자이고 몇 자까지인지 말한다. "길어요"만 듣고는 같은 제목을 다시 냈다 (2026-11-21)."""
     long_title = {**ALLERGY, "title": "땅콩 알레르기 손님 대체 메뉴 준비"}
-    fake = agent(LOOK, submit(long_title), submit(ALLERGY), judged())
+    fake = agent(LOOK, submit(long_title), submit(ALLERGY), *ALLERGY_OK)
     assert len(field_tasks.propose_today(load("s005"))) == 1 and fake.done()
     assert "1번째 할 일의 title 칸이 길어요 (지금 16.5자, 16자까지" in fake.tool_messages(2)[-1]
 
@@ -107,6 +113,6 @@ def test_too_long_title_says_which_field_and_how_long(agent):
 def test_phase_is_chosen_in_korean_and_stored_as_code(agent):
     """phase 는 우리말로 고르고 코드로 바꿔 넣는다. 영어 값을 보이면 모델이 다른 값을 쓰려다 CLOVA 가 40009 로 버렸다 (2026-11-21 재현)."""
     assert field_tasks.ITEM["properties"]["phase"]["enum"] == ["문 열기 전", "영업 중", "마감"]
-    fake = agent(LOOK, submit({**UMBRELLA, "phase": "문 열기 전"}), judged())
+    fake = agent(LOOK, submit({**UMBRELLA, "phase": "문 열기 전"}), *UMBRELLA_OK)
     [made] = field_tasks.propose_today(load("s005"))
     assert made["payload"]["phase"] == "before_open" and fake.done()

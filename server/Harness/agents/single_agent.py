@@ -38,6 +38,7 @@ from Harness.spec import AgentSpec, Budget, Proposal, RunContext, Tool
 from Harness.store_tools import DAY_CONTEXT, MENU_LIST, STORE_FACTS
 from Harness.tools import array, load_prompt, obj, string
 from voice.agents import improve_tip, voice_reply
+from voice.audit import rules
 from voice.context import run_context
 
 BATCH_NAME = "single_agent"
@@ -392,28 +393,8 @@ def voice_user_message(task: dict, ctx: RunContext) -> str:
 
 
 def voice_reply_code_check(args: dict, item: dict, ctx: RunContext) -> str | None:
-    """voice_reply.check 에서 LLM 검토(reply_critic) 앞까지의 코드 검사."""
-    view = ctx.snapshot
-    review = view.review(item["review_id"]) or {}
-    text = clean_answer(str(args.get("text") or ""))
-    quoted, menus, facts = _texts(args, "quoted_review_words"), _texts(args, "menus_mentioned"), _texts(args, "facts_used")
-    reason = guards.first(
-        guards.length(text, MIN_LENGTH, MAX_LENGTH, "답글"),
-        guards.placeholder(text),
-        guards.price_or_discount(text),
-        guards.not_in(menus, [m["name"] for m in view.menus], "메뉴 이름"),
-        guards.not_in(facts, ctx.store_facts, "가게 사실(get_store_facts 에 있는 문장만 쓸 수 있어요)"),
-    )
-    if reason:
-        return reason
-    if not quoted:
-        return "quoted_review_words 에 답글이 대답한 리뷰 속 말을 1개 이상 적어 주세요"
-    original = review.get("text", "")
-    missing = [q for q in quoted if q not in original]
-    if missing:
-        return (f"quoted_review_words 의 {', '.join(repr(q) for q in missing)} 는 리뷰에 글자 그대로 없어요. "
-                f'리뷰 원문 "{mask_personal_info(original)}" 에서 그대로 옮겨 주세요. 답글(text)은 바꾸지 않아도 돼요')
-    return None
+    """voice_reply 의 1차 코드 감사 (감사팀 rules.reply_code, LLM 검토 앞까지). 같은 검사를 복사해 두지 않고 그대로 부른다."""
+    return rules.reply_code(args, item, ctx)
 
 
 def voice_check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
@@ -429,7 +410,7 @@ def voice_check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, not
         if not isinstance(tip, dict):
             reasons.append(("고칠 점", "tip 이 빠졌어요. 고칠 점도 함께 내 주세요"))
         else:
-            reasons.append(("고칠 점", improve_tip.check(tip, evidence, {"date": task["date"]}, ctx, notes)))
+            reasons.append(("고칠 점", rules.improve_tip(tip, evidence, {"date": task["date"]}, ctx, notes)))
     return _gather(reasons)
 
 

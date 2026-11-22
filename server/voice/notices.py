@@ -6,6 +6,7 @@
   reply_fallback   대답이 없어 사과 답글만 먼저 올렸어요 / 초안으로 남겼어요 (say 를 읽는다)
   staff_joined     알바생이 알바생 화면에 들어왔어요 (소리만)
   story_event      비 오는 날 이벤트 포스터를 다 그렸어요 (opens_turn, alert_id = 이벤트 id) / 못 그렸어요·올렸어요 (say 를 읽는다)
+  revise_ready     뒤에서 고친 글을 다시 물어요 (opens_turn, alert_id = 고쳐 쓰기 작업 id, jobs/revise_jobs.py)
 끝난 고리의 negative_review, 25분이 지난 negative_review 는 읽을 때 버린다 (시계를 한꺼번에 옮겨도 지난 알림이 몰려 울리지 않게).
 """
 
@@ -33,6 +34,9 @@ def _alive(notice: dict, now: dt.datetime) -> bool:
     if notice["kind"] == "story_event" and notice["opens_turn"]:  # 이미 대답한 포스터는 다시 묻지 않는다
         event = repo.get("story_event", notice["alert_id"]) if notice.get("alert_id") else None
         return bool(event) and event["state"] == "ready"
+    if notice["kind"] == "revise_ready":  # 고치는 사이 사장님이 정했거나 날이 바뀌었으면 묻지 않는다
+        job = repo.get("revise_job", notice["alert_id"]) if notice.get("alert_id") else None
+        return bool(job) and job["state"] in ("ready", "failed")
     if notice["kind"] not in ("negative_review", "negative_auto") or not notice["opens_turn"]:
         return True
     alert = repo.get("alert", notice["alert_id"]) if notice.get("alert_id") else None

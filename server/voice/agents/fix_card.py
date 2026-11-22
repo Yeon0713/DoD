@@ -1,29 +1,31 @@
 """부정 리뷰 사원: 아쉬운 리뷰에서 알바생 교정 할 일을 쓴다 (에이전트 조직 개편 3단계, donna-voice/docs/agent-org-plan.md 3-1).
 
 원칙 한 줄(프롬프트): 이 가게 알바생이 다음 근무에서 행동을 바꿔 막을 수 있었던 문제인가? 아니면 actionable=false.
-검사
-  1. quote 가 리뷰에 글자 그대로 있다
-  2. actionable=false 면 끝 (카드 없음. 애매하면 넣지 않는다)
-  3. 제목·내용 폭 (width staff.title / staff.detail)
-  4. 가격·할인·보상 약속 금지
-  5. 알바생이 할 수 없는 일(사기·바꾸기·가격·정책)이 있는지 좁은 질문(quote_judge staff_scope). 묻지 못하면 템플릿으로 물러난다
+검사 (감사팀, voice/audit/)
+  1차 코드 감사 rules.fix_card
+    1. quote 가 리뷰에 글자 그대로 있다
+    2. actionable=false 면 끝 (카드 없음. 애매하면 넣지 않는다)
+    3. 제목·내용 폭 (width staff.title / staff.detail)
+    4. 가격·할인·보상 약속 금지
+  2차 LLM 감사 inspector.fix_card
+    5. 알바생이 할 수 없는 일(사기·바꾸기·가격·정책)이 있는지 좁은 질문(quote_judge staff_scope)
+  끝내 불합격하거나 감사를 못 하면 템플릿으로 물러난다 (결정 7)
 배달 지연은 부르지 않는다 (cause.NO_CARD_YET, 주문 기록이 생길 때까지).
 card_for 가 입구다: 규칙(cause.classify) 결과에서 카드만 에이전트 것으로 바꾼다. 실패하거나 끄면 규칙 템플릿 그대로.
 """
 
 from app.analysis.review.hcx_classifier import mask_personal_info
-from Harness import guards, runner
-from Harness.agents import quote_judge
-from Harness.grounding import Evidence
+from Harness import runner
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, obj, string
 from voice import config, notebook, staff, width
 from voice.agents import load_prompt
 from voice.agents.voice_reply import MENU_LIST
+from voice import audit
+from voice.audit import inspector, rules
+from voice.audit import log as audit_log
 from voice.context import VoiceStore, run_context
 from voice.jobs import cause
-
-UNCHECKED = "검토 안 됨"
 
 
 def _view(ctx: RunContext) -> VoiceStore:
@@ -55,40 +57,17 @@ def user_message(task: dict, ctx: RunContext) -> str:
             "알바생 교정 할 일을 submit_fix_card 로 내 줘.")
 
 
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    review = _view(ctx).review(task["review_id"]) or {}
-    original = mask_personal_info(review.get("text", ""))
-    quote = (args.get("quote") or "").strip()
-    if not quote or quote not in original:
-        return f'quote 는 리뷰 "{original}" 에서 글자 그대로 옮겨 주세요'
-    if args.get("actionable") is not True:
-        return None
-    title, detail = (args.get("title") or "").strip(), (args.get("detail") or "").strip()
-    if not title or not detail:
-        return "actionable 이 true 면 title 과 detail 을 채워 주세요"
-    if not width.fits(title, "staff.title"):
-        return width.too_long("title", title, "staff.title")
-    if not width.fits(detail, "staff.detail"):
-        return width.too_long("detail", detail, "staff.detail")
-    reason = guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
-    if reason:
-        return reason
-    outside = quote_judge.ask("staff_scope", f"{title}. {detail}", ctx, review_text=original)
-    if outside is None:
-        notes.append(UNCHECKED)
-        return None
-    if outside:
-        return f"알바생이 지금 있는 것으로 할 수 없는 일이 있어요: {', '.join(outside)}. 알바생이 할 수 있는 일만 써 주세요"
-    return None
-
-
 SPEC = AgentSpec(
     name="voice_fix_card",
     system_prompt=lambda task, ctx: load_prompt("fix_card.txt", ctx.store) + notebook.section(ctx.store_id, "negative_review"),
     user_message=user_message,
     tools=[MENU_LIST, MANUAL],
     submit=SUBMIT,
-    check=check,
+    check=rules.fix_card,  # 1차 코드 감사 (감사팀)
+    audit=inspector.fix_card,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),
     task_id=lambda task: task["review_id"],
     budget=Budget(max_steps=4, max_rejections=2, max_seconds=30),
     temperature=0.3,
@@ -96,11 +75,13 @@ SPEC = AgentSpec(
 
 
 def suggest(view: VoiceStore, review: dict) -> dict | None:
-    """{actionable, quote, title, detail} 또는 None (끔, 실패, 검토 못 함)."""
+    """{actionable, quote, title, detail} 또는 None (끔, 실패, 감사를 끝내 통과하지 못함·감사 못 함)."""
     if not config.agent_on("fixcard"):
         return None
-    proposal = runner.run(SPEC, {"review_id": review["id"]}, run_context(view))
-    if proposal is None or proposal.source != "AGENT" or UNCHECKED in proposal.notes:
+    ctx = run_context(view)
+    proposal = runner.run(SPEC, {"review_id": review["id"]}, ctx)
+    audit_log.record_run(view.store_id, "review_fix_task", review["id"], proposal, ctx.run_id)
+    if proposal is None or proposal.source != "AGENT" or audit.settle(view.store_id, "review_fix_task", proposal.audit) != "ok":
         return None
     c = proposal.content
     return {"actionable": c.get("actionable") is True, "quote": c["quote"].strip(),

@@ -2,16 +2,20 @@
 
 손님이 좋아한 점(좋은 리뷰), 많이 나간 메뉴(포스 매출), 오늘 날씨를 보고 메뉴 1~3개와 한 줄 이야기(angle)를 고른다.
 검사: 메뉴는 목록에 있고 사진이 있는 것만, 숫자는 도구 결과에 있는 것만, '인기' 같은 판매 주장은 매출을 조회했을 때만,
-가격·할인·보상 금지. 실패하거나 끄면 None (지금처럼 이번 달 많이 나간 메뉴 3개를 쓴다).
+가격·할인·보상 금지 (1차 코드 감사 rules.topic_finder). 이야기에 고른 메뉴가 아닌 음식이 나오는지는 2차 LLM 감사
+inspector.topic_finder (angle_menu).
+실패하거나 끄면 None (지금처럼 이번 달 많이 나간 메뉴 3개를 쓴다). 감사 결과는 audit 으로 돌려주고 처리는 부르는 쪽이 정한다.
 """
 
 from app.analysis.review.hcx_classifier import mask_personal_info
-from Harness import guards, runner
-from Harness.grounding import Evidence, ungrounded_numbers
+from Harness import runner
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, array, obj, string
-from voice import config, notebook, width
+from voice import config, notebook
 from voice.agents import load_prompt
+from voice import audit
+from voice.audit import inspector, rules
+from voice.audit import log as audit_log
 from voice.agents.field_tasks import WEATHER
 from voice.context import VoiceStore, run_context
 
@@ -58,35 +62,17 @@ def user_message(task: dict, ctx: RunContext) -> str:
     return f"오늘: {ctx.now:%Y-%m-%d}\n오늘 인스타에 올리면 손님 반응이 좋을 메뉴와 이야기를 골라 submit_topic 으로 내 줘."
 
 
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    ids = [str(i) for i in args.get("menu_ids") or []]
-    with_photo = {m["id"] for m in _view(ctx).menus if m.get("photo_url")}
-    if not 1 <= len(ids) <= 3:
-        return "menu_ids 는 1~3개로 골라 주세요"
-    if len(set(ids)) != len(ids) or any(i not in with_photo for i in ids):
-        return f"menu_ids 는 사진이 있는 메뉴 id 중에서만 골라 주세요: {', '.join(sorted(with_photo))}"
-    angle = (args.get("angle") or "").strip()
-    if not angle or not width.fits(angle, "tip"):
-        return f"angle 은 한 줄로 짧게 써 주세요 (폭 {width.LIMITS['tip']} 이하)"
-    reason = guards.first(guards.price_or_discount(angle), guards.promise(angle))
-    if reason:
-        return reason
-    loose = ungrounded_numbers(angle, evidence)
-    if loose:
-        return f"도구 결과에 없는 숫자를 썼어요: {', '.join(dict.fromkeys(loose))}"
-    claims = guards.sales_claim_words(angle)
-    if claims and TOP not in evidence.sources():
-        return f"'{', '.join(claims)}' 같은 판매 이야기는 {TOP} 로 매출을 본 뒤에만 쓸 수 있어요"
-    return None
-
-
 SPEC = AgentSpec(
     name="voice_topic_finder",
     system_prompt=lambda task, ctx: load_prompt("topic_finder.txt", ctx.store) + notebook.section(ctx.store_id, "marketing"),
     user_message=user_message,
     tools=TOOLS,
     submit=SUBMIT,
-    check=check,
+    check=rules.topic_finder,  # 1차 코드 감사 (감사팀)
+    audit=inspector.topic_finder,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),
     task_id=lambda task: task["date"],
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.4,
@@ -94,10 +80,14 @@ SPEC = AgentSpec(
 
 
 def suggest(view: VoiceStore) -> dict | None:
-    """{menu_ids, angle} 또는 None."""
+    """{menu_ids, angle, audit} 또는 None."""
     if not config.agent_on("topic"):
         return None
-    proposal = runner.run(SPEC, {"date": view.now.date().isoformat()}, run_context(view))
+    day = view.now.date().isoformat()
+    ctx = run_context(view)
+    proposal = runner.run(SPEC, {"date": day}, ctx)
+    audit_log.record_run(view.store_id, "instagram_post", f"topic:{day}", proposal, ctx.run_id)
     if proposal is None or proposal.source != "AGENT":
         return None
-    return {"menu_ids": [str(i) for i in proposal.content["menu_ids"]], "angle": proposal.content["angle"].strip()}
+    return {"menu_ids": [str(i) for i in proposal.content["menu_ids"]], "angle": proposal.content["angle"].strip(),
+            "audit": audit.brief(proposal.audit)}

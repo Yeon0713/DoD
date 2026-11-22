@@ -887,7 +887,7 @@ const OUTCOME_TAG = {
   running: '<span class="tag run">도는 중</span>',
   stalled: '<span class="tag bad">멈춤</span>',
 };
-const KIND_KO = { start: "시작", llm: "CLOVA", tool: "도구", submit: "제출", end: "끝", fallback: "물러나기", cache: "캐시" };
+const KIND_KO = { start: "시작", llm: "CLOVA", tool: "도구", submit: "제출", audit: "감사", end: "끝", fallback: "물러나기", cache: "캐시" };
 
 function agentStepsHtml(runId) {
   const steps = agentView.steps[runId];
@@ -986,6 +986,74 @@ setInterval(async () => {
   try { content.innerHTML = await renderAgents(); } catch {}
 }, 5000);
 
+// ── 감사 (음성 백엔드 감사팀 기록, donna-voice/docs/audit-team-plan.md 12장) ──
+
+const auditView = { storeId: null, day: null, open: new Set() };
+const AUDIT_TAG = {
+  pass: '<span class="tag ok">합격</span>', fail: '<span class="tag bad">불합격</span>', unchecked: '<span class="tag warn">감사 못 함</span>',
+};
+const AUDIT_JOB = {
+  negative_reply: "부정 리뷰 답글", positive_reply: "칭찬 리뷰 답글", review_fix_task: "리뷰 교정 할 일", field_task: "현장 변수 할 일",
+  manual_task: "매뉴얼화 제안", instagram_post: "인스타 게시", holiday: "휴무 읽기", improve_tip: "고칠 점",
+};
+
+async function renderAudit() {
+  const q = new URLSearchParams();
+  if (auditView.storeId) q.set("store_id", auditView.storeId);
+  if (auditView.day) q.set("day", auditView.day);
+  const a = await api(`${API}/audit?${q}`);
+  auditView.storeId = a.store_id;
+  auditView.day = a.day;
+  await Promise.all([...auditView.open].map(async (id) => {
+    agentView.steps[id] = (await api(`${API}/agents/run?run_id=${encodeURIComponent(id)}`)).steps;
+  }));
+  if (!a.store_id) return '<div class="empty">음성 백엔드(:8100)에 가게가 없어요</div>';
+  const pick = (id, label, items, value) => `<label class="muted small">${label} <select id="${id}">${items.map((v) =>
+    `<option value="${esc(v)}"${v === value ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></label>`;
+  const sum = (key) => a.jobs.reduce((n, j) => n + j[key], 0);
+  const results = {};
+  for (const row of a.rows) (results[`${row.run_id}|${row.ref}`] ??= []).push(row);
+  const groups = Object.values(results).map((rows) => rows.sort((x, y) => x.round - y.round)).sort((x, y) => (y[0].at > x[0].at ? 1 : -1));
+  return `
+    <div class="card"><h2>감사팀 <span class="muted">사장님께는 보이지 않아요. 2차(LLM) 감사 회차만 남겨요 (1차 코드 거절은 에이전트 탭의 실행 기록)</span></h2>
+      <div class="control-row">${pick("audit-store", "가게", a.stores, a.store_id)} ${a.days.length ? pick("audit-day", "날", a.days, a.day) : '<span class="muted">감사 기록이 없어요</span>'}</div>
+    </div>
+    <div class="stats">
+      ${stat("결과물", num(sum("results")), "2차 감사를 받은 결과물", true)}
+      ${stat("한 번에 합격", num(sum("first_pass")), "되돌림 없이")}
+      ${stat("되돌림 뒤 합격", num(sum("pass_after_return")), "같은 대화로 지적을 돌려준 뒤")}
+      ${stat("끝내 불합격", num(sum("final_fail")), `보류 ${num(sum("hold"))} · 감사 못 함 ${num(sum("unchecked"))}`)}
+    </div>
+    <div class="card"><h2>업무별</h2>
+      ${a.jobs.length ? table(["업무", "결과물", "한 번에", "되돌림 뒤", "끝내 불합격", "보류", "감사 못 함", "기준별 불합격", "평균·최대", "질문 호출"], a.jobs.map((j) => [
+        `${esc(AUDIT_JOB[j.job] ?? j.job)} <span class="muted small mono">${esc(j.job)}</span>`,
+        `<span class="num">${j.results}</span>`, `<span class="num">${j.first_pass}</span>`, `<span class="num">${j.pass_after_return}</span>`,
+        `<span class="num">${j.final_fail}</span>`, `<span class="num">${j.hold}</span>`, `<span class="num">${j.unchecked}</span>`,
+        Object.entries(j.fail_by_criterion).map(([c, n]) => `<span class="mono small">${esc(c)}</span> ${n}`).join("<br>") || '<span class="muted">-</span>',
+        `<span class="num">${(j.avg_ms / 1000).toFixed(1)}초 · ${(j.max_ms / 1000).toFixed(1)}초</span>`, `<span class="num">${j.calls}</span>`,
+      ])) : '<div class="empty">이 날 감사 기록이 없어요</div>'}
+    </div>
+    <div class="card"><h2>결과물마다 <span class="muted">회차를 펼치면 지적·옮겨 온 부분과, 고치기 전·후 제출(실행 단계)이 보여요</span></h2>
+      ${groups.map(auditResultRow).join("") || '<div class="empty">없음</div>'}
+    </div>`;
+}
+
+function auditResultRow(rows) {
+  const last = rows[rows.length - 1];
+  const open = last.run_id && auditView.open.has(last.run_id);
+  const rounds = rows.map((r) => `<div class="step"><span class="mono muted">${r.round}</span>${AUDIT_TAG[r.status] ?? esc(r.status)}
+      <span class="mono">${esc(r.criterion ?? "")}</span>
+      <span class="detail">${esc(r.reason ?? "")}${r.quotes.length ? ` · 옮겨 온 부분: ${r.quotes.map((x) => `“${esc(x)}”`).join(", ")}` : ""}
+      · 질문 ${r.calls}번 · ${(r.ms / 1000).toFixed(1)}초</span></div>`).join("");
+  return `<div class="call"><div class="call-head">
+      <span class="mono">${esc(time(rows[0].at))}</span><b>${esc(AUDIT_JOB[last.job] ?? last.job)}</b>
+      <span class="tag blue">${esc(last.agent)}</span><span class="muted small mono">${esc(last.ref)}</span>
+      ${AUDIT_TAG[last.status] ?? esc(last.status)}${last.hold ? '<span class="tag warn">보류 (사장님께 물음)</span>' : ""}
+      <span class="muted small">되돌림 ${rows.length - 1}번</span>
+      ${last.run_id ? `<button class="btn-outline small" data-audit-run="${esc(last.run_id)}">${open ? "접기" : "펼치기"}</button>` : ""}
+    </div>${open ? `<div class="run-steps">${rounds}</div>${agentStepsHtml(last.run_id)}` : ""}</div>`;
+}
+
 const RENDER = {
   demo: renderDemo,
   status: renderStatus,
@@ -994,6 +1062,7 @@ const RENDER = {
   timeline: renderTimeline,
   ai: renderAi,
   agents: renderAgents,
+  audit: renderAudit,
   controls: renderControls,
   uitext: renderUiText,
   eval: renderEval,
@@ -1073,6 +1142,13 @@ content.addEventListener("click", async (e) => {
     }
     return;
   }
+  if (button.dataset.auditRun) {  // 감사 탭: 결과물 하나 펼치기
+    const id = button.dataset.auditRun;
+    if (auditView.open.has(id)) auditView.open.delete(id);
+    else auditView.open.add(id);
+    content.innerHTML = await renderAudit().catch((error) => `<div class="error">${esc(error.message)}</div>`);
+    return;
+  }
   if (button.dataset.agentMode || button.dataset.run) {
     try {
       await onAgentsClick(button);
@@ -1143,6 +1219,11 @@ content.addEventListener("input", (e) => {
 
 content.addEventListener("change", (e) => {
   if (e.target.id === "ut-file") return utImportFile(e.target).catch((error) => toast(error.message));
+  if (e.target.id === "audit-store" || e.target.id === "audit-day") {  // 감사 탭: 가게·날 고르기
+    if (e.target.id === "audit-store") auditView.day = null;
+    auditView[e.target.id === "audit-store" ? "storeId" : "day"] = e.target.value;
+    return show("audit");
+  }
   if (e.target.id === "demo-polish") {
     demo.polish = e.target.checked;
     try { localStorage.setItem(DEMO_POLISH_KEY, demo.polish ? "on" : "off"); } catch {}

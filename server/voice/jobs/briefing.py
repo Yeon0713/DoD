@@ -759,7 +759,7 @@ def assemble(store_id: str) -> dict | None:
 def briefing_lines(briefing: dict) -> list[str]:
     """브리핑에서 도나가 읽을 문장 (단계, 끝 인사)."""
     lines = [s["text"] for step in briefing["steps"].values() if step for s in step["say"]]
-    return lines + ["오늘 브리핑은 여기까지예요.", "스토리에 올렸어요.", "알바생 할 일에 넣었어요."]
+    return lines + ["오늘 브리핑은 여기까지예요.", "스토리에 올렸어요.", "알바생 할 일에 넣었어요.", "네.", "네. 오늘 브리핑을 시작할까요?"]
 
 
 def refresh_steps(store_id: str) -> dict | None:

@@ -41,9 +41,9 @@ type Convo = {
 const Ctx = createContext<Convo | null>(null);
 const TAB_PATH = { home: '/', week: '/calendar', sales: '/sales', settings: '/settings' } as const;
 // 한 단계를 다 말한 뒤 다음 단계로 넘어가기 전 쉬는 시간. 사장님이 끼어들 틈이다.
-// 요약 세 줄(sum_*)은 같은 카드에서 줄만 바뀌어서 짧게 쉰다 (Figma v0.2.1 H-02 ~ H-04, 2026-11-22: 3초는 너무 길었다)
-const AUTO_NEXT_MS = 1200;
-const SUMMARY_NEXT_MS = 500;
+// 요약 세 줄(sum_*)은 같은 카드에서 줄만 바뀌어서 더 짧게 쉰다 (Figma v0.2.1 H-02 ~ H-04). 2026-11-22: 3초 → 1.2초 → 0.4초, 요약 0.3초
+const AUTO_NEXT_MS = 400;
+const SUMMARY_NEXT_MS = 300;
 /** 도나가 답한 뒤, 또는 "도나야"만 부른 뒤 이만큼은 부르지 않아도 듣는다 (빅스비가 답한 뒤 이어서 듣는 것과 같다). */
 const FOLLOW_MS = 8000;
 
@@ -301,17 +301,27 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
     reloadHome();
   }, [reloadHome, closeFollow, cancelPlayback]);
 
-  /** "도나야"만 불렀을 때. 짧게 대답하고, 이어지는 말을 부르지 않아도 듣는다. */
+  /** "도나야"만 불렀을 때. 오전에 처음 부르고 오늘 브리핑을 아직 안 들었으면 서버가 "오늘 브리핑을 시작할까요?"라고 묻는다.
+   *  그 밖에는 짧게 "네."라고 대답하고, 이어지는 말을 부르지 않아도 듣는다. */
   const answerCall = useCallback(async () => {
     setHeard('');
     setBusy(null);
     openFollow();
     justCalled.current = true;
+    try {
+      const offer = await api.turn({ event: 'called', lastTurnId: lastTurnId.current });
+      if (offer.type === 'ask') {
+        void handle(offer);
+        return;
+      }
+    } catch {
+      // 서버에 닿지 않으면 그냥 "네."
+    }
     if (!soundRef.current || !voice.ttsSupported()) return;
     voice.pause(); // 도나의 "네"가 마이크로 다시 들어오지 않게
     await voice.speak('네.', { sound: true }).done;
     voice.resume();
-  }, [openFollow]);
+  }, [openFollow, handle]);
 
   /** 마이크로 들은 말 한 마디. 도나를 부른 말이거나 대화 중일 때만 서버로 보낸다. */
   const hear = useCallback(

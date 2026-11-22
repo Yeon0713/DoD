@@ -315,7 +315,7 @@ export const api = {
     confirm: (id: string) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/confirm`, { method: 'POST', body: '{}', headers: staffAuth() }),
     checkout: () => request<{ ok: boolean }>('/v1/staff/checkout', { method: 'POST', body: '{}', headers: staffAuth() }),
   },
-  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice' | 'night_hr'; noticeId?: string; lastTurnId?: string | null }) =>
+  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice' | 'night_hr' | 'called'; noticeId?: string; lastTurnId?: string | null }) =>
     request<Turn>('/v1/turn', {
       method: 'POST',
       body: JSON.stringify({

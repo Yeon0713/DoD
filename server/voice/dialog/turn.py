@@ -51,8 +51,10 @@ SITUATIONS = {
     "ask_tasks": "도나가 '알바생 할 일로 첫째 …, 둘째 …를 넣을까요?' 하고 물었어요",
     "ask_holiday": "도나가 '○월 ○일을 쉬는 날로 적을게요. 맞아요?' 하고 물었어요",
     "ask_detail": "도나가 오늘 요약을 말한 뒤 '상세 브리핑을 시작할까요?' 하고 물었어요",
+    "ask_start": "도나가 '오늘 브리핑을 시작할까요?' 하고 물었어요",
     "ask_promotion": "인사과가 '이 업무는 앞으로 먼저 처리하고 저녁에 보고할까요?' 하고 승진을 물었어요",
 }
+OFFER_UNTIL_HOUR = 12  # 이 시각 전(오전)에 처음 부르면 브리핑을 권한다
 # "상세 브리핑을 시작할까요?"(H-05)의 대답. 같은 "응"도 묻는 상황에 따라 다른 뜻으로 갈려서 모두 받는다
 DETAIL_YES = {"permission.yes", "instagram.post", "action.approve", "briefing.next"}
 DETAIL_NO = {"permission.no", "instagram.later", "action.cancel"}
@@ -86,6 +88,24 @@ def asking_detail(session: dict) -> bool:
     return session.get("step") == "detail_ask" and session.get("last_type") == "ask"
 
 
+def asking_start(session: dict) -> bool:
+    """"도나야"만 부른 뒤 '오늘 브리핑을 시작할까요?'를 묻고 대답을 기다리는 중."""
+    return bool(session.get("offer_start")) and session.get("last_type") == "ask"
+
+
+def offer_briefing(brief: dict | None, session: dict) -> dict:
+    """오전에 처음 "도나야"만 불렀고 오늘 브리핑을 아직 듣지 않았으면 '오늘 브리핑을 시작할까요?' (2026-11-22).
+    한 번 물었으면 그날은 다시 묻지 않는다. 아니면 ignore (앱이 "네."로 대답한다)."""
+    heard = session.get("step") or session.get("mode") in ("briefing", "detail", "ended")
+    if brief is None or heard or session.get("offered") or clock.now().hour >= OFFER_UNTIL_HOUR:
+        return empty("ignore")
+    session.update(offered=True, offer_start=True)
+    response = answer("오늘 브리핑을 시작할까요?", [say("네. 오늘 브리핑을 시작할까요?")],
+                      [{"type": "rows", "id": "home_rows", "rows": copy.deepcopy(brief["home_rows"])}], kind="ask", ask={"key": "start_briefing"})
+    response["expects_reply"] = True
+    return response
+
+
 def asking_promotion(session: dict) -> bool:
     """밤 9시 인사과가 '스토리는 먼저 올리고 저녁에 보고할까요?'(K-01)를 묻고 대답을 기다리는 중."""
     return bool(session.get("promotion")) and session.get("last_type") == "ask"
@@ -99,13 +119,15 @@ def situation(session: dict) -> str:
         last = "ask_story_event"
     elif asking_detail(session):
         last = "ask_detail"
+    elif asking_start(session):
+        last = "ask_start"
     elif asking_promotion(session):
         last = "ask_promotion"
     return SITUATIONS.get(last, "도나는 듣고만 있어요")
 
 
 def understand(text: str, session: dict, view, addressed: bool = False) -> Intent:
-    found = intent_rules.match(text, session.get("last_type"), addressed, instagram=asking_instagram(session) or asking_story(session) or asking_detail(session) or asking_promotion(session))  # "응"·"아니"를 예/아니오로
+    found = intent_rules.match(text, session.get("last_type"), addressed, instagram=asking_instagram(session) or asking_story(session) or asking_detail(session) or asking_start(session) or asking_promotion(session))  # "응"·"아니"를 예/아니오로
     if found is not None:
         return found
     judged = intent_judge.judge(view, text, situation(session))
@@ -329,6 +351,13 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return answer_question(view, intent.owner_said)
     if name.startswith("navigate."):
         return _navigate(view, name.split(".", 1)[1])
+    if name == "briefing.offer":  # "도나야"만 불렀다
+        return offer_briefing(brief, session)
+    if brief is not None and asking_start(session) and (name in DETAIL_YES or name in DETAIL_NO):  # "오늘 브리핑을 시작할까요?"의 대답
+        session.pop("offer_start", None)
+        if name in DETAIL_YES:
+            return _go(brief, session, _after(brief, None, inclusive=True))
+        return answer("필요하실 때 불러 주세요", [say("네, 필요하실 때 불러 주세요.")], [])
     if name == "notice.open" and session.pop("hr_night", False):  # 밤 9시 인사과 보고 (K-01)
         return hr_night.report(view) or answer("오늘은 보고할 게 없어요", [say("오늘은 인사과 보고가 없어요.")], [])
     if session.get("promotion") and session.get("last_type") == "ask" and (name in DETAIL_YES or name in DETAIL_NO):  # K-01 대답
@@ -509,6 +538,8 @@ def _handle(request: dict) -> dict:
             session.pop("story_id", None)
             session["alert_id"] = notice.get("alert_id") or (review_loop.pending(store_id) or {}).get("id")
         intent = Intent("notice.open", None)
+    elif request.get("event") == "called":  # "도나야"만 불렀다 (앱). 오전 첫 부름이면 브리핑을 권한다
+        intent = Intent("briefing.offer", None)
     elif request.get("event") == "night_hr":  # 시연: 아침 브리핑 끝 화면 뒤 밤 9시로 (jobs/hr_night.py)
         if hr_night.has_scene(store_id):
             hr_night.jump_to_night(store_id)

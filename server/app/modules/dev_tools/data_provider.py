@@ -374,6 +374,11 @@ AGENT_NAMES = {
     "campaign_agent": "상황 마케팅", "supervisor": "알림 묶음 조율",
     "voice_reply": "음성 · 답글", "voice_improve_tip": "음성 · 고칠 점", "voice_intent": "음성 · 뜻 판정",
     "single_agent": "단일 에이전트(비교용)", "voice_single_agent": "음성 · 단일 에이전트(비교용)",
+    "voice_fix_card": "음성 · 교정 카드", "voice_field_tasks": "음성 · 현장 변수 할 일", "voice_manual_line": "음성 · 매뉴얼 한 줄",
+    "voice_topic_finder": "음성 · 인스타 소재", "voice_caption_writer": "음성 · 인스타 글", "voice_holiday_reader": "음성 · 휴무 읽기",
+    # 감사팀 2차 감사 질문 (voice/audit/questions.py)
+    "audit_card_promise_judge": "음성 · 감사 · 교정 카드 조치 약속", "audit_caption_off_judge": "음성 · 감사 · 인스타 글 메뉴 밖 이야기",
+    "audit_holiday_says_judge": "음성 · 감사 · 휴무 날짜 확인",
 }
 
 
@@ -408,6 +413,24 @@ def agent_run(run_id: str) -> dict:
     from Harness import trace
 
     return {"run_id": run_id, "steps": trace.steps_of(run_id)}
+
+
+# ── 감사팀 (server/voice/audit, donna-voice/docs/audit-team-plan.md 12장) ──
+
+
+def audit(store_id: str | None, day: str | None) -> dict:
+    """음성 백엔드 감사 기록(voice.db 의 audit)과 업무별 요약. 가게는 음성 백엔드의 가게, 날을 비우면 기록이 있는 마지막 날."""
+    from voice import repo as voice_repo
+    from voice.audit import log as audit_log
+
+    stores = voice_repo.store_ids()
+    store_id = store_id if store_id in stores else (stores[0] if stores else None)
+    if store_id is None:
+        return {"stores": [], "store_id": None, "days": [], "day": None, "jobs": [], "rows": []}
+    days = sorted({row["at"][:10] for row in audit_log.rows_of(store_id)}, reverse=True)
+    day = day if day in days else (days[0] if days else None)
+    found = audit_log.day_summary(store_id, dt.date.fromisoformat(day)) if day else {"jobs": [], "rows": []}
+    return {"stores": stores, "store_id": store_id, "days": days, "day": day, "jobs": found["jobs"], "rows": found["rows"]}
 
 
 def set_agent_harness(enabled: bool) -> dict:

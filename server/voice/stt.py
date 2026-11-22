@@ -62,7 +62,7 @@ class Utterances:
     def __init__(self):
         import webrtcvad
 
-        self.vad = webrtcvad.Vad(2)
+        self.vad = webrtcvad.Vad(3)  # 가장 엄격하게: 멀리서 들리는 말소리·웃음을 말로 덜 본다 (2026-11-22, 가게 소리에 끝맺음이 늦던 것)
         self.pending = b""
         self.lead = deque(maxlen=15)  # 첫 음절 앞 300ms
         self.frames = []
@@ -85,6 +85,6 @@ class Utterances:
             else:
                 self.frames.append(frame)
             self.quiet = 0 if speech else self.quiet + 1
-            if self.quiet >= 35 or len(self.frames) >= 750:  # 700ms 침묵 또는 15초
+            if self.quiet >= 35 or len(self.frames) >= 300:  # 700ms 침묵 또는 6초 (시끄러워 조용한 틈이 없어도 6초에 끊는다)
                 yield "final", b"".join(self.frames)
                 self.frames.clear()

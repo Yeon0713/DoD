@@ -29,6 +29,13 @@ def record_trail(store_id: str, job: str, agent: str, ref: str, audit: dict | No
     return rows
 
 
+def record_run(store_id: str, job: str, ref: str, proposal, run_id: str) -> list[dict]:
+    """담당 입구에서: 이번 실행이 새로 만든 결과(캐시에서 되살린 것이 아님)의 감사 회차를 남긴다."""
+    if proposal is None or proposal.audit is None or proposal.run_id != run_id:
+        return []
+    return record_trail(store_id, job, proposal.agent, ref, proposal.audit, run_id)
+
+
 def mark_hold(store_id: str, ref: str) -> None:
     """그 결과물의 마지막 회차에 보류 표시 (대시보드 보류 수)."""
     with repo.lock():

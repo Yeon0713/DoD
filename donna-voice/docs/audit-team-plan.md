@@ -720,6 +720,12 @@ sequenceDiagram
 ```
 7단계(뒤에서 고치기)는 감사와 상관없이 19장 문제도 고치므로 앞당길 수 있습니다.
 
+### 4단계에서 고친 기존 테스트
+
+거절 세는 법이 "코드 2 + 감사 2"로 바뀌어 고친 테스트입니다.
+- `voice/tests/test_agents.py::test_voice_reply_tool_rejection_and_resubmit`: `voice_reply.write` 결과에 `audit`이 더해져 나머지 칸만 비교하고, 한 번에 합격했는지 봅니다.
+- `voice/tests/test_compensation_guard.py::test_g5_agent_draft_with_refund_falls_back`: 보상 초안이 되돌림 2번 뒤 끝내 불합격하는 차례로 바꿨습니다(같은 글의 판정은 캐시라 한 번만 묻습니다). `reply_source`는 6단계에서 템플릿 처리와 함께 다시 봅니다.
+
 ---
 
 ## 17. 바뀌는 기존 결정과 문서

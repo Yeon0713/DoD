@@ -39,7 +39,8 @@ def test_voice_reply_tool_rejection_and_resubmit(clova_on):
     ))
     view = load("s001")
     written = voice_reply.write(view, view.review("rv_0412"), "AUTO")
-    assert written == {"text": GOOD, "source": "AGENT", "notes": []}
+    assert {k: written[k] for k in ("text", "source", "notes")} == {"text": GOOD, "source": "AGENT", "notes": []}
+    assert written["audit"]["passed"] is True and written["audit"]["rounds"] == 0  # 2차 감사(감사팀) 한 번에 합격
     assert "'배달이 늦었어요' 는 리뷰에 글자 그대로 없어요" in fake.tool_messages(2)[-1]
     menus = fake.tool_messages(1)[0]
     assert "곱창전골" in menus

@@ -1,6 +1,7 @@
 """1차 코드 감사: 담당마다 제출을 코드로 검사한다 (감사팀 계획 6장, 16장 2단계).
 
 담당 SPEC.check 가 여기 함수를 가리킨다. 써도 되면 None, 안 되면 담당에게 돌려줄 거절 이유.
+LLM 으로 뜻을 보는 검사(reply_critic, staff_scope)는 2차 감사(inspector.py)에 있다.
 모양은 Harness.spec.CheckFunc: (제출 인자, 근거, task, 맥락, notes).
 담당 모듈의 도구·상수는 함수 안에서 읽는다 (담당 모듈이 이 모듈을 import 하므로 맨 위에서 읽으면 서로 물린다).
 """
@@ -10,13 +11,12 @@ import datetime as dt
 from app.analysis.review.hcx_classifier import mask_personal_info
 from app.review_reply_writer.write_reply_with_clova import MAX_LENGTH, MIN_LENGTH, clean_answer
 from Harness import guards
-from Harness.agents import quote_judge, reply_critic
 from Harness.grounding import Evidence, ungrounded_numbers
 from Harness.spec import RunContext
 from voice import notebook, width
 from voice.similar import dice
 
-UNCHECKED = "검토 안 됨"
+UNCHECKED = "검토 안 됨"  # 2차 감사를 못 했을 때 답글 notes 에 남기는 말
 
 
 def _texts(args: dict, key: str) -> list[str]:
@@ -57,21 +57,7 @@ def reply_code(args: dict, task: dict, ctx: RunContext) -> str | None:
 
 
 def reply(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    reason = reply_code(args, task, ctx)
-    if reason:
-        return reason
-    review = ctx.snapshot.review(task["review_id"]) or {}
-    text = clean_answer(str(args.get("text") or ""))
-    facts = _texts(args, "facts_used")
-    verdict = reply_critic.inspect(
-        text, ctx, review_text=mask_personal_info(review.get("text", "")), has_complaint=review.get("sentiment") == "negative",
-    )
-    if verdict is None:
-        notes.append(UNCHECKED)
-        return guards.first(guards.memory(text), None if any(f in text for f in facts) else guards.made_up_fact(text))
-    if not verdict.ok:
-        return "검토에서 걸렸어요: " + "; ".join(v.describe() for v in verdict.violations)
-    return None
+    return reply_code(args, task, ctx)
 
 
 # ── 리뷰 교정 할 일 (fix_card) ──
@@ -92,16 +78,7 @@ def fix_card(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes:
         return width.too_long("title", title, "staff.title")
     if not width.fits(detail, "staff.detail"):
         return width.too_long("detail", detail, "staff.detail")
-    reason = guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
-    if reason:
-        return reason
-    outside = quote_judge.ask("staff_scope", f"{title}. {detail}", ctx, review_text=original)
-    if outside is None:
-        notes.append(UNCHECKED)
-        return None
-    if outside:
-        return f"알바생이 지금 있는 것으로 할 수 없는 일이 있어요: {', '.join(outside)}. 알바생이 할 수 있는 일만 써 주세요"
-    return None
+    return guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
 
 
 # ── 현장 변수 할 일 (field_tasks) ──
@@ -140,12 +117,6 @@ def field_tasks(args: dict, evidence: Evidence, task: dict, ctx: RunContext, not
         if made_up:
             return (f"{n}번째 할 일의 알레르기({', '.join(made_up)})는 그 할 일의 근거에 없어요. "
                     "알레르기는 그 예약 메모를 근거로 한 할 일에만, 메모에 적힌 그대로 써 주세요")
-        outside = quote_judge.ask("staff_scope", f"{title}. {detail}", ctx)
-        if outside is None:
-            notes.append(UNCHECKED)
-            return None
-        if outside:
-            return f"{n}번째 할 일에 알바생이 지금 있는 것으로 할 수 없는 일이 있어요: {', '.join(outside)}"
     return None
 
 

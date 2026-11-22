@@ -1,10 +1,13 @@
 """현장 변수 사원: 오늘 날씨·예약(특이사항 메모)을 보고 알바생 할 일을 제안한다 (에이전트 조직 개편 5단계, agent-org-plan.md 5-2).
 
 원칙 한 줄(프롬프트): 오늘의 날씨·예약 때문에 평소 매뉴얼에 없는 일이 필요한가? 필요할 때만, 없으면 빈 목록.
-검사
-  1. quote 가 그 출처(오늘 날씨 또는 그 예약)의 도구 결과에 글자 그대로 있다
-  2. 숫자는 도구 결과에 있는 것만 (근거 대조). 알레르기는 메모에 적힌 이름 그대로만 (틀리면 위험한 정보)
-  3. 제목·내용 폭, 가격·약속 금지, 알바생이 할 수 없는 일 금지 (quote_judge staff_scope. 묻지 못하면 내지 않는다)
+검사 (감사팀, voice/audit/)
+  1차 코드 감사 rules.field_tasks
+    1. quote 가 그 출처(오늘 날씨 또는 그 예약)의 도구 결과에 글자 그대로 있다
+    2. 숫자는 도구 결과에 있는 것만 (근거 대조). 알레르기는 메모에 적힌 이름 그대로만 (틀리면 위험한 정보)
+    3. 제목·내용 폭, 가격·약속 금지
+  2차 LLM 감사 inspector.field_tasks: 할 일마다 알바생이 할 수 없는 일 (quote_judge staff_scope)
+  끝내 불합격하거나 감사를 못 하면 내지 않는다 (결정 7)
 결과는 제안뿐이다. 사장님께 매번 묻고(2026-11-20 결정), 승인하면 넣는다 (jobs/staff_tasks.py).
 today_impact 가 참이면 긴급이다 (오늘 안 하면 손님이 바로 겪는 일, proposals.urgent).
 """
@@ -16,12 +19,13 @@ from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, array, obj, string
 from voice import clock, config, notebook, proposals, repo, staff, width
 from voice.agents import load_prompt
-from voice.audit import rules
+from voice import audit
+from voice.audit import inspector, rules
+from voice.audit import log as audit_log
 from voice.context import VoiceStore, run_context
 
 MAX_ITEMS = 3
 RUN_KIND = "field_run"  # 그날 현장 변수 사원을 돌렸다는 표시 (브리핑 준비가 여러 번 돌아도 하루 한 번)
-UNCHECKED = rules.UNCHECKED
 ALLERGY_RE = re.compile(r"(\S+?)\s*알레르기")
 PHASES = ["before_open", "open", "closing"]
 # 모델에게는 우리말로 고르게 하고 코드로 바꾼다. 영어 값(before_open …)을 enum 이나 설명에 두면, 모델이 앞서 글로 쓴 계획에 끌려
@@ -94,6 +98,10 @@ SPEC = AgentSpec(
     tools=[WEATHER, RESERVATIONS, TASKS],
     submit=SUBMIT,
     check=rules.field_tasks,  # 1차 코드 감사 (감사팀)
+    audit=inspector.field_tasks,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),
     task_id=lambda task: task["date"],
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.3,
@@ -101,11 +109,14 @@ SPEC = AgentSpec(
 
 
 def suggest(view: VoiceStore) -> list[dict] | None:
-    """[{title, detail, phase, today_impact, source_type, source_id, quote}] 또는 None (끔, 실패, 검토 못 함)."""
+    """[{title, detail, phase, today_impact, source_type, source_id, quote}] 또는 None (끔, 실패, 감사를 끝내 통과하지 못함·감사 못 함)."""
     if not config.agent_on("field"):
         return None
-    proposal = runner.run(SPEC, {"date": view.now.date().isoformat()}, run_context(view))
-    if proposal is None or proposal.source != "AGENT" or UNCHECKED in proposal.notes:
+    day = view.now.date().isoformat()
+    ctx = run_context(view)
+    proposal = runner.run(SPEC, {"date": day}, ctx)
+    audit_log.record_run(view.store_id, "field_task", f"field:{day}", proposal, ctx.run_id)
+    if proposal is None or proposal.source != "AGENT" or audit.settle(view.store_id, "field_task", proposal.audit) != "ok":
         return None
     return [{k: (v.strip() if isinstance(v, str) else v) for k, v in item.items()} for item in proposal.content.get("items") or []]
 

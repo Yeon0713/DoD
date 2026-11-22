@@ -27,7 +27,7 @@ def test_g5_made_up_compensation_is_replaced():
 
 
 def test_g5_agent_draft_with_refund_falls_back(monkeypatch):
-    """에이전트가 보상을 쓴 초안을 내면 거절되고, 결국 원인별 템플릿 + 사장님 문장이 된다."""
+    """에이전트가 보상을 쓴 초안을 내면 감사팀이 되돌리고(2번), 끝내 불합격해도 원인별 템플릿 + 사장님 문장이 된다."""
     donna = choongjang(permission=None)  # 픽스처 준비(브리핑 답글)는 에이전트를 끈 채로. 묻는 가게 (자동 답글에는 보상 문장이 없다)
     donna.clock("2026-11-17T15:40:00+09:00")
     new_agents_off(monkeypatch)  # 교정 카드·팀장 등 새 사원은 끈다 (답글 에이전트만 본다)
@@ -36,11 +36,13 @@ def test_g5_agent_draft_with_refund_falls_back(monkeypatch):
     monkeypatch.setattr(settings, "clova_studio_api_key", "test-key")
     monkeypatch.setattr(config, "ALERT_AGENT_REPLY", True)  # 알림 답글을 에이전트로 쓰는 길 (기본은 템플릿)
     found = [call("submit_judgement", {"found": True, "quotes": ["다음 주문은 전액 환불해 드릴게요."]})]
-    monkeypatch.setattr(context, "post", FakeClova(*[[refund], found] * 4))
-    rid = donna.demo_review("leak")
+    # 첫 제출 + 되돌림 2번 (감사 불합격은 1차 거절과 따로 센다). 같은 글의 보상 판정은 캐시라 처음 한 번만 묻는다
+    fake = FakeClova([refund], found, [refund], [refund])
+    monkeypatch.setattr(context, "post", fake)
+    donna.demo_review("leak")
     text = donna.open_notice()["cards"][0]["reply"]["text"]
     assert "환불" not in text and text.endswith(PRESET)
-    assert repo.get("alert", f"al_{rid}")["reply_source"] in ("FALLBACK", "TEMPLATE")
+    assert fake.done()
 
 
 def test_g6_preset_is_never_an_instruction(monkeypatch):

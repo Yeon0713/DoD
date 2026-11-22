@@ -5,10 +5,10 @@ task 키
   review_id  답글을 달 리뷰
   occasion   F6: {kind, label, explanation, post_at} 올릴 때와 이유
 
-검사 순서 (Harness 리뷰 응대 에이전트와 같다)
-  1. 코드 검사: 길이, 빈칸, 메뉴·사실 메모 대조, quoted_review_words 가 리뷰에 글자 그대로 있는지, 가격·할인 지어내기
-  2. LLM 검토 Harness.agents.reply_critic.inspect (보상, 고칠 점, 지어낸 사정, 변명, 아는 척, 리뷰와 상관없는 말)
-     검토를 부를 수 없으면 '검토 안 됨'을 남기고 금지어 정규식으로 대신 거른다
+검사는 감사팀이 한다 (voice/audit/, 감사팀 계획)
+  1. 1차 코드 감사 rules.reply: 길이, 빈칸, 메뉴·사실 메모 대조, quoted_review_words 가 리뷰에 글자 그대로 있는지, 가격·할인 지어내기
+  2. 2차 LLM 감사 inspector.reply: reply_critic.inspect (보상, 고칠 점, 지어낸 사정, 변명, 아는 척, 리뷰와 상관없는 말).
+     불합격이면 같은 대화로 지적을 돌려준다 (최대 2번). 검토를 부를 수 없으면 '검토 안 됨'을 남기고 금지어 정규식으로 대신 거른다
 물러나기: 주제·이유별 안전 템플릿 (template). 에이전트를 끈 때도 템플릿을 쓴다.
 """
 
@@ -20,7 +20,9 @@ from Harness.agents.reply_agent import SUBMIT
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS
 from voice import config, notebook, speech
-from voice.audit import rules
+from voice import audit
+from voice.audit import inspector, rules
+from voice.audit import log as audit_log
 from voice.agents import load_prompt
 from voice.clock import parse
 from voice.context import VoiceStore, run_context
@@ -157,6 +159,10 @@ SPEC = AgentSpec(
     tools=[MENU_LIST, STORE_FACTS, REPLY_OCCASION],
     submit=SUBMIT,
     check=rules.reply,  # 1차 코드 감사 (감사팀)
+    audit=inspector.reply,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),  # 감사 기준이 바뀌면 예전 결과를 다시 쓰지 않는다
     task_id=lambda task: f"{task['kind']}:{task['review_id']}" + (":revise" if task.get("revise") else ""),
     fallback=fallback,
     finalize=finalize,
@@ -165,30 +171,45 @@ SPEC = AgentSpec(
 )
 
 
+def _run(view: VoiceStore, review: dict, task: dict):
+    """담당을 돌리고 이번에 새로 감사한 회차를 감사 기록에 남긴다."""
+    ctx = run_context(view)
+    proposal = runner.run(SPEC, task, ctx)
+    audit_log.record_run(view.store_id, inspector.reply_job(review), review["id"], proposal, ctx.run_id)
+    return proposal
+
+
+def _notes(proposal) -> list[str]:
+    unchecked = proposal.audit is not None and proposal.audit["passed"] is None and rules.UNCHECKED not in proposal.notes
+    return [*proposal.notes, rules.UNCHECKED] if unchecked else list(proposal.notes)
+
+
 def revise(view: VoiceStore, review: dict, kind: str, previous: str, instruction: str, occasion: dict | None = None,
            fix: dict | None = None) -> dict | None:
-    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes}. 에이전트가 끄였거나 실패하면 None (템플릿으로 바꾸면 지시를 무시하게 되므로).
-    검사는 처음 쓸 때와 같다 (보상·가격 금지, reply_critic). 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
+    """사장님 고침 지시대로 다시 쓴 답글 {text, source, notes, audit}. 에이전트가 끄였거나 실패하거나 감사를 끝내 통과하지 못하면 None
+    (템플릿으로 바꾸면 지시를 무시하게 되므로). 검사는 처음 쓸 때와 같다. 고침 지시는 critic 의 owner_instruction 으로 넘기지 않는다."""
     if not config.agent_on("reply"):
         return None
     task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix,
             "revise": {"previous": previous, "instruction": instruction}}
-    proposal = runner.run(SPEC, task, run_context(view))
-    if proposal is None or proposal.source != "AGENT":
+    proposal = _run(view, review, task)
+    if proposal is None or proposal.source != "AGENT" or (proposal.audit or {}).get("passed") is False:
         return None
-    return {"text": proposal.content["text"], "source": "AGENT", "notes": proposal.notes}
+    return {"text": proposal.content["text"], "source": "AGENT", "notes": _notes(proposal), "audit": proposal.audit}
 
 
 def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:
-    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes}. 언제나 글이 나온다.
+    """답글 하나 → {text, source(AGENT|FALLBACK|TEMPLATE), notes, audit}. 언제나 글이 나온다.
+    audit 은 감사 결과 (Proposal.audit, 템플릿이면 None). 끝내 불합격(passed False)이면 걸린 글 그대로 돌려주고, 처리는 부르는 쪽이
+    audit.settle 로 정한다 (보류·템플릿).
     fix: 원인을 안 아쉬운 리뷰 {cause, action, reply} (jobs/cause.py). 에이전트에게 조치를 알려 주고, 템플릿은 reply 를 쓴다."""
     if not config.agent_on("reply"):
-        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": [], "audit": None}
     task = {"kind": kind, "review_id": review["id"], "occasion": occasion, "fix": fix}
-    proposal = runner.run(SPEC, task, run_context(view))
+    proposal = _run(view, review, task)
     if proposal is None:
-        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": []}
-    return {"text": proposal.content["text"], "source": proposal.source, "notes": proposal.notes}
+        return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": [], "audit": None}
+    return {"text": proposal.content["text"], "source": proposal.source, "notes": _notes(proposal), "audit": proposal.audit}
 
 
 # ── 사장님이 정한 보상 문장 (2026-11-18) ──

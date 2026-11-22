@@ -2,7 +2,7 @@
 
 python -m Harness.evals audit [--runs 2] [--ids …] [--job negative_reply]
 - 기존 답글 기준 6개(reply_critic)는 Harness/critic_cases.json 을 그대로 쓴다 (job "reply", 기준 "critic"). 숫자가 critic_eval 과 같아야 한다.
-- 새 기준은 Harness/evals/data/audit_cases.json (판정 코드가 생기는 5단계부터 돈다). 사례 모양 {id, job, criterion, input, output, expected_ok}.
+- 새 기준은 Harness/evals/data/audit_cases.json (판정 코드 voice/audit/inspector.judge_case). 사례 모양 {id, job, criterion, input, output, expected_ok}.
 보는 숫자 (기준마다): 놓침(걸려야 하는 것을 통과) 목표 5% 이하, 오탐(걸리면 안 되는 것을 걸음) 목표 10% 이하, 못 부름, 흔들림(--runs 2 이상).
 """
 
@@ -22,6 +22,7 @@ MISS_GOAL, FALSE_GOAL = 0.05, 0.10  # 결정 14
 def load_cases(ids: list[str] | None = None, job: str | None = None) -> list[dict]:
     critic = json.loads(critic_eval.CASES.read_text(encoding="utf-8"))["cases"]
     cases = [{**case, "job": "reply", "criterion": "critic"} for case in critic]
+    cases += json.loads(DATA.read_text(encoding="utf-8"))["cases"]
     if ids:
         cases = [c for c in cases if c["id"] in ids]
     if job:
@@ -39,7 +40,9 @@ def judge(case: dict, ctx) -> bool | None:
             regular=case.get("regular", False), owner_instruction=case.get("owner_instruction"),
         )
         return None if verdict is None else verdict.ok
-    raise ValueError(f"모르는 기준: {case['criterion']}")
+    from voice.audit import inspector
+
+    return inspector.judge_case(case["criterion"], case["input"], case["output"], ctx)
 
 
 def summarize(rows: list[dict]) -> list[dict]:

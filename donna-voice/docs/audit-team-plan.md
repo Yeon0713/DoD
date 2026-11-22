@@ -726,6 +726,15 @@ sequenceDiagram
 - `voice/tests/test_agents.py::test_voice_reply_tool_rejection_and_resubmit`: `voice_reply.write` 결과에 `audit`이 더해져 나머지 칸만 비교하고, 한 번에 합격했는지 봅니다.
 - `voice/tests/test_compensation_guard.py::test_g5_agent_draft_with_refund_falls_back`: 보상 초안이 되돌림 2번 뒤 끝내 불합격하는 차례로 바꿨습니다(같은 글의 판정은 캐시라 한 번만 묻습니다). `reply_source`는 6단계에서 템플릿 처리와 함께 다시 봅니다.
 
+### 5단계에서 고친 기존 테스트
+
+스위치를 두지 않아(18장 3번) 새 기준이 늘 돌므로, 가짜 CLOVA 차례에 감사 질문의 답을 더했습니다. 검사하는 내용은 바꾸지 않았습니다.
+- `test_field_tasks.py`(8개): 할 일마다 `staff_scope` → `field_link` → (긴급이면) `today_need` 답 (`ALLERGY_OK`, `UMBRELLA_OK`)
+- `test_fix_card.py`(4개), `test_audit_moved.py`(2개): `staff_scope` → `fix_relevance` 답 (`CARD_OK`)
+- `test_marketing.py`(4개): 소재 뒤 `angle_menu`, 캡션 뒤 `caption_off` → `store_claim` 답. 감사 질문이 요청 하나를 차지해 거절 메시지의 요청 번호가 3 → 4
+- `test_holidays.py`(3개): `holiday_says` 답 (다음 날 같은 글은 캐시)
+- `test_dedupe.py::test_manual_line_rejects_new_actions`: `manual_added` 답
+
 ---
 
 ## 17. 바뀌는 기존 결정과 문서

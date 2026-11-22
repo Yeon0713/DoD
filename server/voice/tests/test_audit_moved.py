@@ -5,6 +5,7 @@ from voice import config, repo
 from voice.agents import fix_card, voice_reply
 from voice.context import load
 from voice.tests.test_agents import FIX, GOOD, critic_pass, judged, loaded, submit
+from voice.tests.test_fix_card import CARD_OK
 from voice.tests.test_fix_card import GOOD as CARD
 from voice.tests.test_fix_card import agent  # noqa: F401 (fixture)
 
@@ -35,7 +36,7 @@ def test_reply_critic_fail_returns_in_same_conversation_then_passes(clova_on):
 
 def test_reply_unchecked_adds_note(clova_on):
     loaded()
-    fake = clova_on(FakeClova(submit(), judged(), judged(FIX), judged(), judged(),
+    clova_on(FakeClova(submit(), judged(), judged(FIX), judged(), judged(),
                               judged(), 500, 500, 500))  # 마지막 질문(리뷰와 상관없는 말)을 부르지 못함
     view = load("s001")
     written = voice_reply.write(view, view.review("rv_0412"), "AUTO")
@@ -44,7 +45,7 @@ def test_reply_unchecked_adds_note(clova_on):
 
 def test_staff_scope_fail_returns_then_passes(agent):  # noqa: F811
     buy = {**CARD, "title": "새 포장 용기 사기", "detail": "국물이 안 새는 새 용기를 사서 써 주세요"}
-    fake = agent([call("submit_fix_card", buy)], judged("새 용기를 사서"), [call("submit_fix_card", CARD)], judged())
+    fake = agent([call("submit_fix_card", buy)], judged("새 용기를 사서"), [call("submit_fix_card", CARD)], *CARD_OK)
     view = load("s005")
     found = fix_card.card_for(view, view.review("rv_0412"))
     assert found["card"]["title"] == CARD["title"] and fake.tool_messages(2)[0].startswith("감사팀 지적: ")
@@ -60,7 +61,7 @@ def test_card_final_fail_falls_back_to_template(agent):  # noqa: F811
 
 
 def test_cached_result_is_not_logged_twice(agent, monkeypatch):  # noqa: F811
-    agent([call("submit_fix_card", CARD)], judged())
+    agent([call("submit_fix_card", CARD)], *CARD_OK)
     view = load("s005")
     fix_card.card_for(view, view.review("rv_0412"))
     monkeypatch.setattr(config, "agent_on", lambda name: name == "fixcard")

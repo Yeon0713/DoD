@@ -18,6 +18,9 @@ def judged(*quotes):
     return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
 
 
+CARD_OK = [judged(), judged("면과 국물을 따로 담아 주세요")]  # 2차 감사(감사팀): 알바생이 할 수 있나 → 불만을 고치나
+
+
 @pytest.fixture
 def agent(clova_on, monkeypatch):
     """픽스처 준비는 에이전트를 끈 채로 하고, 그 뒤 교정 카드 에이전트만 켠다."""
@@ -37,7 +40,7 @@ def card(rid="rv_0412") -> dict:
 
 
 def test_agent_card_replaces_template(agent):
-    fake = agent([call("submit_fix_card", GOOD)], judged())
+    fake = agent([call("submit_fix_card", GOOD)], *CARD_OK)
     found = card()
     assert found["card_source"] == "AGENT" and found["card"] == {"title": GOOD["title"], "detail": GOOD["detail"]}
     assert found["reply"] == found["plain"] and found["quote"] == "면이 불어서 왔어요" and fake.done()
@@ -45,7 +48,7 @@ def test_agent_card_replaces_template(agent):
 
 def test_something_staff_cannot_do_is_rejected(agent):
     buy = {**GOOD, "title": "새 포장 용기 사기", "detail": "국물이 안 새는 새 용기를 사서 써 주세요"}
-    fake = agent([call("submit_fix_card", buy)], judged("새 용기를 사서"), [call("submit_fix_card", GOOD)], judged())
+    fake = agent([call("submit_fix_card", buy)], judged("새 용기를 사서"), [call("submit_fix_card", GOOD)], *CARD_OK)
     assert card()["card"]["title"] == GOOD["title"]
     assert "할 수 없는 일" in fake.tool_messages(2)[0] and fake.done()
 
@@ -58,7 +61,7 @@ def test_not_actionable_makes_no_card(agent):
 
 def test_quote_must_be_in_the_review(agent):
     made_up = {**GOOD, "quote": "국물이 차가웠어요"}
-    fake = agent([call("submit_fix_card", made_up)], [call("submit_fix_card", GOOD)], judged())
+    fake = agent([call("submit_fix_card", made_up)], [call("submit_fix_card", GOOD)], *CARD_OK)
     assert card()["card_source"] == "AGENT"
     assert "글자 그대로" in fake.tool_messages(1)[0] and fake.done()
 
@@ -71,6 +74,6 @@ def test_falls_back_to_template_when_clova_fails(agent):
 
 def test_too_long_title_says_how_long(agent):
     long = {**GOOD, "title": "주문한 음식이 잘 나갔는지 확인하기"}
-    fake = agent([call("submit_fix_card", long)], [call("submit_fix_card", GOOD)], judged())
+    fake = agent([call("submit_fix_card", long)], [call("submit_fix_card", GOOD)], *CARD_OK)
     assert card()["card_source"] == "AGENT" and fake.done()
     assert "title 칸이 길어요 (지금 17자, 16자까지" in fake.tool_messages(1)[-1]

@@ -14,6 +14,8 @@
 - 리뷰를 함께 주는 까닭: 답글만 주었더니 "다음에는 꼭 제맛으로 드릴게요"(싱겁다는 불만에 대한 다짐)를 보상으로 골랐다.
 - quote 가 답글에 글자 그대로 없으면 버린다. 있다면서 쓸 수 있는 quote 가 없으면 모양이 틀린 답으로 보고 한 번 더 묻는다.
 - 호출이 실패하거나 모양이 두 번 틀리면 None 을 돌려준다. 부르는 쪽이 대신할 방법(정규식 등)을 정한다.
+- ask 는 이름(QUESTIONS) 대신 Question 객체도 받는다. 음성 백엔드 감사팀의 질문은 그쪽에 둔다 (voice/audit/questions.py).
+  그때 prompt 는 프롬프트 파일의 절대 경로이고, context 는 첫 줄에서 함께 주는 글(리뷰, 근거, 메뉴 …)의 이름이다.
 """
 
 import re
@@ -36,6 +38,7 @@ class Question:
     found: str  # found 필드 설명
     quote: str  # quotes 필드 설명
     subject: str = "답글"  # 사용자 메시지에서 검증할 글을 부르는 이름
+    context: str = "리뷰"  # 사용자 메시지 첫 줄에 함께 주는 글(ask 의 review_text)을 부르는 이름
 
 
 QUESTIONS = {
@@ -115,16 +118,17 @@ def parse(arguments: dict, reply: str) -> list[str] | None:
 
 
 def user_message(question: Question, reply: str, review_text: str | None) -> str:
-    rows = [f'리뷰: "{review_text}"'] if review_text else []
+    rows = [f'{question.context}: "{review_text}"'] if review_text else []
     rows += [f'{question.subject}: "{reply}"', "", question.ask]
     return "\n".join(rows)
 
 
-def ask(kind: str, reply: str, ctx: RunContext, review_text: str | None = None) -> list[str] | None:
-    """답글에서 질문에 해당하는 부분들. 없으면 빈 목록, 묻지 못했으면 None. review_text 는 답글이 대답한 리뷰 글."""
+def ask(kind: "str | Question", reply: str, ctx: RunContext, review_text: str | None = None) -> list[str] | None:
+    """답글에서 질문에 해당하는 부분들. 없으면 빈 목록, 묻지 못했으면 None. review_text 는 답글이 대답한 리뷰 글
+    (Question.context 가 다르면 그 이름의 글). kind 는 QUESTIONS 의 이름 또는 Question."""
     if not reply.strip():
         return []
-    question = QUESTIONS[kind]
+    question = kind if isinstance(kind, Question) else QUESTIONS[kind]
     submit = submit_tool(question)
     messages = [
         {"role": "system", "content": load_prompt(question.prompt, ctx.store)},

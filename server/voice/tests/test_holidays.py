@@ -43,6 +43,10 @@ def test_owner_says_no_keeps_hours():
     assert holidays.items(repo.store("s005")) == []
 
 
+# 2차 감사(감사팀): 인용이 그 날 쉰다는 뜻인가
+SAYS = [call("submit_judgement", {"found": True, "quotes": ["11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"]})]
+
+
 @pytest.fixture
 def naver(clova_on, monkeypatch):
     monkeypatch.setattr(config, "agent_on", lambda name: False)
@@ -58,7 +62,7 @@ def naver(clova_on, monkeypatch):
 
 
 def test_naver_day_is_asked_in_the_morning_before_it_counts(naver):
-    donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})])
+    donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})], SAYS)
     briefing.prepare("s005")
     [found] = holidays.items(repo.store("s005"))
     assert found == {"date": "2026-11-26", "source": "naver", "note": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다", "confirmed": False}
@@ -73,7 +77,7 @@ def test_naver_day_is_asked_in_the_morning_before_it_counts(naver):
 
 
 def test_naver_day_rejected_is_not_a_day_off(naver):
-    donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})])
+    donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})], SAYS)
     briefing.prepare("s005")
     donna.turn("오늘 일정 브리핑해 줘")
     donna.turn("다음")
@@ -87,7 +91,7 @@ def test_naver_day_rejected_is_not_a_day_off(naver):
 def test_naver_day_rejected_is_not_asked_again_next_day(naver):
     """다음 날 같은 네이버 글을 다시 읽어도 아니라고 한 날은 다시 묻지 않는다 (2026-11-22 버그 V5)."""
     item = {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]}
-    donna = naver([call("submit_holidays", item)], [call("submit_holidays", item)])
+    donna = naver([call("submit_holidays", item)], SAYS, [call("submit_holidays", item)])  # 다음 날 같은 글의 감사는 캐시
     briefing.prepare("s005")
     donna.turn("오늘 일정 브리핑해 줘")
     donna.turn("다음")

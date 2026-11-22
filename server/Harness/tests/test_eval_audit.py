@@ -9,6 +9,7 @@ def _row(run, case_id, expected, got, criterion="card_promise"):
 
 def test_critic_cases_are_reused_as_reply_job():
     cases = audit_eval.load_cases(job="reply")
+    assert len(audit_eval.load_cases()) > len(cases)
     assert cases and all(c["criterion"] == "critic" for c in cases)
 
 

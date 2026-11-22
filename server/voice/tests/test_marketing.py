@@ -22,8 +22,8 @@ def judged(*quotes):
     return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
 
 
-TOPIC_OK = []  # 소재는 2차 감사 기준이 아직 없다 (angle_menu 는 판정 세트 목표 미달)
-CAPTION_OK = [judged()]  # 2차 감사(감사팀): 메뉴·이야기 밖 이야기 (caption_off)
+TOPIC_OK = [judged()]  # 2차 감사(감사팀): 고른 메뉴가 아닌 음식 (angle_menu)
+CAPTION_OK = [judged(), judged()]  # 메뉴·이야기 밖 이야기 (caption_off) → 가게 사실 주장 (store_claim)
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def test_too_many_hashtags_rejected(agents):
     tags = {**CAPTION, "hashtags": [f"#태그{i}" for i in range(9)]}
     fake = agents(LOOK, [call("submit_topic", TOPIC)], *TOPIC_OK, [call("submit_caption", tags)], [call("submit_caption", CAPTION)], *CAPTION_OK)
     assert marketing.plan_today(load("s005"))["hashtags"] == CAPTION["hashtags"]
-    assert "8개까지만" in fake.tool_messages(3)[-1]
+    assert "8개까지만" in fake.tool_messages(4)[-1]  # 요청 2 는 소재 감사 질문
 
 
 def test_no_plan_keeps_the_rule_feed(chj: Choongjang, ig_on):

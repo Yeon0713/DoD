@@ -18,7 +18,7 @@ def judged(*quotes):
     return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
 
 
-CARD_OK = [judged()]  # 2차 감사(감사팀): 알바생이 할 수 있나 (staff_scope)
+CARD_OK = [judged(), judged("면과 국물을 따로 담아 주세요")]  # 2차 감사(감사팀): 알바생이 할 수 있나 → 불만의 원인을 막나
 
 
 @pytest.fixture

@@ -51,23 +51,35 @@ def test_fix_relevance():
 
 
 def test_field_link_and_today_need_number_the_task():
-    c, _ = ctx(judged("메뉴판도 새로 닦아"))
+    # 코드가 행동을 나누고 행동마다 근거 때문에 필요한지 묻는다: 우산꽂이는 필요, 메뉴판은 아님
+    c, fake = ctx(judged("우산꽂이를 내놓고"), judged())
     found = inspector.field_link("우산꽂이", "우산꽂이를 내놓고 메뉴판도 새로 닦아 주세요", "오후 2시부터 비", "오후 2시부터 비", c, 2)
-    assert found.reason == "2번째 할 일의 '메뉴판도 새로 닦아'는 근거('오후 2시부터 비')와 상관없어요"
+    assert found.reason == "2번째 할 일의 '메뉴판도 새로 닦아 주세요'는 근거('오후 2시부터 비')와 상관없어요" and fake.done()
+    assert fake.requests[1]["messages"][1]["content"].startswith('근거: "오후 2시부터 비"\n행동: "메뉴판도 새로 닦아 주세요"')
     c, _ = ctx(judged())
     found = inspector.today_need("창고 정리", "창고 선반을 정리해 주세요", "오후 2시부터 비", c, 3)
     assert found.reason == "3번째 할 일은 오늘 안 해도 손님이 바로 겪지 않아요. today_impact 를 false 로 내 주세요"
 
 
 def test_manual_angle_caption():
-    c, _ = ctx(judged("손님께 전화로 확인해"))
+    c, _ = ctx(judged("주문서를 맞춰 보고"), judged())
     assert inspector.manual_added("대조", "주문서를 맞춰 보고 손님께 전화로 확인해 주세요", ["주문서 확인"], c).reason == \
-        "'손님께 전화로 확인해'는 반복해서 넣은 할 일에 없는 행동이에요. 빼 주세요"
+        "'손님께 전화로 확인해 주세요'는 반복해서 넣은 할 일에 없는 행동이에요. 빼 주세요"
     c, _ = ctx(judged("군만두"))
     assert inspector.angle_menu("바삭한 군만두 점심", ["들깨칼국수"], c).reason == "이야기 '군만두'는 고른 메뉴와 상관없어요"
     c, _ = ctx(judged("떡볶이"))
     assert inspector.caption_off("칼국수 한 그릇! 떡볶이도 있어요.", ["들깨칼국수"], "추운 날", c).reason == \
         "'떡볶이'는 올릴 메뉴·이야기와 상관없어요"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("국물 용기는 랩을 두 번 씌우고 테이프를 붙여 주세요.", ["국물 용기는 랩을 두 번 씌우고", "테이프를 붙여 주세요"]),
+    ("국물을 내기 전에 맛보고, 남은 육수는 버려 주세요", ["국물을 내기 전에 맛보고", "남은 육수는 버려 주세요"]),
+    ("손님이 드나든 뒤 입구 문이 닫혔는지 봐 주세요", ["손님이 드나든 뒤 입구 문이 닫혔는지 봐 주세요"]),
+    ("냉장고 문을 닫아 주세요", ["냉장고 문을 닫아 주세요"]),
+])
+def test_split_actions(text, expected):
+    assert inspector.split_actions(text) == expected
 
 
 def test_store_claim_checks_registered_facts():

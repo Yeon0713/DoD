@@ -2,8 +2,8 @@
 
 가게 정보 줄(가게 이름·주소, 영업시간, 내일 쉬는 날)은 지어내면 안 되는 정보라 여기서 쓰지 않는다. instagram/posts.py 가 붙인다.
 검사: 본문 길이, 해시태그 8개 이하이고 # 한 낱말 꼴, 가격·할인·약속 금지, 숫자는 입력·도구 결과에 있는 것만,
-손님 한마디를 넣었으면 리뷰 글자 그대로 (1차 코드 감사 rules.caption_writer). 메뉴·이야기 밖 이야기는 2차 LLM 감사
-inspector.caption_writer. 실패하거나 끄면 None (지금 템플릿 글을 쓴다). 감사 결과는 audit 으로 돌려준다.
+손님 한마디를 넣었으면 리뷰 글자 그대로 (1차 코드 감사 rules.caption_writer). 메뉴·이야기 밖 이야기와 가게가 등록하지 않은
+사실 주장은 2차 LLM 감사 inspector.caption_writer. 실패하거나 끄면 None (지금 템플릿 글을 쓴다). 감사 결과는 audit 으로 돌려준다.
 """
 
 import re

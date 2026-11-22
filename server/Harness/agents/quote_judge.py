@@ -39,6 +39,9 @@ class Question:
     quote: str  # quotes 필드 설명
     subject: str = "답글"  # 사용자 메시지에서 검증할 글을 부르는 이름
     context: str = "리뷰"  # 사용자 메시지 첫 줄에 함께 주는 글(ask 의 review_text)을 부르는 이름
+    # False 면 found 만 본다: 참이면 검증한 글 전체를 옮긴 것으로 친다. 행동 하나처럼 짧은 글에 예·아니오만 물을 때
+    # (모델이 함께 준 글 쪽을 옮겨 와 글자 그대로 검사에 걸리는 일을 막는다, 감사팀 2026-11-22)
+    needs_quote: bool = True
 
 
 QUESTIONS = {
@@ -104,14 +107,16 @@ def _squash(text: str) -> str:
     return " ".join(text.split())
 
 
-def parse(arguments: dict, reply: str) -> list[str] | None:
-    """해당하는 부분들. 없으면 빈 목록, 모양이 틀리면 None."""
+def parse(arguments: dict, reply: str, needs_quote: bool = True) -> list[str] | None:
+    """해당하는 부분들. 없으면 빈 목록, 모양이 틀리면 None. needs_quote 가 False 면 참일 때 [reply]."""
     quotes = arguments.get("quotes")
     found = arguments.get("found", bool(quotes) if isinstance(quotes, list) else None)  # 다른 모양(alt_tool)은 found 가 없다
     if not isinstance(found, bool) or not isinstance(quotes, list):
         return None
     if not found:
         return []
+    if not needs_quote:
+        return [reply.strip()]
     squashed = _squash(reply)
     kept = [q for q in (_squash(str(q)).strip(QUOTE_MARKS) for q in quotes) if q and q in squashed]
     return list(dict.fromkeys(kept)) or None
@@ -153,7 +158,7 @@ def ask(kind: "str | Question", reply: str, ctx: RunContext, review_text: str | 
                          step=attempt, kind="llm", name="failed")
             return None
         call = next((c for c in answer.tool_calls if c.name == submit.name), None)
-        quotes = parse(call.arguments, reply) if call else None
+        quotes = parse(call.arguments, reply, question.needs_quote) if call else None
         clova_tools.mark_verdict(call_id, quotes is not None, None if quotes is not None else "검증 답 모양이 틀림")
         trace.record(run_id=ctx.run_id, parent_run_id=ctx.parent_run_id, agent=question.name, store_id=ctx.store_id, step=attempt,
                      kind="submit", name=submit.name, detail=quotes if quotes is not None else (call.arguments if call else None))

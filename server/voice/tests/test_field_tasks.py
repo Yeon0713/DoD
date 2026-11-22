@@ -22,9 +22,10 @@ def judged(*quotes):
     return [call("submit_judgement", {"found": bool(quotes), "quotes": list(quotes)})]
 
 
-# 2차 감사(감사팀)의 판정 차례: 할 일마다 알바생이 할 수 있나 (staff_scope)
-ALLERGY_OK = [judged()]
-UMBRELLA_OK = [judged()]
+# 2차 감사(감사팀)의 판정 차례: 할 일마다 알바생이 할 수 있나 → 행동마다 근거 때문에 필요한가 → (today_impact 면) 오늘 꼭 해야 하나
+# (두 할 일 모두 행동이 하나다. 근거·오늘 질문은 예·아니오만 본다)
+ALLERGY_OK = [judged(), judged("필요"), judged("오늘")]
+UMBRELLA_OK = [judged(), judged("필요")]
 
 
 def submit(*items):

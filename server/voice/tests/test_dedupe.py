@@ -120,6 +120,7 @@ def test_manual_line_rejects_new_actions(clova_on, monkeypatch):
     fake = clova_on(FakeClova(
         [call("submit_manual", {"title": "새 포장 용기 주문", "detail": "누수 없는 용기를 새로 주문해 주세요"})],
         [call("submit_manual", {"title": "국물 포장 이중 실링", "detail": "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여요"})],
+        *[[call("submit_judgement", {"found": True, "quotes": ["같음"]})]] * 2,  # 2차 감사(감사팀): 행동 둘이 반복된 할 일에 있나
     ))
     [made] = proposals.promote_repeats("s005")
     assert made["payload"]["title"] == "국물 포장 이중 실링" and fake.done()

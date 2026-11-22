@@ -2,8 +2,8 @@
 
 손님이 좋아한 점(좋은 리뷰), 많이 나간 메뉴(포스 매출), 오늘 날씨를 보고 메뉴 1~3개와 한 줄 이야기(angle)를 고른다.
 검사: 메뉴는 목록에 있고 사진이 있는 것만, 숫자는 도구 결과에 있는 것만, '인기' 같은 판매 주장은 매출을 조회했을 때만,
-가격·할인·보상 금지 (1차 코드 감사 rules.topic_finder). 이야기가 고른 메뉴와 맞는지 보는 2차 LLM 감사(angle_menu)는
-판정 세트 목표를 넘지 못해 아직 잇지 않았다 (voice/audit/inspector.py). 감사 자리가 없어 audit 은 None 이다.
+가격·할인·보상 금지 (1차 코드 감사 rules.topic_finder). 이야기에 고른 메뉴가 아닌 음식이 나오는지는 2차 LLM 감사
+inspector.topic_finder (angle_menu).
 실패하거나 끄면 None (지금처럼 이번 달 많이 나간 메뉴 3개를 쓴다). 감사 결과는 audit 으로 돌려주고 처리는 부르는 쪽이 정한다.
 """
 
@@ -14,7 +14,7 @@ from Harness.tools import NO_ARGS, array, obj, string
 from voice import config, notebook
 from voice.agents import load_prompt
 from voice import audit
-from voice.audit import rules
+from voice.audit import inspector, rules
 from voice.audit import log as audit_log
 from voice.agents.field_tasks import WEATHER
 from voice.context import VoiceStore, run_context
@@ -69,6 +69,10 @@ SPEC = AgentSpec(
     tools=TOOLS,
     submit=SUBMIT,
     check=rules.topic_finder,  # 1차 코드 감사 (감사팀)
+    audit=inspector.topic_finder,  # 2차 LLM 감사 (감사팀)
+    audit_returns=config.AUDIT_RETURNS,
+    audit_seconds=config.AUDIT_ROUND_SECONDS,
+    cache_scope=lambda task: audit.version(),
     task_id=lambda task: task["date"],
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.4,

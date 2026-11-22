@@ -158,6 +158,7 @@ def test_quote_judge_parse_keeps_only_real_quotes():
     assert quote_judge.parse({"found": True, "quotes": ["“다음엔 음료 드릴게요”", "없는 말"]}, reply) == ["다음엔 음료 드릴게요"]
     assert quote_judge.parse({"found": True, "quotes": ["없는 말"]}, reply) is None  # 있다면서 근거가 없으면 다시 묻는다
     assert quote_judge.parse({"found": "yes", "quotes": []}, reply) is None
+    assert quote_judge.parse({"found": True, "quotes": ["다른 글"]}, reply, needs_quote=False) == [reply]  # 예·아니오만 보는 질문
     question = quote_judge.QUESTIONS["compensation"]
     assert quote_judge.user_message(question, "답이에요.", "맛있어요") == '리뷰: "맛있어요"\n답글: "답이에요."\n\n이 답글에 보상 제안이 있는지 검증해 줘.'
 

@@ -12,18 +12,17 @@ card_for 가 입구다: 규칙(cause.classify) 결과에서 카드만 에이전�
 """
 
 from app.analysis.review.hcx_classifier import mask_personal_info
-from Harness import guards, runner
-from Harness.agents import quote_judge
-from Harness.grounding import Evidence
+from Harness import runner
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, obj, string
 from voice import config, notebook, staff, width
 from voice.agents import load_prompt
 from voice.agents.voice_reply import MENU_LIST
+from voice.audit import rules
 from voice.context import VoiceStore, run_context
 from voice.jobs import cause
 
-UNCHECKED = "검토 안 됨"
+UNCHECKED = rules.UNCHECKED
 
 
 def _view(ctx: RunContext) -> VoiceStore:
@@ -55,40 +54,13 @@ def user_message(task: dict, ctx: RunContext) -> str:
             "알바생 교정 할 일을 submit_fix_card 로 내 줘.")
 
 
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    review = _view(ctx).review(task["review_id"]) or {}
-    original = mask_personal_info(review.get("text", ""))
-    quote = (args.get("quote") or "").strip()
-    if not quote or quote not in original:
-        return f'quote 는 리뷰 "{original}" 에서 글자 그대로 옮겨 주세요'
-    if args.get("actionable") is not True:
-        return None
-    title, detail = (args.get("title") or "").strip(), (args.get("detail") or "").strip()
-    if not title or not detail:
-        return "actionable 이 true 면 title 과 detail 을 채워 주세요"
-    if not width.fits(title, "staff.title"):
-        return width.too_long("title", title, "staff.title")
-    if not width.fits(detail, "staff.detail"):
-        return width.too_long("detail", detail, "staff.detail")
-    reason = guards.first(guards.price_or_discount(f"{title} {detail}"), guards.promise(f"{title} {detail}"))
-    if reason:
-        return reason
-    outside = quote_judge.ask("staff_scope", f"{title}. {detail}", ctx, review_text=original)
-    if outside is None:
-        notes.append(UNCHECKED)
-        return None
-    if outside:
-        return f"알바생이 지금 있는 것으로 할 수 없는 일이 있어요: {', '.join(outside)}. 알바생이 할 수 있는 일만 써 주세요"
-    return None
-
-
 SPEC = AgentSpec(
     name="voice_fix_card",
     system_prompt=lambda task, ctx: load_prompt("fix_card.txt", ctx.store) + notebook.section(ctx.store_id, "negative_review"),
     user_message=user_message,
     tools=[MENU_LIST, MANUAL],
     submit=SUBMIT,
-    check=check,
+    check=rules.fix_card,  # 1차 코드 감사 (감사팀)
     task_id=lambda task: task["review_id"],
     budget=Budget(max_steps=4, max_rejections=2, max_seconds=30),
     temperature=0.3,

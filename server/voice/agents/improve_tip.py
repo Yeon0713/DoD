@@ -8,13 +8,13 @@
 import datetime as dt
 from collections import Counter
 
-from Harness import guards, runner
-from Harness.grounding import Evidence, ungrounded_numbers
+from Harness import runner
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import NO_ARGS, array, obj, string
 from voice import config, speech, width
 from voice.agents import load_prompt
 from voice.agents.voice_reply import TOPIC_NAMES
+from voice.audit import rules
 from voice.clock import parse
 from voice.context import VoiceStore, run_context
 
@@ -100,25 +100,6 @@ def user_message(task: dict, ctx: RunContext) -> str:
     return f"오늘: {ctx.now:%Y-%m-%d}\n최근 4주 아쉬운 리뷰를 보고 가장 먼저 고칠 점 한 가지를 submit_tip 으로 내 줘."
 
 
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    tip = str(args.get("tip") or "").strip()
-    if width.width(tip) < 8:
-        return "고칠 점이 너무 짧아요"
-    if not width.fits(tip, "tip"):
-        return f"고칠 점이 너무 길어요 (화면 폭 {width.width(tip)}, 34 이하로. 한글은 1, 숫자·공백은 0.5)"
-    if not tip.rstrip(".!").endswith("요"):
-        return "'~해 보세요'처럼 '요'로 끝나게 써 주세요"
-    reason = guards.first(guards.promise(tip), guards.price_or_discount(tip))
-    if reason:
-        return reason
-    if not args.get("evidence"):
-        return "evidence 에 근거를 1개 이상 적어 주세요"
-    loose = ungrounded_numbers(tip, evidence)
-    if loose:
-        return f"도구 결과에 없는 숫자를 썼어요: {', '.join(dict.fromkeys(loose))}. 그 숫자를 빼 주세요"
-    return None
-
-
 def fallback(task: dict, ctx: RunContext) -> dict:
     return {"tip": template(negatives(_view(ctx), ctx.now))}
 
@@ -129,7 +110,7 @@ SPEC = AgentSpec(
     user_message=user_message,
     tools=[NEGATIVE_REVIEWS, REVIEW_COUNTS],
     submit=SUBMIT,
-    check=check,
+    check=rules.improve_tip,  # 1차 코드 감사 (감사팀)
     task_id=lambda task: f"IMPROVE:{task['date']}",
     fallback=fallback,
     finalize=lambda args, task, ctx: {"tip": str(args.get("tip") or "").strip()},

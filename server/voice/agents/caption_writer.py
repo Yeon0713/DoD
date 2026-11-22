@@ -7,12 +7,12 @@
 
 import re
 
-from Harness import guards, runner
-from Harness.grounding import Evidence, ungrounded_numbers
+from Harness import runner
 from Harness.spec import AgentSpec, Budget, RunContext, Tool
 from Harness.tools import array, obj, string
 from voice import config, notebook
 from voice.agents import load_prompt
+from voice.audit import rules
 from voice.context import VoiceStore, run_context
 
 MIN_BODY, MAX_BODY = 20, 300
@@ -36,32 +36,13 @@ def user_message(task: dict, ctx: RunContext) -> str:
     return "\n".join(rows) + "\n인스타 글과 해시태그를 submit_caption 으로 내 줘."
 
 
-def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
-    body = (args.get("body") or "").strip()
-    tags = [str(t).strip() for t in args.get("hashtags") or []]
-    if not MIN_BODY <= len(body) <= MAX_BODY:
-        return f"본문은 {MIN_BODY}~{MAX_BODY}자로 써 주세요 (지금 {len(body)}자)"
-    if len(tags) > MAX_TAGS or any(not TAG_RE.match(t) for t in tags):
-        return f"해시태그는 #으로 시작하는 한 낱말로 {MAX_TAGS}개까지만 써 주세요"
-    reason = guards.first(guards.price_or_discount(body), guards.promise(body), notebook.checks(ctx.store_id, "marketing", body))
-    if reason:
-        return reason
-    loose = ungrounded_numbers(body, evidence)
-    if loose:
-        return f"입력에 없는 숫자를 썼어요: {', '.join(dict.fromkeys(loose))}"
-    quoted = [q for q in QUOTED_RE.findall(body) if q.strip()]
-    if quoted and any(q.strip() != (task.get("quote") or "") for q in quoted):
-        return "따옴표 안의 손님 한마디는 주어진 글자 그대로만 쓸 수 있어요"
-    return None
-
-
 SPEC = AgentSpec(
     name="voice_caption_writer",
     system_prompt=lambda task, ctx: load_prompt("caption_writer.txt", ctx.store) + notebook.section(ctx.store_id, "marketing"),
     user_message=user_message,
     tools=[],
     submit=SUBMIT,
-    check=check,
+    check=rules.caption_writer,  # 1차 코드 감사 (감사팀)
     task_id=lambda task: f"{task['angle']}|{'|'.join(task['menus'])}" + ("|revise" if task.get("revise") else ""),
     budget=Budget(max_steps=3, max_rejections=2, max_seconds=30),
     temperature=0.6,

@@ -1,29 +1,33 @@
 """알바생 할 일 묻기 (jobs/staff_tasks.py, 에이전트 조직 개편 3단계).
 
 초옹장 11/17 아침: 밤사이 아쉬운 리뷰(면 불음, 옹심이 퍼짐)에서 같은 교정 카드 하나가 나와 브리핑 마지막에 묻는다.
+12시 단체 예약 메모의 땅콩 알레르기도 규칙으로 할 일 제안이 된다 (agents/field_tasks.allergy_items, 2026-11-22).
+교정 카드를 보는 시험은 알레르기 제안을 거절해 두고, 알레르기 제안은 H-11 · H-12 시험에서 따로 본다.
 """
 
-from voice import clock, proposals, staff
+from voice import clock, proposals, staff, width
 from voice.jobs import briefing
-from voice.tests.conftest import choongjang, hr_log
+from voice.tests.conftest import choongjang, hr_log, walk_to
 
 SEAL = {"title": "배달 용기 이중 실링", "detail": "국물 메뉴는 랩을 두 번 씌우고 뚜껑에 테이프를 한 번 더 붙여 주세요",
         "phase": "open", "days": 2, "must_confirm": True, "urgent": False}
 NOODLE = "배달 칼국수 면·국물 따로 담기"
 
 
-def morning():
-    """초옹장 11/17 09:02, 할 일 제안을 그대로 둔 채."""
-    return choongjang(keep_tasks=True, at=None)
+def morning(keep: str = "negative_review"):
+    """초옹장 11/17 09:02, keep 이 낸 할 일 제안만 그대로 둔 채 (negative_review: 리뷰 교정 카드, field_variable: 예약 메모 알레르기)."""
+    donna = choongjang(keep_tasks=True, at=None)
+    for found in proposals.for_briefing("s005", "2026-11-17"):
+        if found["by"] != keep:
+            proposals.decline(found["id"], "test")
+    briefing.refresh_steps("s005")
+    return donna
 
 
 def to_tasks_step(donna) -> dict:
-    response = donna.turn("오늘 일정 브리핑해 줘")
-    for _ in range(8):
-        if response["type"] == "ask_tasks":
-            return response
-        response = donna.turn("다음")
-    raise AssertionError("할 일 묻기 단계가 없어요")
+    response = walk_to(donna, "staff_tasks")
+    assert response["type"] == "ask_tasks", "할 일 묻기 단계가 없어요"
+    return response
 
 
 def review_tasks() -> list[dict]:
@@ -105,11 +109,37 @@ def test_called_briefing_is_not_cut_in_and_asks_at_the_end():
     assert first["intent"] == "briefing.start" and first["type"] != "ask_tasks"
     assert "그 전에 하나만요." not in [s["text"] for s in first["say"]]
     response = first
-    for _ in range(8):
+    for _ in range(12):
         if response["type"] == "ask_tasks":
             break
         response = donna.turn("다음")
     assert response["type"] == "ask_tasks" and response["briefing"]["step_key"] == "staff_tasks"
+
+
+# ── 예약 손님 요청사항에서 나온 할 일 (Figma v0.2.1 H-11 · H-12) ──
+
+
+def test_reservation_memo_is_asked_with_the_memo_and_shown_when_put_in():
+    donna = morning(keep="field_variable")
+    asked = to_tasks_step(donna)
+    assert asked["headline"] == "알바생 할 일에 넣을까요?" and asked["expects_reply"] is True
+    assert [s["text"] for s in asked["say"]] == ["12시 예약 손님 중 한 분이 땅콩 알레르기가 있어요.", "알바생 할 일에 넣을까요?"]
+    rows, memo = asked["cards"]
+    assert [(r["kind"], r["value"]) for r in rows["rows"]] == [
+        ("reservation", "낮 12시 12명 예약"), ("warning", "땅콩 알레르기 손님 1명"), ("person", "오늘 나온 사람 모두"), ("time", "오늘만")]
+    assert memo == {"type": "quote", "id": "staff_task_memo", "label": "예약 손님이 적은 요청사항", "text": "“땅콩 알레르기 손님 1명 있어요”"}
+
+    done = donna.turn("응, 넣어")
+    assert done["intent"] == "action.approve" and done["type"] == "answer" and done["headline"] == "알바생 할 일에 넣었어요"
+    assert [s["text"] for s in done["say"]] == ["알바생 할 일에 넣었어요."]
+    assert [c["type"] for c in done["cards"]] == ["rows"] and done["cards"][0]["note"] == "알바생 할 일에 넣음"
+    assert done["briefing"]["step_key"] == "staff_tasks"  # 브리핑 중 대답: 가만히 있으면 끝으로 넘어간다
+    [task] = [t for t in staff.store_tasks("s005") if t["origin"] == "field_variable"]
+    assert task["title"] == "12시 손님 땅콩 알레르기" and task["urgent"] is True  # 오늘 손님이 바로 겪는 일
+    end = donna.turn(event="auto_next")
+    assert end["type"] == "end" and [r["value"] for r in end["cards"][0]["rows"]] == ["12시 손님 땅콩 알레르기"]
+    for response in (asked, done, end):
+        assert width.violations(response) == []
 
 
 def test_not_asked_after_close_and_expired_next_day():

@@ -1,6 +1,7 @@
 """인스타 피드·스토리 올리기 (D-14, D-15). 실제 Graph API 대신 FakeGraph, 공개 주소는 https://media.example.test.
 
-초옹장(s005)으로 브리핑 4단계 '인스타에 올릴까요?' → 미리보기 넘기기 → "올려" → 게시 작업 → 올라감까지 본다.
+초옹장(s005)으로 브리핑 인스타 칸 '인스타에 올릴까요?' → 미리보기 넘기기 → "올려" → 게시 작업 → 올라감까지 본다.
+v0.2.1 H: 비 오는 날 이벤트를 정해 둔 날은 스토리만 묻고 인기 메뉴 피드는 묻지 않는다. 피드를 보는 시험은 이벤트 없이 다시 넣는다 (no_story_event).
 """
 
 import json
@@ -14,7 +15,7 @@ from voice import clock, config, repo, width
 from voice.instagram import graph, media, posts
 from voice.instagram.graph import InstagramError
 from voice.jobs import queue
-from voice.tests.conftest import FakeGraph, hr_log, no_morning_tasks
+from voice.tests.conftest import FakeGraph, hr_log, no_morning_tasks, step_key, walk_to
 from voice.tests.test_v021_choongjang import FIXTURE, Choongjang
 
 
@@ -37,18 +38,29 @@ def run_publish(chj: Choongjang) -> dict:
     return chj.client.post("/v1/dev/run", json={"store_id": "s005", "job": "instagram_publish"}).json()
 
 
+def no_story_event(chj: Choongjang) -> None:
+    """비 오는 날 이벤트를 정해 두지 않은 초옹장으로 다시 넣고 브리핑을 준비한다 (이벤트가 있는 날은 피드를 묻지 않는다, H)."""
+    payload = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    payload["settings"].pop("story_event")
+    chj.client.post("/v1/dev/fixtures", json=payload)
+    chj.client.post("/v1/dev/run", json={"store_id": "s005", "job": "prepare_briefing"})
+
+
 def to_instagram_step(chj: Choongjang) -> dict:
-    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (묻는 단계는 대답하지 않고 넘긴다)."""
-    response = chj.turn("오늘 일정 브리핑해 줘")
-    for _ in range(10):
-        if response["briefing"] and response["briefing"]["step_key"] == "instagram" or response["type"] == "end":
+    """브리핑을 처음부터 듣고 인스타 단계까지 간다 (묻는 단계는 대답하지 않고 넘긴다). 없으면 끝 응답."""
+    return walk_to(chj, "instagram")
+
+
+def to_end(chj: Choongjang, response: dict) -> dict:
+    for _ in range(12):
+        if response["type"] == "end":
             return response
-        response = chj.turn("응, 그렇게 해") if response["type"] == "ask_permission" else chj.turn(event="auto_next")
-    raise AssertionError("인스타 단계에 닿지 못했어요")
+        response = chj.turn(event="auto_next")
+    raise AssertionError("브리핑 끝에 닿지 못했어요")
 
 
 def test_not_connected_skips_instagram(chj: Choongjang):
-    """토큰이 없으면 연결이 안 되고, 브리핑에 인스타 단계가 없다 (지금까지의 5단계 그대로)."""
+    """토큰이 없으면 연결이 안 되고, 브리핑에 인스타 단계가 없다."""
     result = chj.client.post("/v1/instagram/connect", json={}).json()
     assert result["connected"] is False and "INSTAGRAM_ACCESS_TOKEN" in result["error"]
     assert "p_instagram" not in [r["id"] for r in chj.get("/v1/home")["cards"][0]["rows"]]
@@ -61,14 +73,16 @@ def test_not_connected_skips_instagram(chj: Choongjang):
 
 def test_briefing_feed_flow(chj: Choongjang, ig_on):
     fake = ig_on(FakeGraph())
+    no_story_event(chj)
     assert connect(chj)["handle"] == "choongjang_namyang"
     assert chj.get("/v1/instagram")["connection"]["connected"] is True
     assert {p["key"]: p["connected"] for p in chj.get("/v1/settings")["platforms"]}["instagram"] is True
-    assert chj.get("/v1/home")["cards"][0]["rows"][-1] == {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
+    # 연결하면 홈 줄을 H-01 차례로 다시 짠다 (일정 → 리뷰 → 인기 메뉴 피드 → …)
+    assert chj.get("/v1/home")["cards"][0]["rows"][2] == {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 
     d14 = to_instagram_step(chj)
     assert d14["type"] == "ask" and d14["ask"] == {"key": "instagram_post"} and d14["expects_reply"] is True
-    assert d14["briefing"] == {"step": 4, "total": 5, "step_key": "instagram"}
+    assert d14["briefing"] == {"step": 2, "total": 4, "step_key": "instagram"}
     assert d14["headline"] == "인스타에 올릴까요?"
     assert [s["text"] for s in d14["say"]] == [
         "이번 달 가장 많이 나간 메뉴는 들깨옹심이메밀칼국수, 멸치옹심이메밀칼국수, 들깨옹심이예요.",
@@ -89,16 +103,13 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert [s["slide"] for s in slides] == [2, 3, 4]
     assert slides[-1]["photo_url"] is None and slides[-1]["title"] == "초옹장"  # 가게 소개 장
 
-    event = chj.turn("올려")
-    assert event["intent"] == "instagram.post" and event["type"] == "ask"
-    assert event["briefing"]["step_key"] == "story_event"  # 11/17 은 비 오는 날이라 스토리 이벤트를 이어서 묻는다 (test_story_event.py)
-    assert [s["text"] for s in event["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
+    posted = chj.turn("올려")
+    assert posted["intent"] == "instagram.post" and posted["type"] == "answer"
+    assert posted["briefing"]["step_key"] == "reviews"  # 인스타 다음은 리뷰 칸
+    assert [s["text"] for s in posted["say"]][:2] == ["네, 인스타에 올릴게요.", "다 올라가면 알려 드릴게요."]
     assert hr_log() == [("instagram_post", "approved")]
-    tasks = chj.turn("아니, 오늘은 안 해")
-    assert tasks["type"] == "ask_tasks"  # 2026-11-20: 마지막에 알바생 할 일을 묻는다
-    done = chj.turn("다음")
-    assert done["type"] == "end"
-    assert "인스타에 올리는 중" in [r["value"] for r in done["cards"][0]["rows"]]
+    done = to_end(chj, posted)
+    assert ("인스타에 인기 메뉴", "지금 올리고 있어요") in [(r["value"], r["sub"]) for r in done["cards"][0]["rows"]]
     post = chj.get("/v1/instagram")["posts"][0]
     assert post["status"] == "queued" and post["kind"] == "feed" and fake.paths("POST") == []  # 올리는 건 게시 작업에서
 
@@ -122,20 +133,30 @@ def test_briefing_feed_flow(chj: Choongjang, ig_on):
     assert chj.get("/v1/notices")["notices"] == []  # 한 번만
 
     again = chj.turn("처음부터 다시")
-    for _ in range(8):
-        assert not (again["briefing"] and again["briefing"]["step_key"] == "instagram")  # 오늘은 다시 묻지 않는다
+    for _ in range(12):
+        assert step_key(again) != "instagram"  # 오늘은 다시 묻지 않는다
         if again["type"] == "end":
             break
-        again = chj.turn(event="auto_next")
-    assert "인스타에 인기 메뉴 올림" in [r["value"] for r in again["cards"][0]["rows"]]
+        again = chj.turn("응") if step_key(again) == "detail_ask" else chj.turn(event="auto_next")
+    assert ("인스타에 인기 메뉴", "피드에 올렸어요") in [(r["value"], r["sub"]) for r in again["cards"][0]["rows"]]
+
+
+def test_rain_event_day_asks_story_not_feed(chj: Choongjang, ig_on):
+    """비 오는 날 이벤트가 있는 날은 스토리만 묻는다 (H-06). 인기 메뉴 피드 단계와 홈 줄이 없다."""
+    ig_on(FakeGraph())
+    connect(chj)
+    rows = [r["id"] for r in chj.get("/v1/home")["cards"][0]["rows"]]
+    assert "p_story" in rows and "p_instagram" not in rows
+    assert to_instagram_step(chj)["type"] == "end"
 
 
 def test_later_does_not_post(chj: Choongjang, ig_on):
     ig_on(FakeGraph())
+    no_story_event(chj)
     connect(chj)
     to_instagram_step(chj)
     later = chj.turn("나중에")
-    assert later["intent"] == "instagram.later" and later["briefing"]["step_key"] == "story_event"  # 비 오는 날 (test_story_event.py)
+    assert later["intent"] == "instagram.later" and later["briefing"]["step_key"] == "reviews"
     assert later["say"][0]["text"] == "네, 내일 브리핑에서 다시 여쭤볼게요."
     assert chj.get("/v1/instagram")["posts"] == []
     assert hr_log() == []  # "나중에"는 세지 않는다 (9-0 n)
@@ -307,6 +328,7 @@ def test_post_order_must_be_an_order(text, instagram, expected):
 
 def test_do_not_post_in_briefing(chj: Choongjang, ig_on):
     ig_on(FakeGraph())
+    no_story_event(chj)
     connect(chj)
     to_instagram_step(chj)
     said = chj.turn("인스타에 올리지 마")

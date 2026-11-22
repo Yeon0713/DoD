@@ -144,6 +144,8 @@ spawn = _spawn  # 테스트에서는 바로 돌린다
 
 def judge_later(store_id: str, job: str, said: str) -> None:
     """hr.record 가 edited·rejected 를 남길 때 부른다. 대답을 늦추지 않게 뒤에서 판정한다."""
+    if any(r.get("said") == said for r in all_rules(store_id)):  # 이미 그 말로 규칙을 적었다 (batch_ask.drop_offer_and_post)
+        return
     if config.hr_on() and said and hr.JOBS[job].get("agent"):
         spawn(_judge, store_id, job, said)
 

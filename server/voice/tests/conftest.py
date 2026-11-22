@@ -119,6 +119,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(notebook, "spawn", lambda target, *args: target(*args))  # 수첩 규칙 판정을 뒤에서 하지 않고 바로
     monkeypatch.setattr(revise_jobs, "spawn", lambda target, *args: target(*args))  # 고쳐 쓰기를 뒤에서 하지 않고 바로 (감사팀 9장)
     cache.clear()
+    tts._cache.clear()  # 합성해 둔 목소리 (시험마다 새로)
     echo.forget()  # 도나가 한 말 기억 (시험마다 새로)
     clock.set_now(None)
     yield
@@ -202,6 +203,21 @@ class Donna:
         response = self.client.post("/v1/turn", json=body)
         assert response.status_code == expect, response.text
         return response.json()
+
+
+def step_key(response: dict) -> str | None:
+    return (response.get("briefing") or {}).get("step_key")
+
+
+def walk_to(donna: "Donna", key: str, *, start: str = "오늘 일정 브리핑해 줘") -> dict:
+    """브리핑을 처음부터 듣고 step_key 가 key 인 단계까지 간다 (v0.2.1 H: 요약 → "상세 브리핑을 시작할까요?" → 상세).
+    상세 브리핑 물음에는 "응", 그 밖에 묻는 단계는 대답하지 않고 넘긴다 (앱의 auto_next). 그 단계가 없으면 끝(end) 응답을 돌려준다."""
+    response = donna.turn(start)
+    for _ in range(20):
+        if step_key(response) == key or response["type"] == "end":
+            return response
+        response = donna.turn("응") if step_key(response) == "detail_ask" else donna.turn(event="auto_next")
+    raise AssertionError(f"{key} 단계에 닿지 못했어요")
 
 
 def prepared(payload: dict | None = None, *, permission=None) -> Donna:

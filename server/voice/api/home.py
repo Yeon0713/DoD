@@ -24,9 +24,10 @@ def time_of(text: str) -> dt.time:
 
 
 def store_clock(text: str) -> str:
-    """'10:30' → '오전 10시 30분' (가게 상태 줄, 설정 탭)."""
+    """'10:30' → '오전 10시 30분', '20:30' → '저녁 8시 30분' (가게 상태 줄, 설정 탭). 화면 글이라 '반' 대신 숫자로 (Figma v0.2.1 H, G)."""
     hour, minute = divmod(hours.minutes(text) % (24 * 60), 60)  # "24:00" 은 00:00
-    return speech.clock_label(dt.datetime(2000, 1, 1, hour, minute))
+    base = speech.clock_label(dt.datetime(2000, 1, 1, hour))
+    return f"{base} {minute}분" if minute else base
 
 
 def store_status(store: dict, now: dt.datetime) -> dict:
@@ -41,7 +42,8 @@ def store_status(store: dict, now: dt.datetime) -> dict:
         return {"state": "open", "label": "영업 중", "detail": f"{store_clock(hours_['close'])}에 닫아요"}
     if today is None:
         return {"state": "closed", "label": "쉬는 날", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "오늘은 쉬어요"}
-    return {"state": "closed", "label": "영업 끝", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "내일은 쉬어요"}
+    # 오늘 문을 닫은 뒤 (Figma v0.2.1 K-01 '영업 끝 밤 8시 30분에 닫았어요')
+    return {"state": "closed", "label": "영업 끝", "detail": f"{store_clock(today['close'])}에 닫았어요"}
 
 
 def store_block(store: dict) -> dict:

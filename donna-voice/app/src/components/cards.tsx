@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { ActionCard, BarsCard, Card, ChecklistCard, CountsCard, ImagesCard, InstaPostCard, InviteCard, ManualCard, media, MenusCard, PeopleCard, QuoteCard, ReasonKind, ReviewCard, RowKind, RowsCard, ScheduledCard, TipCard } from '@/lib/api';
+import { ActionCard, BarsCard, Card, ChecklistCard, CountsCard, ImagesCard, InstaPostCard, InviteCard, ManualCard, media, MenusCard, PeopleCard, QuoteCard, ReasonKind, ReplyListCard, ReviewCard, RowKind, RowsCard, ScheduledCard, TipCard } from '@/lib/api';
 import { useLayout } from '@/lib/layout';
 import { ColorName, colors, radius, space } from '@/theme/tokens';
 
@@ -21,7 +21,7 @@ const ROW_ICON: Record<RowKind, IconName> = {
 const ROW_LOOK = Object.fromEntries(Object.entries(ROW_ICON).map(([k, icon]) => [k, { icon, ...B }])) as Record<RowKind, { icon: IconName; tone: ColorName; soft: ColorName }>;
 
 /** 숫자와 단위(12명, 2팀, 오후 2시)는 굵은 갈색으로. 갈색 굵은 글씨는 '숫자' 한 가지 뜻이다. */
-const NUM = /(\d+(?:[,.]\d+)*(?:\s?(?:만 원|그릇|가지|명|팀|개|번|시|분|원|월|일|등))?)/;
+const NUM = /(\d+(?:[,.]\d+)*(?:\s?(?:만 원|그릇|가지|명|팀|개|건|번|시|분|원|월|일|등))?)/;
 export function NumText({ text, variant = 'bodyStrong', numberOfLines }: { text: string; variant?: 'bodyStrong' | 'label' | 'body'; numberOfLines?: number }) {
   const parts = text.split(NUM);
   return (
@@ -61,23 +61,33 @@ export function Tile({ icon, tone, soft }: { icon: IconName; tone: ColorName; so
 
 function Rows({ card, focus, mono }: { card: RowsCard; focus: string[]; mono?: boolean }) {
   const { scale } = useLayout();
-  // 다 끝낸 것을 모아 보여 주는 목록 (D-16 '오늘 아침에 한 것')
+  // 다 끝낸 것을 모아 보여 주는 목록 (H-12b '오늘 아침에 한 것'): 초록 동그라미 체크, 한 것, 그 아래 언제 무엇을
   if (card.rows.every((r) => r.kind === 'done')) {
+    const dot = Math.round(40 * scale);
     return (
-      <Surface>
-        <Txt variant="label" color="ink2">
-          {card.title ?? '오늘 확인한 것'}
-        </Txt>
-        {card.rows.map((r) => (
-          <View key={r.id} style={styles.inline}>
-            <Icon name="check" size={Math.round(20 * scale)} color="brand" />
-            <Txt variant="bodyStrong">{r.value}</Txt>
-          </View>
-        ))}
-      </Surface>
+      <View style={{ gap: space.s8 }}>
+        <Txt variant="bodyStrong">{card.title ?? '오늘 확인한 것'}</Txt>
+        <Surface pad={0} gap={0}>
+          {card.rows.map((r, i) => (
+            <View key={r.id} style={[styles.doneRow, i > 0 && styles.doneLine]}>
+              <View style={[styles.doneDot, { width: dot, height: dot, borderRadius: dot / 2 }]}>
+                <Icon name="check" size={Math.round(22 * scale)} color="done" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Txt variant="body">{r.value}</Txt>
+                {r.sub ? (
+                  <Txt variant="label" color="done">
+                    {r.sub}
+                  </Txt>
+                ) : null}
+              </View>
+            </View>
+          ))}
+        </Surface>
+      </View>
     );
   }
-  return (
+  const list = (
     <Surface pad={space.s4} gap={0}>
       {card.rows.map((r) => {
         // mono: 종류마다 색을 달리하지 않고 갈색 하나로만 쓴다 (색이 많으면 보기 불편하다)
@@ -92,6 +102,50 @@ function Rows({ card, focus, mono }: { card: RowsCard; focus: string[]; mono?: b
           </View>
         );
       })}
+    </Surface>
+  );
+  if (!card.note) return list;
+  return (
+    <View style={{ gap: space.s8 }}>
+      {list}
+      <Checked label={card.note} />
+    </View>
+  );
+}
+
+/** 카드 아래 '✓ 알바생 할 일에 넣음', 그림 아래 '✓ 스토리에 올림' (H-07, H-12). */
+function Checked({ label }: { label: string }) {
+  const { scale } = useLayout();
+  return (
+    <View style={[styles.inline, { justifyContent: 'center', gap: space.s4 }]}>
+      <Icon name="check" size={Math.round(18 * scale)} color="brand" />
+      <Txt variant="label" color="brand">
+        {label}
+      </Txt>
+    </View>
+  );
+}
+
+/** 예약해 둔 좋은 리뷰 답글 (H-09): 손님 리뷰 한 줄(흐리게)과 도나가 써 둔 답글. */
+function ReplyList({ card }: { card: ReplyListCard }) {
+  const { scale } = useLayout();
+  return (
+    <Surface gap={space.s12}>
+      {card.items.map((it) => (
+        <View key={it.id} style={{ gap: space.s4 }}>
+          <Txt variant="label" color="ink2" numberOfLines={1}>
+            {it.quote}
+          </Txt>
+          <View style={styles.reply}>
+            <View style={{ paddingTop: 3 }}>
+              <Icon name="message" size={Math.round(18 * scale)} color="ink2" />
+            </View>
+            <Txt variant="body" style={{ flex: 1 }}>
+              {it.reply}
+            </Txt>
+          </View>
+        </View>
+      ))}
     </Surface>
   );
 }
@@ -186,6 +240,11 @@ function Review({ card }: { card: ReviewCard }) {
             </View>
             <Txt variant="body" color="ink2" style={{ flex: 1 }}>
               {card.reply.text}
+              {card.reply.removed ? (
+                <Txt variant="body" color="ink3" style={{ textDecorationLine: 'line-through' }}>
+                  {` ${card.reply.removed}`}
+                </Txt>
+              ) : null}
             </Txt>
           </View>
         </>
@@ -391,7 +450,7 @@ function ratioOf(aspect?: string): number {
 /** 그림 여러 장을 나란히 (비 오는 날 이벤트: 포스터, 스토리에 올릴 사진). 높이를 맞추고 각자 제 비율로, 잘리지 않게. */
 function Images({ card, focus }: { card: ImagesCard; focus: string[] }) {
   const { scale } = useLayout();
-  const h = Math.round(240 * scale);
+  const h = Math.round((card.items.length === 1 ? 300 : 240) * scale); // 스토리 한 장이면 크게 (H-06)
   const on = focus.includes(card.id);
   return (
     <View style={[styles.inline, { justifyContent: 'center', alignItems: 'flex-start', gap: space.s12 }]}>
@@ -400,9 +459,13 @@ function Images({ card, focus }: { card: ImagesCard; focus: string[] }) {
           <View style={[styles.post, { width: Math.round(h * ratioOf(it.aspect)), height: h, backgroundColor: colors.brandSoft }, on && { borderColor: colors.brand }]}>
             <Image source={{ uri: media(it.photo_url) ?? undefined }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel={it.label} />
           </View>
-          <Txt variant="label" color="ink2">
-            {it.label}
-          </Txt>
+          {it.checked ? (
+            <Checked label={it.label} />
+          ) : (
+            <Txt variant="label" color="ink2">
+              {it.label}
+            </Txt>
+          )}
         </View>
       ))}
     </View>
@@ -555,6 +618,8 @@ export function Cards({ cards, focus = [], mono = true, onAction }: { cards: Car
             return <Manual key={c.id} card={c} />;
           case 'action':
             return <Action key={c.id} card={c} onAction={onAction} />;
+          case 'reply_list':
+            return <ReplyList key={c.id} card={c} />;
           default:
             return null;
         }
@@ -573,6 +638,9 @@ const styles = StyleSheet.create({
   counts: { flexDirection: 'row', gap: space.s8 },
   count: { flex: 1, padding: space.s16, borderRadius: radius.card, gap: space.s8 },
   divider: { height: 1, backgroundColor: colors.line },
+  doneRow: { flexDirection: 'row', alignItems: 'center', gap: space.s12, paddingVertical: space.s12, paddingHorizontal: space.s16 },
+  doneLine: { borderTopWidth: 1, borderTopColor: colors.line },
+  doneDot: { backgroundColor: colors.doneSoft, alignItems: 'center', justifyContent: 'center' },
   reply: { flexDirection: 'row', gap: space.s8 },
   soft: { backgroundColor: colors.brandSoft, borderRadius: radius.card, padding: space.s16, gap: space.s4 },
   tagRow: { flexDirection: 'row', alignItems: 'center', gap: space.s4 },

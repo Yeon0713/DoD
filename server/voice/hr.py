@@ -110,8 +110,17 @@ def stored(store_id: str, job: str) -> dict:
 
 
 def rank(store_id: str, job: str, *, offer: bool = False) -> str:
-    """지금 직급 (상한을 적용한 것)."""
-    return _lower(stored(store_id, job)["rank"], cap_of(job, offer=offer))
+    """지금 직급 (상한을 적용한 것). 사장님이 밤 9시 승진을 허락한 업무(owner_ok)는 혜택 포스터 상한을 넘을 수 있다 (jobs/hr_night.py)."""
+    found = stored(store_id, job)
+    return _lower(found["rank"], cap_of(job, offer=offer and not found.get("owner_ok")))
+
+
+def promote_by_owner(store_id: str, job: str, to: str) -> dict:
+    """사장님이 밤 9시 인사과 보고에서 "그래"라고 한 승진 (K-02). 업무 상한까지만, 혜택 상한은 풀린다."""
+    found = stored(store_id, job)
+    if RANKS.index(to) > RANKS.index(JOBS[job]["cap"]):
+        raise ValueError(f"{job} 은 {to} 까지 오를 수 없어요")
+    return _change({**found, "owner_ok": True}, to, "owner")
 
 
 def asks(store_id: str, job: str, **kw) -> str | None:

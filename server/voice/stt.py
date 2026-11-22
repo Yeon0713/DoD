@@ -16,6 +16,8 @@ from app.core.config import settings
 
 RATE = 16000
 FRAME = 640  # mono PCM16, 20ms
+QUIET_FRAMES = 35  # 700ms 조용하면 말이 끝난 것으로 본다
+MAX_FRAMES = 150  # 3초 (2026-11-22, 6초에서 줄임). 조용한 틈이 없어도 3초에 끊어 받아 적는다
 MAX_PCM = RATE * 2 * 60
 CSR_URL = "https://naveropenapi.apigw.ntruss.com/recog/v1/stt"
 SPEECH_URL = "https://clovaspeech-gw.ncloud.com/recog/v1/stt"
@@ -85,6 +87,6 @@ class Utterances:
             else:
                 self.frames.append(frame)
             self.quiet = 0 if speech else self.quiet + 1
-            if self.quiet >= 35 or len(self.frames) >= 300:  # 700ms 침묵 또는 6초 (시끄러워 조용한 틈이 없어도 6초에 끊는다)
+            if self.quiet >= QUIET_FRAMES or len(self.frames) >= MAX_FRAMES:  # 700ms 침묵 또는 3초
                 yield "final", b"".join(self.frames)
                 self.frames.clear()

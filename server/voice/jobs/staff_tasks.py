@@ -8,6 +8,7 @@
 """
 
 import datetime as dt
+import re
 
 from app.core.seoul_time import at_time
 from voice import hours, hr, proposals, speech, width
@@ -15,6 +16,9 @@ from voice.clock import parse
 from voice.context import VoiceStore
 
 MAX_ASK = width.MAX_ITEMS["rows"]
+ALLERGY_RE = re.compile(r"(\S+?)\s*알레르기")
+PEOPLE_RE = re.compile(r"(\d+|한|두|세|네|다섯)\s*(?:명|분)")
+PEOPLE_WORDS = {"한": 1, "두": 2, "세": 3, "네": 4, "다섯": 5}
 ORDINAL = ["첫째", "둘째", "셋째", "넷째"]
 
 
@@ -71,6 +75,12 @@ def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -
     else:
         asking = [p for p in found if _asks(p) != "each"][:MAX_ASK]
     says = [say(text) for text in lead or []]
+    booked = reservation_view(view, asking[0]) if len(asking) == 1 else None
+    if booked:  # 예약 손님 요청사항에서 나온 할 일 하나: 예약, 요청, 받는 사람, 기간을 줄로 (H-11)
+        says += [say(booked["why"]), say("알바생 할 일에 넣을까요?")]
+        response = answer("알바생 할 일에 넣을까요?", says, booked["cards"], kind="ask_tasks", tasks=[asking[0]["id"]])
+        response["expects_reply"] = True
+        return response
     if len(asking) == 1:
         p = asking[0]
         says += [say(_why(view, p, now)), say(f"알바생 할 일에 {_obj(p['payload']['title'])} 넣을까요?")]
@@ -85,6 +95,35 @@ def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -
                                                     "items": items}], kind="ask_tasks", tasks=[p["id"] for p in asking])
     response["expects_reply"] = True
     return response
+
+
+def reservation_view(view: VoiceStore, p: dict, *, added: bool = False) -> dict | None:
+    """예약 메모에서 나온 제안이면 H-11 줄 카드와 요청사항 카드, 그리고 이유 한 마디. 아니면 None.
+    알레르기는 메모에 적힌 이름 그대로만 쓴다 (field_tasks 검사와 같은 원칙)."""
+    reason = p.get("reason") or {}
+    if reason.get("type") != "reservation":
+        return None
+    found = next((r for r in view.data.get("reservation", []) if r["id"] == reason.get("id")), None)
+    memo = (found or {}).get("memo") or reason.get("quote") or ""
+    if not found or not memo:
+        return None
+    start = parse(found["starts_at"])
+    hour = start.hour % 12 or 12
+    short = f"{hour}시" + (f" {start.minute}분" if start.minute else "")
+    rows = [{"id": "t_resv", "kind": "reservation", "value": f"{speech.clock_label(start)} {found['party_size']}명 예약"}]
+    allergy, people = ALLERGY_RE.search(memo), PEOPLE_RE.search(memo)
+    n = (int(people.group(1)) if people.group(1).isdigit() else PEOPLE_WORDS[people.group(1)]) if people else None
+    if allergy:
+        rows.append({"id": "t_need", "kind": "warning", "value": f"{allergy.group(1)} 알레르기 손님" + (f" {n}명" if n else "")})
+        why = f"{short} 예약 손님 중 {speech.count(n, '분') + '이' if n else '한 분이'} {allergy.group(1)} 알레르기가 있어요."
+    else:
+        rows.append({"id": "t_need", "kind": "task", "value": width.fit("rows.value", p["payload"]["title"], p["payload"]["title"][:16])})
+        why = f"{short} 예약 손님이 요청사항을 남겼어요."
+    rows.append({"id": "t_who", "kind": "person", "value": "오늘 나온 사람 모두"})
+    rows.append({"id": "t_when", "kind": "time", "value": "오늘만" if p["payload"].get("repeat", "today") == "today" else "매일"})
+    card = {"type": "rows", "id": "staff_task_rows", "rows": rows, **({"note": "알바생 할 일에 넣음"} if added else {})}
+    cards = [card] if added else [card, {"type": "quote", "id": "staff_task_memo", "label": "예약 손님이 적은 요청사항", "text": f"“{memo}”"}]
+    return {"why": why, "cards": cards}
 
 
 def unasked_today(view: VoiceStore, now: dt.datetime) -> bool:
@@ -139,6 +178,9 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
         session.pop("tasks_pending", None)
         if not keep:
             return _then_next(view, answer("넣지 않을게요", [say("네, 알바생 할 일은 넣지 않을게요.")], []))
+        booked = reservation_view(view, keep[0], added=True) if len(keep) == 1 else None
+        if booked:  # H-12: 방금 넣은 할 일을 그대로 보여 준다
+            return _then_next(view, answer("알바생 할 일에 넣었어요", [say("알바생 할 일에 넣었어요.")], booked["cards"]))
         titles = ", ".join(p["payload"]["title"] for p in keep)
         return _then_next(view, answer("할 일 넣었어요", [say(f"알바생 할 일에 {_obj(titles)} 넣었어요."), say("알바생이 확인하면 알려 드릴게요.")], []))
     if name == "action.edit" and drop:

@@ -1,4 +1,5 @@
-"""시나리오 C: 말 알아듣기 (브리핑 1단계를 말하는 중). 문서 13장. 에이전트는 꺼져 있어 규칙만으로 통과해야 한다."""
+"""시나리오 C: 말 알아듣기 (브리핑 첫 요약 줄을 말하는 중). 문서 13장. 에이전트는 꺼져 있어 규칙만으로 통과해야 한다.
+v0.2.1 H: 요약 세 줄(sum_*) → "상세 브리핑을 시작할까요?"(detail_ask) → 상세. 기준 데이터는 비가 없어 요약은 리뷰 줄부터다."""
 
 from voice import context
 from voice.tests.conftest import Donna
@@ -25,8 +26,8 @@ def test_c3_c4_not_for_donna_is_ignored(donna: Donna):
     for text in ("3번 테이블 치워 줘", "어서 오세요 몇 분이세요"):
         response = donna.turn(text)
         assert response["type"] == "ignore" and response["say"] == [] and response["cards"] == [] and response["headline"] is None
-    # 무시한 말은 진행 상태를 바꾸지 않는다
-    assert donna.turn("다음")["briefing"]["step"] == 2
+    # 무시한 말은 진행 상태를 바꾸지 않는다 (요약 다음 줄로 한 칸만)
+    assert donna.turn("다음")["briefing"]["step_key"] == "sum_resv"
 
 
 def test_c5_c6_not_understood_and_stop(donna: Donna):
@@ -39,14 +40,17 @@ def test_c5_c6_not_understood_and_stop(donna: Donna):
 
 def test_c7_jump(donna: Donna):
     at_step_one(donna)
-    c7 = donna.turn("리뷰 어때")
-    assert c7["intent"] == "briefing.jump" and c7["type"] == "answer" and c7["briefing"]["step"] == 2
+    c7 = donna.turn("리뷰 어때")  # 상세 브리핑 물음을 건너뛰고 리뷰 칸으로
+    assert c7["intent"] == "briefing.jump" and c7["type"] == "answer" and c7["briefing"] == {"step": 3, "total": 4, "step_key": "reviews"}
+    # 예전 단계 이름: 좋은 리뷰(positive)는 리뷰 칸으로 간다
+    positive = donna.turn("좋은 리뷰 어때")
+    assert positive["intent"] == "briefing.jump" and positive["briefing"]["step_key"] == "reviews"
 
 
 def test_c8_barge_in_moves_on(donna: Donna):
     first = at_step_one(donna)
     c8 = donna.turn("다음", donna_was_speaking=True, heard_until={"turn_id": first["turn_id"], "say_index": 1})
-    assert c8["type"] == "answer" and c8["briefing"]["step"] == 2
+    assert c8["type"] == "answer" and c8["briefing"]["step_key"] == "sum_resv"
 
 
 def test_c9_same_request_id_same_response(donna: Donna):
@@ -55,8 +59,8 @@ def test_c9_same_request_id_same_response(donna: Donna):
     assert a == b
     nxt = donna.turn("다음", request_id="req_next")
     again = donna.turn("다음", request_id="req_next")  # 통신이 끊겨 다시 보낸 경우
-    assert nxt == again and nxt["briefing"]["step_key"] == "reviews"
-    assert donna.turn("다음")["briefing"]["step_key"] == "negative"  # 두 번 넘어가지 않았다
+    assert nxt == again and nxt["briefing"]["step_key"] == "sum_resv"
+    assert donna.turn("다음")["briefing"]["step_key"] == "detail_ask"  # 두 번 넘어가지 않았다
 
 
 def test_no_chips_in_v021(donna: Donna):
@@ -90,7 +94,7 @@ def test_briefing_turns_never_call_clova(donna: Donna):
 
 def test_read_negative_review_moves_and_reads_first(donna: Donna):
     at_step_one(donna)
-    donna.turn("아쉬운 리뷰 어때")  # 3단계: 써 둔 사과 답글을 올릴까요? (부정 리뷰 답글 인턴, 인사과 4-a)
+    donna.turn("아쉬운 리뷰 어때")  # 3단계: 써 둔 사과 답변을 올릴까요? (부정 리뷰 답글 인턴, 인사과 4-a)
     donna.turn("아니 내가 볼게")  # 올리지 않으면 초안으로 남는다
     response = donna.turn("아쉬운 리뷰 읽어줘")
     assert response["intent"] == "detail.read" and response["briefing"]["step_key"] == "negative"

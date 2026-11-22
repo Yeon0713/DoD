@@ -7,7 +7,7 @@ from Harness.tests.fakes import FakeClova, call
 from voice import config, repo
 from voice.dialog import intent_rules
 from voice.tests.conftest import FakeGraph, choongjang, hr_log
-from voice.tests.test_instagram import Choongjang, chj, connect, to_instagram_step  # noqa: F401 (chj 는 fixture)
+from voice.tests.test_instagram import Choongjang, chj, connect, no_story_event, to_instagram_step  # noqa: F401 (chj 는 fixture)
 
 SOFT = "국물이 새서 많이 불편하셨을 텐데 정말 죄송해요. 오늘부터 국물 메뉴는 랩을 두 번 씌워 보낼게요."
 FIX = "오늘부터 국물 메뉴는 랩을 두 번 씌워 보낼게요."
@@ -102,6 +102,8 @@ def test_unknown_action_on_poster_does_not_post():
 
 def test_instagram_caption_is_revised(chj: Choongjang, ig_on, clova_on, monkeypatch):
     ig_on(FakeGraph())
+    monkeypatch.setattr(config, "agent_on", lambda name: False)  # 다시 준비할 때 에이전트를 부르지 않게
+    no_story_event(chj)  # 비 오는 날 이벤트가 있는 날은 피드를 묻지 않는다
     connect(chj)
     to_instagram_step(chj)
     monkeypatch.setattr(config, "agent_on", lambda name: name == "caption")

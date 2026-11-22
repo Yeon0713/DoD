@@ -31,7 +31,7 @@ class TurnRequest(BaseModel):
     session_id: str | None = None
     client_time: str | None = None
     utterance: Utterance | None = None
-    event: Literal["auto_next", "notice"] | None = None  # notice: 사장님 앱이 도나 알림(negative_review)을 열었다
+    event: Literal["auto_next", "notice", "night_hr"] | None = None  # notice: 사장님 앱이 도나 알림(negative_review)을 열었다
     notice_id: str | None = None
     context: TurnContext = TurnContext()
 

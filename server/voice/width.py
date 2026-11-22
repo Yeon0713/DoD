@@ -68,7 +68,10 @@ def _over(field: str, text: str | None, where: str, found: list[str]) -> None:
 def violations(response: dict) -> list[str]:
     """응답(home 또는 turn) 안에서 한도를 넘은 칸."""
     found: list[str] = []
-    _over("headline", response.get("headline"), "headline", found)
+    for line in (response.get("headline") or "").split("\n")[:2]:  # 제목은 두 줄까지, 줄마다 한도 (Figma v0.2.1 H-09)
+        _over("headline", line, "headline", found)
+    if (response.get("headline") or "").count("\n") > 1:
+        found.append("headline: 두 줄이 넘어요")
     _over("owner_said", response.get("owner_said"), "owner_said", found)
     for number, say in enumerate(response.get("say") or []):
         _over("caption", say.get("caption"), f"say[{number}].caption", found)

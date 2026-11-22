@@ -77,7 +77,7 @@ def test_owner_edits_hours_per_weekday(chj: Choongjang):
     assert {(d["open"], d["close"]) for d in settings["hours"]["naver_days"]} == {("10:30", "20:30")}  # 되돌릴 네이버 시간
 
     chj.clock("2026-11-22T09:00:00+09:00")  # 일요일
-    assert chj.get("/v1/home")["store_status"] == {"state": "closed", "label": "쉬는 날", "detail": "내일 오전 10시 반에 열어요"}
+    assert chj.get("/v1/home")["store_status"] == {"state": "closed", "label": "쉬는 날", "detail": "내일 오전 10시 30분에 열어요"}  # 화면 글이라 숫자로 (Figma v0.2.1 H)
     chj.clock("2026-11-21T10:45:00+09:00")  # 토요일은 11시에 연다
     assert chj.get("/v1/home")["store_status"]["state"] == "before_open"
 

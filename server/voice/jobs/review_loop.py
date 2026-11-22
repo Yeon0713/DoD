@@ -27,7 +27,7 @@ from voice import activity, audit, clock, config, hours, hr, notices, proposals,
 from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import load
-from voice.jobs import cause, queue, staff_tasks
+from voice.jobs import cause, queue, revise_jobs, staff_tasks
 
 PENDING = {"alerted", "reminded"}
 ASKING = PENDING | {"auto_posted"}  # auto_posted: 자동 답글을 올리고 할 일만 묻는 중 (2026-11-20)
@@ -412,6 +412,8 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             record["use_card"] = False
             changed.append("알바생 할 일")
         record = repo.put("alert", record["id"], record["store_id"], record)
+        if intent_name in ("action.approve", "action.cancel"):  # 고치는 중이면 그만둔다. 지금 글로 정한다 (감사팀 9-3)
+            revise_jobs.cancel(view.store_id, "alert", record["id"])
 
         if intent_name == "action.cancel":
             if record["state"] in DONE | {"fallback_posted"}:
@@ -463,26 +465,36 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
 
 
 def _revise(view, record: dict, said: str | None) -> dict:
-    """사장님 고침 지시대로 답글을 다시 써서 다시 묻는다. 인사과에는 '조금 수정'(edited)으로 남는다.
-    고쳐 쓰기(LLM, 최대 40초)는 repo._lock 밖에서 한다. 그 사이 작업 큐(25분 fallback 등)가 알림을 처리했으면 고친 글을 버린다."""
+    """사장님 고침 지시대로 답글을 뒤에서 다시 쓰고(감사 포함) 알림으로 다시 묻는다 (감사팀 9장, jobs/revise_jobs.py).
+    인사과 '조금 수정'(edited)과 업무 수첩 판정은 지시를 받은 지금 남긴다. 대답은 고쳐 쓰기를 기다리지 않는다 (앱이 5초에 끊는다)."""
     from voice.jobs.briefing import answer, say
 
+    hr.record(record["store_id"], "negative_reply", record["review_id"], "edited", said)
+    revise_jobs.start(view.store_id, "alert", record["id"], "negative_reply", said or "", lambda job: _revise_work(job, record))
+    return answer("고쳐서 알려 드릴게요", [say("네, 고쳐서 알려 드릴게요.")], [])
+
+
+def _revise_work(job: dict, record: dict):
+    """뒤에서: 답글을 고쳐 쓴다 → 넣을 때(apply) 알림 상태를 다시 읽고, 그 사이 처리됐으면 버린다 (25분 대체 작업 등)."""
+    view = load(record["store_id"])
     review = repo.review(record["review_id"])
     key = "reply_base" if record["use_card"] and record["card"] else "reply_plain"
     fix = {"cause": record["cause"]["summary"], "action": record["card"]["detail"], "reply": record["reply_base"]} if key == "reply_base" else None
-    written = voice_reply.revise(view, review, "AUTO", record[key], said or "", fix=fix)
+    written = voice_reply.revise(view, review, "AUTO", record[key], job["instruction"], fix=fix)
     text, notes = voice_reply.safe_reply(written["text"], None, record[key]) if written else (None, [])  # 고친 글에도 보상은 없어야 한다
-    with repo._lock:
+
+    def apply() -> str:
         fresh = repo.get("alert", record["id"])
         same = fresh is not None and (fresh["state"] == record["state"] or {fresh["state"], record["state"]} <= PENDING)  # 다시 알림(reminded)은 아직 묻는 중
         if not same:
-            return answer("이미 처리했어요", [say("그 리뷰는 이미 처리했어요.")], [])
-        if written is None or notes:  # 못 고쳤거나, 고친 글이 보상 검사에 걸려 예전 글로 돌아갔다
-            return ask(view, fresh, lead=["지금은 고치지 못했어요.", "이대로 올릴지 다시 말씀해 주세요."], headline="이렇게 올릴까요?")
-        record = repo.put("alert", record["id"], record["store_id"], {**fresh, key: text, "reply_source": written["source"],
-                                                                     "notes": fresh["notes"] + written["notes"]})
-    hr.record(record["store_id"], "negative_reply", record["review_id"], "edited", said)
-    return ask(view, record, lead=["이렇게 고쳤어요."], headline="이렇게 올릴까요?")
+            return "discard"
+        if written is None or notes:  # 못 고쳤거나(감사를 끝내 통과하지 못함 포함), 고친 글이 보상 검사에 걸려 예전 글로 돌아갔다
+            return "failed"
+        repo.put("alert", record["id"], record["store_id"], {**fresh, key: text, "reply_source": written["source"],
+                                                            "notes": fresh["notes"] + written["notes"]})
+        return "ready"
+
+    return apply
 
 
 def _decide_task(view, record: dict, intent_name: str, edits: dict | None, said: str | None = None) -> dict:

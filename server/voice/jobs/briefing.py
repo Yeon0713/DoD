@@ -23,7 +23,7 @@ from voice.audit import log as audit_log
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import auto_reply, batch_ask, done_report, queue, schedule, staff_tasks, strengths
+from voice.jobs import auto_reply, batch_ask, done_report, queue, revise_jobs, schedule, staff_tasks, strengths
 
 TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
 STEP_KEYS = ["schedule", "holiday", "done_report", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
@@ -491,6 +491,7 @@ def _prepare(store_id: str) -> dict | None:
     if view is None:
         return None
     now = clock.now()
+    revise_jobs.expire(store_id)  # 날이 바뀐 뒤 남은 고쳐 쓰기 작업 (감사팀 9-3)
     asked = {job: hr.asks(store_id, job) for job in ("negative_reply", "positive_reply")}
     hr.evaluate(store_id, now.date())  # 인사과 격주 평가 (평가일이 아니거나 이미 했으면 바로 돌아온다, voice/hr.py)
     # 묻던 답글 업무가 이번 평가로 대리가 됐다: 대리는 묻지 않으므로 기다리던 답글을 올리거나 예약한다 (known-bugs B3)

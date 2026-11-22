@@ -6,6 +6,7 @@ ask(view, items, mode) → ask_action 응답. action {kind: "batch", items: [{jo
 decide(view, name, edits, session, said): "응" → 모두 승인 / "두 번째는 빼" → 그것만 빼고 다시 묻기 /
   "두 번째는 빼고 올려" → 빼고 승인 / "안 해" → 모두 반려. 건마다 업무의 approve·reject 를 부르고 인사과에 기록한다.
 session["batch"] 에 지금 묻는 것을 둔다 (remember). 다른 질문으로 넘어가면 지운다.
+"좀 더 부드럽게"는 뒤에서 고치고 알림으로 다시 묻는다 (감사팀 9장, jobs/revise_jobs.py). 고치는 동안 정하면 고치기를 그만둔다.
 업무마다 KINDS[job] 이 무엇을 보여 주고, 승인·반려하면 무엇을 하는지 정한다.
 """
 
@@ -13,7 +14,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from voice import activity, clock, hr, proposals, repo, speech, width
-from voice.jobs import queue
+from voice.jobs import queue, revise_jobs
 from voice.clock import iso, parse
 from voice.context import VoiceStore
 
@@ -43,7 +44,7 @@ class Kind:
 def _neg_pending(view: VoiceStore, ref: str) -> bool:
     review = view.review(ref)
     return bool(review and review.get("sentiment") == "negative" and review.get("reply_status", "none") == "none"
-                and review.get("reply_ready") and not review.get("reply_deleted_at"))
+                and review.get("reply_ready") and not review.get("reply_deleted_at") and not review.get("reply_posting"))
 
 
 def _neg_line(view: VoiceStore, ref: str) -> str:
@@ -65,6 +66,13 @@ def _neg_one(view: VoiceStore, ref: str) -> tuple[list[str], list[dict]]:
 def _neg_item(view: VoiceStore, ref: str) -> dict:
     review = view.review(ref)
     return {"title": review["summary"], "sub": review["reply_ready"]["text"]}
+
+
+def _rewrites_plain(view: VoiceStore, review: dict) -> bool:
+    """올릴 때 plain 을 사장님 지시대로 고쳐 써야 하는가 (교정 할 일을 뺐고, 앞서 고쳐 달라고 했다). 고쳐 쓰기는 LLM 이라 뒤에서 한다."""
+    ready = review["reply_ready"]
+    fix = proposals.for_review(view.store_id, review["id"])
+    return bool(ready.get("plain") and fix and fix["state"] in ("declined", "expired") and ready.get("revised"))
 
 
 def ready_reply(view: VoiceStore, review: dict) -> tuple[str, str]:
@@ -93,9 +101,39 @@ def ready_reply(view: VoiceStore, review: dict) -> tuple[str, str]:
 
 def _neg_approve(view: VoiceStore, ref: str) -> bool:
     review = repo.review(ref)  # 말 처리를 시작할 때 읽은 view 가 아니라 지금 것 (그 사이 작업 큐가 올렸을 수 있다)
-    if review.get("reply_status", "none") != "none":
+    if review.get("reply_status", "none") != "none" or review.get("reply_posting"):
         return False
-    text, source = ready_reply(view, review)
+    if _rewrites_plain(view, review):  # 할 일을 빼고 승인: plain 을 지시대로 뒤에서 고쳐(감사 포함) 다시 묻지 않고 올린다 (결정 15)
+        marked = []
+
+        def mark(job: dict) -> None:  # 뒤에서 올리기 전에 표시해 두어 다시 묻지 않는다
+            marked.append(repo.save_review_if({**review, "reply_posting": job["id"]}, "none") is not None)
+
+        revise_jobs.start(view.store_id, "post", ref, "negative_reply", ", ".join(review["reply_ready"]["revised"]), _post_work,
+                          prepare=mark)
+        return marked[0]
+    return _post_ready(view, review, *ready_reply(view, review))
+
+
+def _post_work(job: dict):
+    """뒤에서: plain 을 고쳐 쓴 뒤 올린다. 못 고치면 고치지 않은 plain 을 올린다 (ready_reply)."""
+    from voice.context import load
+
+    view = load(job["store_id"])
+    text, source = ready_reply(view, repo.review(job["ref"]))
+
+    def apply() -> str:
+        review = repo.review(job["ref"])
+        if review.get("reply_posting") != job["id"]:
+            return "discard"
+        review.pop("reply_posting")
+        return "ready" if _post_ready(view, review, text, source) else "discard"
+
+    return apply
+
+
+def _post_ready(view: VoiceStore, review: dict, text: str, source: str) -> bool:
+    ref = review["id"]
     now = clock.now()
     review.update({
         "reply_status": "posted", "reply_by": "donna", "reply_text": text, "reply_source": source,
@@ -111,7 +149,7 @@ def _neg_approve(view: VoiceStore, ref: str) -> bool:
 def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
     from voice.agents import voice_reply
 
-    review = view.review(ref)
+    review = repo.review(ref)
     ready = review["reply_ready"]
     # 영업 중 묶음 창의 글은 알림 기록의 사과 글 + 사장님이 정한 보상 문장이다 (review_loop.reply_text). 보상 문장은 에이전트에
     # 넘기지 않고 고친 뒤 다시 붙인다 (review_loop._revise 와 같게, known-bugs B5). 밤사이 써 둔 글(알림 기록 없음)은 보상 문장이 없다
@@ -130,8 +168,9 @@ def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
     # plain 은 그대로 두고 지시만 적어 둔다. 할 일을 빼고 올릴 때 ready_reply 가 그 지시대로 고친다 (known-bugs B4)
     revised = [*(ready.get("revised") or []), instruction]
     text = voice_reply.compose(written["text"], preset)
-    repo.save_review({**review, "reply_ready": {**ready, "text": text, "source": written["source"], "revised": revised}})
-    return True
+    # 고치는 사이 올렸거나 반려했으면 덮지 않는다 (뒤에서 고친다, 감사팀 9장)
+    return repo.save_review_if({**review, "reply_ready": {**ready, "text": text, "source": written["source"], "revised": revised}},
+                               "none") is not None
 
 
 def _neg_reject(view: VoiceStore, ref: str) -> bool:
@@ -189,13 +228,12 @@ def _pos_approve(view: VoiceStore, ref: str) -> bool:
 def _pos_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
     from voice.agents import voice_reply
 
-    review = view.review(ref)
+    review = repo.review(ref)
     occasion = {**(review.get("reply_reason") or {}), "post_at": review["reply_post_at"]}
     written = voice_reply.revise(view, review, "SCHEDULED", review["reply_text"], instruction, occasion=occasion)
     if written is None:
         return False
-    repo.save_review({**review, "reply_text": written["text"], "reply_source": written["source"]})
-    return True
+    return repo.save_review_if({**review, "reply_text": written["text"], "reply_source": written["source"]}, "awaiting") is not None
 
 
 def _pos_reject(view: VoiceStore, ref: str) -> bool:
@@ -309,8 +347,8 @@ def remember(response: dict, session: dict) -> None:
     action = response.get("action") or {}
     if action.get("kind") == "batch":
         session["batch"] = {k: action[k] for k in ("items", "rest", "mode")}
-    elif response.get("type") not in ("ignore", "not_understood"):
-        session.pop("batch", None)
+    elif response.get("type") not in ("ignore", "not_understood") and not response.get("keep_batch"):
+        session.pop("batch", None)  # keep_batch: 뒤에서 고치는 중 ("응"이면 지금 글로 정한다)
 
 
 def _settle(view: VoiceStore, items: list[dict], approve: bool, said: str | None) -> None:
@@ -344,6 +382,8 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
         return follow or answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
     drop = [asked[i - 1] for i in (edits or {}).get("drop_index") or [] if 1 <= i <= len(asked)]
     keep = [i for i in asked if i not in drop]
+    if name in ("action.cancel", "action.approve", "action.edit"):  # 고치는 중이면 그만둔다. 지금 글로 정한다 (감사팀 9-3)
+        revise_jobs.cancel(view.store_id, "batch")
     if name == "action.cancel":
         _settle(view, asked, False, said)
         texts = _done_says(view, [], asked)
@@ -351,12 +391,15 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
         _settle(view, drop, False, said)
         _settle(view, keep, True, said)
         texts = _done_says(view, keep, drop)
-    elif name == "action.revise":  # "좀 더 부드럽게": 묻는 글을 모두 지시대로 다시 써서 다시 묻는다
-        revised = [i for i in asked if KINDS[i["job"]].revise and KINDS[i["job"]].revise(view, i["ref"], said or "")]
-        for i in revised:
+    elif name == "action.revise":  # "좀 더 부드럽게": 묻는 글을 모두 뒤에서 지시대로 다시 쓰고 알림으로 다시 묻는다 (감사팀 9장)
+        targets = [i for i in asked if KINDS[i["job"]].revise]
+        if not targets:
+            return ask(view, asked + rest, mode, lead=["지금은 고치지 못했어요."]) or answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
+        for i in targets:  # 인사과 '조금 수정'과 수첩 판정은 지시를 받은 지금 (9-2)
             hr.record(view.store_id, i["job"], i["ref"], "edited", said)
-        lead = ["이렇게 고쳤어요."] if revised else ["지금은 고치지 못했어요."]
-        return ask(load_view(view), asked + rest, mode, lead=lead) or answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
+        revise_jobs.start(view.store_id, "batch", ",".join(i["ref"] for i in targets), None, said or "", _revise_work,
+                          items=asked + rest, mode=mode)
+        return {**answer("고쳐서 알려 드릴게요", [say("네, 고쳐서 알려 드릴게요.")], []), "keep_batch": True}
     elif name == "action.edit" and drop:
         _settle(view, drop, False, said)
         if not keep:
@@ -375,6 +418,22 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
     if follow is None:
         return done
     return {**follow, "say": done["say"] + follow["say"]}
+
+
+def _revise_work(job: dict):
+    """뒤에서: 아직 묻는 글을 지시대로 고쳐 쓴다 (각 업무의 revise 가 저장까지 한다. 그 사이 정한 것은 덮지 않는다)."""
+    from voice.context import load
+
+    view = load(job["store_id"])
+    revised = [i for i in job["items"] if KINDS[i["job"]].revise and KINDS[i["job"]].pending(view, i["ref"])
+               and i["ref"] in job["ref"].split(",") and KINDS[i["job"]].revise(view, i["ref"], job["instruction"])]
+    return lambda: "ready" if revised else "failed"
+
+
+def reopen(view: VoiceStore, job: dict) -> dict | None:
+    """고친 알림을 열었을 때: 아직 묻는 것을 다시 묻는다."""
+    lead = ["이렇게 고쳤어요."] if job["state"] == "ready" else ["지금은 고치지 못했어요.", "이대로 할지 말씀해 주세요."]
+    return ask(view, job["items"], job["mode"], lead=lead)
 
 
 def load_view(view: VoiceStore) -> VoiceStore:

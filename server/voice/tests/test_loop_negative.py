@@ -10,7 +10,7 @@ import re
 import pytest
 
 from voice import hr, repo, width
-from voice.tests.conftest import Choongjang, choongjang, hr_log
+from voice.tests.conftest import Choongjang, choongjang, hr_log, step_key, walk_to
 
 LEAK_PRESET = "다음 주문 때 감자전 하나를 서비스로 드릴게요."
 MISSING_PRESET = "빠진 메뉴는 다음 주문 때 함께 챙겨 드릴게요."
@@ -138,9 +138,12 @@ def test_l9_not_rereported():
     donna.clock("2026-11-18T10:00:00+09:00")  # 다음 날 브리핑은 09:30 에 준비된다
     donna.session_id = "sess_20261118_s005"
     started = donna.turn("오늘 일정 브리핑해 줘")
-    assert started["briefing"] and started["briefing"]["step_key"] == "schedule"
-    steps = [donna.turn("다음") for _ in range(4)]
-    assert all(s["briefing"] for s in steps)
+    assert started["briefing"] and started["briefing"]["step_key"] == "sum_reviews"
+    steps = [started]  # 끝까지 듣는다 (사장님이 "응, 진행해"로 올린 답글은 H-10 에도 사후 보고에도 다시 나오지 않는다)
+    while steps[-1]["type"] != "end":
+        assert len(steps) < 20 and steps[-1]["briefing"]
+        steps.append(donna.turn("응") if step_key(steps[-1]) == "detail_ask" else donna.turn(event="auto_next"))
+    assert "negative_done" not in [step_key(s) for s in steps]
     assert all(rid not in [c.get("id") for c in s["cards"]] for s in steps)
 
 
@@ -248,10 +251,10 @@ def test_t4_no_permission():
     assert "아쉬운 리뷰 3개에 답글 달기" in [r["text"] for r in today["remaining"]]  # 밤사이 2개 + 이 리뷰
     donna.clock("2026-11-18T10:00:00+09:00")
     donna.session_id = "sess_20261118_s005"
-    assert donna.turn("오늘 일정 브리핑해 줘")["briefing"]
-    # 다음 날 아침 3단계: 초안으로 남은 답글을 "올릴까요?"로 묻는다 (부정 리뷰 답글 인턴, 허락 질문은 없앰)
-    asked = next(s for s in (donna.turn(event="auto_next") for _ in range(2)) if s["type"] == "ask_action")
-    assert asked["action"]["kind"] == "batch" and asked["action"]["mode"] == "each" and asked["say"][-1]["text"] == "써 둔 사과 답글을 올릴까요?"
+    # 다음 날 아침 리뷰 칸: 초안으로 남은 답글을 "올릴까요?"로 묻는다 (부정 리뷰 답글 인턴, 허락 질문은 없앰)
+    asked = walk_to(donna, "negative")
+    assert asked["type"] == "ask_action"
+    assert asked["action"]["kind"] == "batch" and asked["action"]["mode"] == "each" and asked["say"][-1]["text"] == "써 둔 사과 답변을 올릴까요?"
 
 
 def test_t6_clock_jump():
@@ -265,7 +268,8 @@ def test_t7_after_hours():
     donna = choongjang(permission=True)  # 부정 리뷰 답글 대리: 문 닫은 뒤 리뷰에 묻지 않고 답한다
     donna.clock("2026-11-17T21:40:00+09:00")
     rid = donna.demo_review("leak")
-    assert alert_of(rid) is None and donna.notices() == []
+    # 리뷰 알림은 없다 (21:00 인사과 보고 알림은 따로 온다, jobs/hr_night.py)
+    assert alert_of(rid) is None and [n["kind"] for n in donna.notices()] in ([], ["hr_night"])
     donna.clock("2026-11-17T21:55:00+09:00")
     assert review(rid)["reply_status"] == "posted" and review(rid)["reply_posted_at"] == "2026-11-17T21:50:00+09:00"
     # 할 일은 바로 넣지 않고 다음 날 아침 브리핑에서 묻는다 (안 B). 답글은 같은 조치를 약속한다

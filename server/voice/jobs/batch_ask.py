@@ -10,6 +10,7 @@ session["batch"] 에 지금 묻는 것을 둔다 (remember). 다른 질문으로
 업무마다 KINDS[job] 이 무엇을 보여 주고, 승인·반려하면 무엇을 하는지 정한다.
 """
 
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -58,9 +59,50 @@ def _neg_one(view: VoiceStore, ref: str) -> tuple[list[str], list[dict]]:
 
     review = view.review(ref)
     who = "배달로 드신 손님이" if review.get("order_channel") == "delivery" else "가게에서 드신 손님이"
-    draft = {"text": review["reply_ready"]["text"], "posted_at": None, "by": "donna", "scheduled_label": "올리기 전 답글"}
+    draft = {"text": review["reply_ready"]["text"], "posted_at": None, "by": "donna"}
     return ([f"{_when(parse(review['written_at']), view.now)} {who} {told(review['summary'])} 리뷰를 남기셨어요."],
             [review_card(review, draft)])
+
+
+# J-10b: "서비스 준다는 말은 빼고 올려" (Figma v0.2.1 J, 2026-11-22). 혜택 문장을 규칙으로 빼고 바로 올린다 (모델로 다시 쓰지 않는다)
+OFFER_RE = re.compile(r"서비스|쿠폰|무료|공짜|할인|사은품|증정|보상")
+SENTENCE_RE = re.compile(r"(?<=[.!?])\s+")
+AGENT_LABEL = {"negative_review": "위기 대처"}  # 인사과에 기록함 카드의 담당 이름 (Figma J-10b)
+
+
+def split_offer(text: str) -> tuple[str, str, str | None]:
+    """(남길 글, 뺀 글, 뺀 혜택 낱말). 혜택 문장이 없거나 다 빼면 남는 게 없으면 (text, '', None)."""
+    sentences = [s for s in SENTENCE_RE.split(text.strip()) if s]
+    offer = [s for s in sentences if OFFER_RE.search(s)]
+    kept = [s for s in sentences if s not in offer]
+    if not offer or not kept:
+        return text, "", None
+    return " ".join(kept), " ".join(offer), OFFER_RE.search(offer[0]).group(0)
+
+
+def drop_offer_and_post(view: VoiceStore, ref: str, said: str | None) -> dict | None:
+    """써 둔 사과 답글에서 혜택 문장을 빼고 올린 뒤 업무 수첩에 규칙을 적는다. 뺄 문장이 없으면 None (다른 길로)."""
+    from voice import notebook
+    from voice.jobs.briefing import answer, review_card, say
+
+    review = repo.review(ref)
+    ready = review.get("reply_ready") or {}
+    kept, removed, word = split_offer(ready.get("text") or "")
+    if word is None:
+        return None
+    repo.save_review({**review, "reply_ready": {**ready, "text": kept, "revised": [*(ready.get("revised") or []), said or ""]}})
+    if not _neg_approve(view, ref):
+        return None
+    rule = f"사과할 때 {word} 준다는 말은 하지 않기"
+    notebook.add(view.store_id, "negative_review", rule, said)
+    hr.record(view.store_id, "negative_reply", ref, "edited", said)  # 같은 말로 수첩 판정을 또 하지 않는다 (notebook.judge_later)
+    posted = repo.review(ref)
+    card = review_card(posted, {"text": kept, "removed": removed, "posted_at": posted["reply_posted_at"], "by": "donna"})
+    note = {"type": "quote", "id": "hr_note", "label": f"인사과에 기록함 · {AGENT_LABEL['negative_review']}", "text": rule}
+    response = answer("빼고 올렸어요", [say(f"{word} 준다는 말은 빼고 올렸어요."), say(f"앞으로 {rule.replace('하지 않기', '하지 않을게요')}.", None, ["hr_note"])],
+                      [card, note])
+    response["own_screen"] = True
+    return response
 
 
 def _neg_item(view: VoiceStore, ref: str) -> dict:
@@ -295,7 +337,7 @@ TASK = Kind(
 KINDS: dict[str, Kind] = {
     "negative_reply": Kind(
         pending=_neg_pending, line=_neg_line, one=_neg_one, item=_neg_item, approve=_neg_approve, reject=_neg_reject,
-        many="아쉬운 리뷰가 {n} 있어요.", question="써 둔 사과 답글을 올릴까요?", headline="사과 답글 올릴까요?",
+        many="아쉬운 리뷰가 {n} 있어요.", question="써 둔 사과 답변을 올릴까요?", headline="사과 답변을 올릴까요?",
         done=lambda n: "사과 답글을 올렸어요." if n == 1 else f"사과 답글 {n}개를 올렸어요.", none=("네, 올리지 않을게요.", "초안은 남겨 둘게요."),
         revise=_neg_revise),
     "positive_reply": Kind(
@@ -328,7 +370,8 @@ def ask(view: VoiceStore, items: list[dict], mode: str, *, lead: list[str] | Non
     says = [say(text) for text in lead or []]
     if len(asked) == 1:
         texts, cards = kind.one(view, asked[0]["ref"])
-        says += [say(text) for text in texts]
+        caption = "부정 리뷰는 꼭 여쭤보고 올려요" if asked[0]["job"] == "negative_reply" else None  # Figma J-10a
+        says += [say(text, caption if n == 0 else None) for n, text in enumerate(texts)]
     else:
         says.append(say(kind.many.format(n=speech.count(len(asked), "개")) if len(kinds) == 1 else f"여쭤볼 게 {speech.count(len(asked), '개')} 있어요."))
         says += [say(f"{ORDINAL[n]}, {KINDS[i['job']].line(view, i['ref'])}") for n, i in enumerate(asked)]
@@ -387,6 +430,14 @@ def decide(view: VoiceStore, name: str, edits: dict | None, session: dict, said:
     if name == "action.cancel":
         _settle(view, asked, False, said)
         texts = _done_says(view, [], asked)
+    elif name == "action.approve" and (edits or {}).get("drop_compensation") and len(asked) == 1 and asked[0]["job"] == "negative_reply":
+        posted = drop_offer_and_post(view, asked[0]["ref"], said)  # J-10b "서비스 준다는 말은 빼고 올려"
+        if posted is not None:
+            session.pop("batch", None)
+            follow = ask(load_view(view), rest, mode)
+            return posted if follow is None else {**follow, "say": posted["say"] + follow["say"]}
+        _settle(view, keep, True, said)
+        texts = _done_says(view, keep, [])
     elif name == "action.approve":
         _settle(view, drop, False, said)
         _settle(view, keep, True, said)

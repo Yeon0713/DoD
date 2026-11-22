@@ -101,7 +101,8 @@ SPEC = AgentSpec(
     audit=inspector.field_tasks,  # 2차 LLM 감사 (감사팀)
     audit_returns=config.AUDIT_RETURNS,
     audit_seconds=config.AUDIT_ROUND_SECONDS,
-    cache_scope=lambda task: audit.version(),
+    # 캐시 열쇠: 감사 기준 버전과 그날 날씨·예약. 날짜만 쓰면 예약을 바꾼 시연 데이터(s005_choongjang_h)에도 예전 제안을 돌려줬다 (2026-11-22)
+    cache_scope=lambda task: (audit.version(), task.get("inputs")),
     task_id=lambda task: task["date"],
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.3,
@@ -113,23 +114,45 @@ def suggest(view: VoiceStore) -> list[dict] | None:
     if not config.agent_on("field"):
         return None
     day = view.now.date().isoformat()
+    inputs = {"weather": [w for w in view.data.get("weather", []) if w["date"] == day],
+              "reservations": [r for r in view.data.get("reservation", []) if r["starts_at"][:10] == day]}
     ctx = run_context(view)
-    proposal = runner.run(SPEC, {"date": day}, ctx)
+    proposal = runner.run(SPEC, {"date": day, "inputs": inputs}, ctx)
     audit_log.record_run(view.store_id, "field_task", f"field:{day}", proposal, ctx.run_id)
     if proposal is None or proposal.source != "AGENT" or audit.settle(view.store_id, "field_task", proposal.audit) != "ok":
         return None
     return [{k: (v.strip() if isinstance(v, str) else v) for k, v in item.items()} for item in proposal.content.get("items") or []]
 
 
+def allergy_items(view: VoiceStore) -> list[dict]:
+    """예약 메모에 'OO 알레르기'가 있으면 모델 없이 규칙으로 할 일을 만든다 (2026-11-22, Figma v0.2.1 H-11 · H-13).
+    알레르기는 틀리면 위험한 정보라서 메모에 적힌 이름 그대로, 영업 중에 모두 확인하는 오늘만 할 일로 둔다."""
+    day = view.now.date().isoformat()
+    items = []
+    for r in sorted((r for r in view.data.get("reservation", []) if r["starts_at"][:10] == day), key=lambda r: r["starts_at"]):
+        found = ALLERGY_RE.search(r.get("memo") or "")
+        if not found:
+            continue
+        start = clock.parse(r["starts_at"])
+        at = f"{start.hour % 12 or 12}시" + (f" {start.minute}분" if start.minute else "")
+        items.append({"title": f"{at} 손님 {found.group(1)} 알레르기", "detail": f"{at} 예약 손님 메모: {r['memo'].strip()}",
+                      "phase": "open", "today_impact": True, "source_type": "reservation", "source_id": r["id"], "quote": r["memo"].strip()})
+    return items
+
+
 def propose_today(view: VoiceStore) -> list[dict]:
-    """오늘 몫을 한 번만 제안으로 남긴다 (브리핑 준비가 여러 번 돌아도). 오늘 아침 브리핑에서 묻는다."""
+    """오늘 몫을 한 번만 제안으로 남긴다 (브리핑 준비가 여러 번 돌아도). 오늘 아침 브리핑에서 묻는다.
+    알레르기 메모는 규칙으로 먼저 만들고(allergy_items), 모델은 그 밖의 날씨·예약 할 일만 더한다."""
     day = view.now.date().isoformat()
     run_id = f"{view.store_id}:{day}"
     if repo.get(RUN_KIND, run_id):
         return []
-    items = suggest(view)
-    if items is None:  # 끔·실패: 표시를 남기지 않아 다음 준비 때 다시 해 본다
+    ruled = allergy_items(view)
+    suggested = suggest(view)
+    if suggested is None and not ruled:  # 끔·실패: 표시를 남기지 않아 다음 준비 때 다시 해 본다
         return []
+    covered = {i["source_id"] for i in ruled}
+    items = ruled + [i for i in suggested or [] if not (i["source_type"] == "reservation" and i["source_id"] in covered)]
     repo.put(RUN_KIND, run_id, view.store_id, {"id": run_id, "date": day, "items": len(items), "at": clock.iso(clock.now())})
     made = []
     for item in items:

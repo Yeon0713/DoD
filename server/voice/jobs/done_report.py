@@ -24,8 +24,10 @@ LINES = {
     "positive_reply": lambda n: f"좋은 리뷰 {speech.count(n, '개')}에 답글을 올렸어요.",
     "negative_reply": lambda n: f"아쉬운 리뷰 {speech.count(n, '개')}에 사과 답글을 올렸어요.",
     "instagram_post": lambda n: "인스타에 게시물을 올렸어요." if n == 1 else f"인스타에 게시물 {speech.count(n, '개')}를 올렸어요.",
+    "story_poster": lambda n: "인스타 스토리에 이벤트 포스터를 올렸어요." if n == 1 else f"인스타 스토리에 이벤트 포스터 {speech.count(n, '개')}를 올렸어요.",
 }
-ROW_LABELS = {"positive_reply": "좋은 리뷰 답글", "negative_reply": "아쉬운 리뷰 답글", "instagram_post": "인스타 게시물"}
+ROW_LABELS = {"positive_reply": "좋은 리뷰 답글", "negative_reply": "아쉬운 리뷰 답글", "instagram_post": "인스타 게시물",
+              "story_poster": "이벤트 스토리"}
 
 
 def describe(view: VoiceStore, event: dict) -> str:
@@ -35,14 +37,15 @@ def describe(view: VoiceStore, event: dict) -> str:
     if event["job"] in REPLY_JOBS:
         summary = (view.review(event["ref"]) or {}).get("summary")
         return f"{told(summary)} 리뷰에 단 답글" if summary else "리뷰에 단 답글"
-    return "인스타 게시물"
+    return "이벤트 스토리" if event["job"] == "story_poster" else "인스타 게시물"
 
 
-def step(view: VoiceStore, now: dt.datetime) -> tuple[dict | None, dict | None]:
-    """브리핑 단계 done_report. 응답의 report 칸(보고한 hr_event id)은 앱에 보내지 않고 turn.handle 이 보고했다고 적는다."""
+def step(view: VoiceStore, now: dt.datetime, skip: frozenset[str] | set[str] = frozenset()) -> tuple[dict | None, dict | None]:
+    """브리핑 단계 done_report. 응답의 report 칸(보고한 hr_event id)은 앱에 보내지 않고 turn.handle 이 보고했다고 적는다.
+    skip: 다른 단계가 이미 보여 주고 보고하는 hr_event id (H-10 바로 단 사과 답글, briefing.step_negative_done)."""
     from voice.jobs.briefing import answer, review_card, say
 
-    items = hr.report_items(view.store_id, now)
+    items = [e for e in hr.report_items(view.store_id, now) if e["id"] not in skip]
     if not items:
         return None, None
     daily = [e for e in items if e["rank_at"] != "manager"]

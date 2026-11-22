@@ -43,6 +43,7 @@ KIND_NAMES = {
     "prepare_briefing": "브리핑 준비", "auto_reply": "아쉬운 리뷰 바로 답하기", "post_scheduled": "예약한 답글 올리기",
     "review_alert": "아쉬운 리뷰 알림", "review_remind": "아쉬운 리뷰 다시 알림", "review_fallback": "아쉬운 리뷰 대답 없음 처리",
     "instagram_publish": "인스타 게시", "refresh_briefing": "브리핑 다시 만들기", "hr_batch": "묶어서 묻기 알림",
+    "hr_night": "밤 9시 인사과 보고",
 }
 _locks = {lane: threading.Lock() for lane in LANES}
 
@@ -134,6 +135,10 @@ def run_job(job: dict) -> object:
 
         published = posts.publish(store_id, job["payload"]["post_id"])
         return bool(published and published["status"] == "published")
+    if job["kind"] == "hr_night":  # 밤 9시 인사과 보고 알림 (jobs/hr_night.py)
+        from voice.jobs import hr_night
+
+        return hr_night.run(store_id)
     if job["kind"] == "refresh_briefing":
         return bool(briefing.current(store_id) and briefing.prepare(store_id))
     raise ValueError(f"모르는 작업: {job['kind']}")

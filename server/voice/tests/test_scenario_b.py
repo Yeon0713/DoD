@@ -1,8 +1,8 @@
 """시나리오 B: 부정 리뷰 답글이 대리인 가게(예전: 허락한 다음 날). 문 닫은 뒤(22:00) 밤에 아쉬운 리뷰가 오면 30분 안에 바로 답하고,
-아침 브리핑 3단계에서 알려 준다. 문서 13장. 인턴·사원은 아침에 "올릴까요?"로 묻는다 (인사과 4-a)."""
+아침 브리핑 리뷰 칸(H-10)에서 알려 준다. 문서 13장. 인턴·사원은 아침에 "올릴까요?"로 묻는다 (인사과 4-a)."""
 
 from voice import width
-from voice.tests.conftest import Donna, baseline
+from voice.tests.conftest import Donna, baseline, walk_to
 
 NIGHT_REVIEW = {"platform": "baemin", "rating": 1, "text": "배달이 너무 늦어서 다 식어서 왔어요. 곱창은 맛있는데 아쉽네요.",
                 "written_at": "2026-11-16T22:40:00+09:00", "order_channel": "delivery"}
@@ -32,27 +32,32 @@ def test_b1_auto_reply_within_30_minutes():
 
 
 def test_b3_to_b6_done_report_and_detail():
-    """대리가 밤사이 올린 답글은 아쉬운 리뷰 단계가 아니라 사후 보고 단계(done_report, 게이지 1)에서 알린다 (인사과 5단계)."""
+    """대리가 밤사이 바로 단 사과 답글은 아쉬운 리뷰 단계가 아니라 H-10 단계(negative_done)에서 '10분 만에 답했어요'로 알린다.
+    이 단계를 보내면 인사과에 보고한 것으로 적고, 사후 보고(done_report)에서는 빠진다 (인사과 5단계)."""
+    from voice import hr
+
     donna, review_id = night_then_morning()
-    donna.turn("오늘 일정 브리핑해 줘")
-    b3 = donna.turn("다음")
-    assert b3["type"] == "answer" and b3["briefing"] == {"step": 1, "total": 5, "step_key": "done_report"}
-    assert b3["headline"] == "제가 처리한 것이에요"
-    assert [s["text"] for s in b3["say"]] == ["제가 알아서 처리한 게 있어요.", "아쉬운 리뷰 한 개에 사과 답글을 올렸어요.",
-                                             "배달이 늦어 음식이 식었다는 리뷰에 단 답글이에요.",
-                                             "되돌릴 게 있으면 '그 답글 지워'처럼 말씀해 주세요."]
-    assert [(r["label"], r["value"]) for r in b3["cards"][0]["rows"]] == [("아쉬운 리뷰 답글", "1건")]
+    b3 = walk_to(donna, "negative_done")
+    assert b3["type"] == "answer" and b3["briefing"] == {"step": 3, "total": 4, "step_key": "negative_done"}
+    assert b3["headline"] == "10분 만에 답했어요"
+    assert [(s["text"], s["caption"]) for s in b3["say"]] == [("아쉬운 리뷰 한 건은 허락해 주신 대로 10분 만에 답변했어요.", "허락해 주신 대로 바로 답했어요")]
+    card = b3["cards"][0]
+    assert card["type"] == "review" and card["id"] == review_id and card["reply"]["posted_at"] == "2026-11-16T22:50:00+09:00"
+    assert [(e["job"], e["reported_at"]) for e in hr.events("s001")] == [("negative_reply", "2026-11-17T09:00:00+09:00")]
 
     b4 = donna.turn("화면에 보여 줘")
     assert b4["type"] == "show_detail" and b4["cards"][0]["id"] == review_id
     assert b4["cards"][0]["reply"]["text"].startswith("늦은 배달로") and b4["cards"][0]["reply"]["posted_at"] == "2026-11-16T22:50:00+09:00"
     b5 = donna.turn("읽어 줘")
-    assert [s["text"] for s in b5["say"]] == ["첫 번째, 배달이 늦어 음식이 식었다는 리뷰에 단 답글이에요."]
+    assert [s["text"] for s in b5["say"]] == ["아쉬운 리뷰 한 건은 허락해 주신 대로 10분 만에 답변했어요."]
     b6 = donna.turn("돌아가기")
-    assert b6["briefing"]["step_key"] == "done_report" and [s["text"] for s in b6["say"]] == ["브리핑으로 돌아왔어요."]
+    assert b6["briefing"]["step_key"] == "negative_done" and [s["text"] for s in b6["say"]] == ["브리핑으로 돌아왔어요."]
     after = donna.turn("다음")
-    assert after["briefing"]["step_key"] == "reviews"  # 아쉬운 리뷰 단계는 대리면 없다 (밤 리뷰는 이미 올렸다)
-    for response in (b3, b4, b5, b6):
+    # 아쉬운 리뷰 단계는 대리면 없고 (밤 리뷰는 이미 올렸다), 사후 보고도 같은 답글을 다시 알리지 않는다
+    assert after["briefing"]["step_key"] == "staff_tasks"
+    end = donna.turn(event="auto_next")
+    assert ("아쉬운 리뷰 1건 답변", "10분 만에 답변했어요") in [(r["value"], r["sub"]) for r in end["cards"][0]["rows"]]
+    for response in (b3, b4, b5, b6, end):
         assert width.violations(response) == []
 
 
@@ -80,16 +85,14 @@ def test_staff_rank_asks_negative_replies_together():
     payload = baseline()
     payload["hr"] = {**payload["hr"], "negative_reply": "staff"}
     donna = prepared(payload)
-    donna.turn("오늘 일정 브리핑해 줘")
-    donna.turn("다음")
-    step3 = donna.turn("다음")
-    assert step3["type"] == "ask_action" and step3["headline"] == "사과 답글 올릴까요?" and step3["action"]["mode"] == "batch"
+    step3 = walk_to(donna, "negative")
+    assert step3["type"] == "ask_action" and step3["headline"] == "사과 답변을 올릴까요?" and step3["action"]["mode"] == "batch"
     assert [s["text"] for s in step3["say"]] == ["아쉬운 리뷰가 두 개 있어요.", "첫째, 배달이 늦어 음식이 식었다는 리뷰예요.",
-                                                "둘째, 배달이 늦었다는 리뷰예요.", "써 둔 사과 답글을 올릴까요?"]
+                                                "둘째, 배달이 늦었다는 리뷰예요.", "써 둔 사과 답변을 올릴까요?"]
     assert [i["title"] for i in step3["cards"][0]["items"]] == ["1. 배달이 늦어 음식이 식었대요", "2. 배달이 늦었대요"]
     done = donna.turn("두 번째는 빼고 올려")
     assert done["intent"] == "action.approve" and done["say"][0]["text"] == "사과 답글을 올렸어요."
-    assert done["briefing"]["step_key"] == "positive"  # 정하면 다음 단계로
+    assert done["briefing"]["step_key"] == "staff_tasks"  # 정하면 다음 단계(알바생 할 일)로
     status = {r["id"]: r["reply_status"] for r in donna.state()["review"] if r.get("sentiment") == "negative"}
     assert status == {"rv_0412": "posted", "rv_0405": "drafted"}
     assert [(e["ref"], e["reaction"]) for e in hr.events("s001")] == [("rv_0405", "rejected"), ("rv_0412", "approved")]

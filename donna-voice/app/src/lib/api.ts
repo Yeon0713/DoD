@@ -20,11 +20,13 @@ export type RowKind =
   | 'lock' | 'message' | 'invite' | 'image' | 'users' | 'clock';
 
 /** v0.2.1부터 줄에는 이름표(label)가 없다. value 하나로 읽힌다. title 은 '오늘 아침에 한 것' 같은 카드 제목. */
-export type RowsCard = { type: 'rows'; id: string; title?: string; rows: { id: string; kind: RowKind; label?: string; value: string }[] };
+/** sub: 끝 화면 줄 아래 '9:04에 스토리에 올렸어요' (H-12b). note: 카드 아래 '✓ 알바생 할 일에 넣음' (H-12) */
+export type RowsCard = { type: 'rows'; id: string; title?: string; note?: string; rows: { id: string; kind: RowKind; label?: string; value: string; sub?: string }[] };
 export type CountsCard = { type: 'counts'; id: string; items: { id: string; kind: 'positive' | 'negative'; label: string; count: number; unit: string }[] };
 export type ReviewCard = {
   type: 'review'; id: string; variant: 'summary' | 'full'; rating: number; text: string; written_at: string;
-  reply: { text: string; posted_at: string | null; by: 'donna' | 'owner'; scheduled_label?: string | null } | null;
+  /** removed: 사장님 말대로 빼고 올린 문장 (줄을 그어 뒤에 보인다, Figma J-10b) */
+  reply: { text: string; posted_at: string | null; by: 'donna' | 'owner'; scheduled_label?: string | null; removed?: string | null } | null;
 };
 export type TipCard = { type: 'tip'; id: string; kind: 'improve' | 'keep' | 'prepare'; text: string };
 export type BarsCard = { type: 'bars'; id: string; unit: string; title?: string; items: { id: string; label: string; count: number }[] };
@@ -40,7 +42,10 @@ export type QuoteCard = { type: 'quote'; id: string; label: string; text: string
 /** 인스타 게시물 모양 그대로 (D-15). */
 export type InstaPostCard = { type: 'insta_post'; id: string; handle: string; logo_url: string; slide: number; slides: number; photo_url: string | null; top_label: string; title: string; caption: string };
 /** 그림 여러 장을 나란히 (비 오는 날 이벤트: 포스터, 스토리에 올릴 사진). aspect 는 '가로:세로' (예: '9:16'), 그림이 잘리지 않게 그 비율로 보인다. */
-export type ImagesCard = { type: 'images'; id: string; items: { id: string; label: string; photo_url: string; aspect?: string }[] };
+/** checked: 올린 뒤 '✓ 스토리에 올림' (H-07) */
+export type ImagesCard = { type: 'images'; id: string; items: { id: string; label: string; photo_url: string; aspect?: string; checked?: boolean }[] };
+/** 예약해 둔 좋은 리뷰 답글: 리뷰 한 줄과 답글 (H-09) */
+export type ReplyListCard = { type: 'reply_list'; id: string; items: { id: string; quote: string; reply: string }[] };
 /** 알바생에게 시킨 것 (D-24, D-33). state: todo / done / canceled */
 /** tone urgent: 아쉬운 리뷰에서 나온 알바생 교정 카드 (2026-11-18) */
 export type ChecklistCard = { type: 'checklist'; id: string; title: string; items: { id: string; title: string; sub: string; state: 'todo' | 'done' | 'canceled'; tone?: 'urgent' }[] };
@@ -51,7 +56,7 @@ export type ManualCard = { type: 'manual'; id: string; groups: { id: string; kin
 export type ActionCard = { type: 'action'; id: string; label: string; action: 'instagram_connect' };
 export type Card =
   | RowsCard | CountsCard | ReviewCard | TipCard | BarsCard | ScheduledCard
-  | MenusCard | QuoteCard | InstaPostCard | ImagesCard | ChecklistCard | PeopleCard | InviteCard | ManualCard | ActionCard;
+  | MenusCard | QuoteCard | InstaPostCard | ImagesCard | ChecklistCard | PeopleCard | InviteCard | ManualCard | ActionCard | ReplyListCard;
 
 export type StoreStatus = { state: 'before_open' | 'open' | 'closed'; label: string; detail: string };
 
@@ -90,6 +95,10 @@ export type Turn = {
   cards: Card[];
   expects_reply: boolean;
   tab?: 'sales' | 'week' | 'settings' | 'home';
+  /** 시연: 끝 화면을 after_ms 보여 준 뒤 이 이벤트로 다음 장면(밤 9시 인사과 보고)을 연다 (server/voice/jobs/hr_night.py) */
+  next_scene?: { event: 'night_hr'; after_ms: number };
+  /** 서버 시계가 옮겨졌다 (가게 상태 줄을 다시 불러온다) */
+  clock_moved?: boolean;
   /** 앱이 열어야 하는 것 (카카오톡 공유, 인스타) */
   open?: 'kakao_share' | 'instagram';
   /** ask_action: 도나가 아쉬운 리뷰 처리를 물었다 ("응, 진행해" / "쿠폰 빼고" / "안 해").
@@ -306,7 +315,7 @@ export const api = {
     confirm: (id: string) => request<{ ok: boolean }>(`/v1/staff/tasks/${id}/confirm`, { method: 'POST', body: '{}', headers: staffAuth() }),
     checkout: () => request<{ ok: boolean }>('/v1/staff/checkout', { method: 'POST', body: '{}', headers: staffAuth() }),
   },
-  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice'; noticeId?: string; lastTurnId?: string | null }) =>
+  turn: (input: { text?: string; source?: 'voice'; confidence?: number; addressed?: boolean; event?: 'auto_next' | 'notice' | 'night_hr'; noticeId?: string; lastTurnId?: string | null }) =>
     request<Turn>('/v1/turn', {
       method: 'POST',
       body: JSON.stringify({

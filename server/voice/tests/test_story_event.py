@@ -2,7 +2,8 @@
 
 번호는 donna-voice/docs/test-scenarios-closed-loop.md 의 I장과 같다.
 초옹장 11/17 (오후 2시부터 비), 인스타 연결(FakeGraph), 그림 엔진 mock(글자 없는 그림), 그리기는 뒤가 아니라 바로 (conftest).
-I0: 밤사이 그려 둔 포스터를 브리핑에서 보여 주고 "응"이면 바로 올린다 (2026-11-22).
+I0: 밤사이 그려 둔 포스터를 브리핑에서 보여 주고 "응"이면 바로 올린다 (2026-11-22, Figma v0.2.1 H-06 · H-07).
+    브리핑 차례는 요약 → 상세 브리핑 물음 → 스토리 이벤트(인스타 칸) → 리뷰 → 알바생 할 일. 이벤트가 있는 날은 인기 메뉴 피드를 묻지 않는다.
 I1 ~ I8: 밤사이 그리기에 실패했을 때 (predraw_failed) 예전처럼 그릴지 묻고, 다 그리면 알림으로 묻는다.
 """
 
@@ -12,9 +13,9 @@ from PIL import Image
 from app.poster_ai import image_engine
 from app.poster_ai.image_engine import PosterEngineError
 from voice import repo, staff, staff_orders, width
-from voice.instagram import media
-from voice.tests.conftest import FakeGraph, hr_log
-from voice.tests.test_instagram import Choongjang, chj, connect, run_publish, to_instagram_step  # noqa: F401 (chj 는 fixture)
+from voice.instagram import media, story_event
+from voice.tests.conftest import FakeGraph, hr_log, walk_to
+from voice.tests.test_instagram import Choongjang, chj, connect, run_publish  # noqa: F401 (chj 는 fixture)
 
 SE_ID = "se_s005_2026-11-17"
 OFFER = "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요"
@@ -22,11 +23,8 @@ TITLE = "[이벤트] 스토리 태그 손님 음료 1캔 드리기"
 
 
 def to_story_step(chj: Choongjang) -> dict:
-    """브리핑을 듣고 인스타 인기 메뉴는 "나중에" → 스토리 이벤트 단계 (없으면 끝)."""
-    response = to_instagram_step(chj)
-    if response["briefing"] and response["briefing"]["step_key"] == "instagram":
-        response = chj.turn("나중에")
-    return response
+    """브리핑을 처음부터 듣고 스토리 이벤트 단계까지 (없으면 끝)."""
+    return walk_to(chj, "story_event")
 
 
 def record() -> dict:
@@ -78,19 +76,11 @@ def test_i0_briefing_shows_and_asks(chj: Choongjang, ig_on):
     connect(chj)
     asked = to_story_step(chj)
     assert asked["type"] == "ask" and asked["ask"] == {"key": "story_event"} and asked["expects_reply"] is True
-    assert asked["briefing"] == {"step": 4, "total": 5, "step_key": "story_event"}
-    assert asked["headline"] == "이벤트 스토리를 올릴까요?"
-    assert [s["text"] for s in asked["say"]][-4:] == [
-        "오늘은 오후 2시부터 비 소식이 있어요.",
-        "비 오는 날 손님을 부르는 이벤트 포스터를 만들어 뒀어요.",
-        f"{OFFER}.",
-        f"스토리에 올리고, 알바생 할 일 맨 위에 {TITLE}를 넣을까요?",
-    ]
-    images, offer, todo = asked["cards"]
-    assert images == {"type": "images", "id": "story_images", "items": [
-        {"id": "poster", "label": "포스터", "photo_url": f"/media/{SE_ID}/poster_1.jpg", "aspect": "1024:1536"},
-        {"id": "story", "label": "스토리에 올릴 사진", "photo_url": f"/media/{SE_ID}/story_1.jpg", "aspect": "9:16"}]}
-    assert offer["id"] == "story_offer" and todo["items"][0]["title"] == TITLE
+    assert asked["briefing"] == {"step": 2, "total": 4, "step_key": "story_event"}
+    assert asked["headline"] == "비 오는 날 이벤트를 올릴까요?"  # H-06: 스토리에 올라갈 모양 한 장만 보이고 묻는다
+    assert [s["text"] for s in asked["say"]] == ["비 오는 날 이벤트 이미지를 만들었어요.", "인스타 스토리에 올릴까요?"]
+    assert asked["cards"] == [{"type": "images", "id": "story_images", "items": [
+        {"id": "story", "label": "스토리", "photo_url": f"/media/{SE_ID}/story_1.jpg", "aspect": "9:16"}]}]
     assert width.violations(asked) == []
 
 
@@ -100,9 +90,16 @@ def test_i0_yes_posts_right_away(chj: Choongjang, ig_on):
     connect(chj)
     to_story_step(chj)
     done = chj.turn("응, 올려")
-    assert done["intent"] == "instagram.post" and done["type"] == "ask_tasks"  # 다음은 알바생 할 일 묻기
-    assert [s["text"] for s in done["say"]][:2] == ["네, 이벤트 스토리를 올릴게요.", f"올라가면 알바생 할 일 맨 위에 {TITLE}를 넣을게요."]
+    # H-07: 올린 모양을 따로 보여 준다 (✓ 스토리에 올림). 게이지가 있어 가만히 있으면 다음 단계로
+    assert done["intent"] == "instagram.post" and done["type"] == "answer" and done["headline"] == "스토리에 올렸어요"
+    assert done["briefing"] == {"step": 2, "total": 4, "step_key": "story_event"} and done["expects_reply"] is False
+    assert [s["text"] for s in done["say"]] == ["스토리에 올렸어요."]
+    assert done["cards"] == [{"type": "images", "id": "story_images", "items": [
+        {"id": "story", "label": "스토리에 올림", "photo_url": f"/media/{SE_ID}/story_1.jpg", "aspect": "9:16", "checked": True}]}]
+    assert width.violations(done) == []
     assert record()["state"] == "approved" and hr_log() == [("story_poster", "approved")]
+    after = chj.turn(event="auto_next")
+    assert after["briefing"]["step_key"] == "reviews"  # 오늘은 다시 묻지 않고 리뷰 칸으로
     run_publish(chj)
     created = [params for method, path, params in fake.calls if method == "POST" and path.endswith("/media")]
     assert created == [{"media_type": "STORIES", "image_url": f"https://media.example.test/media/{SE_ID}/story_1.jpg"}]
@@ -110,12 +107,29 @@ def test_i0_yes_posts_right_away(chj: Choongjang, ig_on):
     assert card["title"] == TITLE and record()["state"] == "card_pinned"
 
 
+def test_i0_owner_image_is_used_instead_of_drawing(chj: Choongjang, monkeypatch):
+    """설정에 사장님이 준 이벤트 그림(story_event.image)이 있으면 그리지 않고 그 그림을 스토리 사진으로 둔다 (H '사장님이 준 것')."""
+    def no_drawing(prompt, images):
+        raise AssertionError("사장님 그림이 있으면 그리지 않아요")
+
+    monkeypatch.setattr(image_engine, "generate", no_drawing)
+    chj.client.post("/v1/dev/fixtures", json={"fixture": "s005_choongjang_h"})
+    saved = record()
+    assert saved["state"] == "ready" and saved["predrawn"] is True and saved["drawn"] == 1
+    assert saved["image_url"] == saved["poster_url"] == f"/media/{SE_ID}/story_1.jpg" and saved["poster_aspect"] == "1080:1920"
+    assert (media.MEDIA_DIR / SE_ID / "story_1.jpg").read_bytes() == media.source_path("/static/events/s005-rain-event.jpg").read_bytes()
+
+    repo.put("story_event", SE_ID, "s005", {**saved, "state": "generating"})
+    story_event.use_owner_image(SE_ID, "/static/events/none.jpg")  # 파일이 없으면 실패로 둔다 (브리핑은 그릴지부터 묻는다)
+    assert record()["state"] == "failed"
+
+
 def test_i0_later_does_not_post(chj: Choongjang, ig_on):
     ig_on(FakeGraph())
     connect(chj)
     to_story_step(chj)
     later = chj.turn("나중에")
-    assert later["say"][0]["text"] == "네, 오늘은 스토리를 올리지 않을게요."
+    assert later["say"][0]["text"] == "네, 오늘은 스토리를 올리지 않을게요." and later["briefing"]["step_key"] == "reviews"
     assert record()["state"] == "declined" and chj.get("/v1/instagram")["posts"] == []
     assert hr_log() == [("story_poster", "rejected")]
 
@@ -129,7 +143,7 @@ def test_i1_rainy_day_asks(chj: Choongjang, ig_on):
     connect(chj)
     asked = to_story_step(chj)
     assert asked["type"] == "ask" and asked["ask"] == {"key": "story_event"} and asked["expects_reply"] is True
-    assert asked["briefing"] == {"step": 4, "total": 5, "step_key": "story_event"}
+    assert asked["briefing"] == {"step": 2, "total": 4, "step_key": "story_event"}
     assert asked["headline"] == "스토리 이벤트를 할까요?"
     assert [s["text"] for s in asked["say"]][-4:] == [
         "오늘은 오후 2시부터 비 소식이 있어요.",
@@ -186,7 +200,7 @@ def test_i2_yes_draws_and_notifies(chj: Choongjang, ig_on):
         done = chj.turn("응, 좋아")
     finally:
         image_engine.generate = saved
-    assert done["intent"] == "instagram.post" and done["type"] == "ask_tasks"  # 다음은 알바생 할 일 묻기 (2026-11-20)
+    assert done["intent"] == "instagram.post" and done["briefing"]["step_key"] == "reviews"  # 그리는 동안 리뷰 칸으로 이어 간다
     assert [s["text"] for s in done["say"]][:2] == ["네, 이벤트 포스터를 그릴게요.", "1~2분 걸려요. 다 되면 알려 드릴게요."]
 
     prompt, files = drawn[0]
@@ -204,11 +218,11 @@ def test_i2_yes_draws_and_notifies(chj: Choongjang, ig_on):
     assert notices[-1] == ("story_event", True, "이벤트 포스터를 다 만들었어요", SE_ID)
 
     again = chj.turn("처음부터 다시")  # 오늘은 다시 묻지 않는다
-    for _ in range(8):
+    for _ in range(12):
         assert not (again["briefing"] and again["briefing"]["step_key"] == "story_event")
         if again["type"] == "end":
             break
-        again = chj.turn(event="auto_next")
+        again = chj.turn("응") if again["briefing"]["step_key"] == "detail_ask" else chj.turn(event="auto_next")
 
 
 # ── I3, I4 미리보기 → 올리기 → 알바생 할 일 ──

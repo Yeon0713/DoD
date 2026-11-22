@@ -304,7 +304,7 @@ def test_h11_donna_own_words_are_ignored():
 def test_h11_app_lines_and_briefing_echo_are_ignored():
     donna = choongjang(at=AT)
     donna.turn("오늘 일정 브리핑해 줘", addressed=True)
-    assert donna.turn("오늘 일정이에요 오후 2시부터 비 소식이 있어요 저녁 예약은 두 팀이고")["intent"] == "echo"
+    assert donna.turn("오늘은 오후 2시부터 비 소식이 있습니다")["intent"] == "echo"  # 브리핑 첫 요약 줄 (H-02)
     assert donna.turn("지금은 답하기 어려워요 조금 뒤에 다시 말씀해 주세요")["intent"] == "echo"
 
 
@@ -319,7 +319,7 @@ def test_h11_owner_commands_are_not_mistaken_for_echo():
 def test_h11_partly_misheard_echo_is_ignored_but_answers_are_not():
     donna = choongjang(at=AT)
     donna.turn("오늘 일정 브리핑해 줘", addressed=True)
-    assert donna.turn("저녁 계약은 두 팀이고")["intent"] == "echo"  # 받아쓰기가 '예약'을 '계약'으로
+    assert donna.turn("오늘은 오후 2시부터 피 소식이 있습니다")["intent"] == "echo"  # 받아쓰기가 '비'를 '피'로
     donna.turn("정우 초대해 줘", addressed=True)  # 도나: "… 카카오톡으로 보낼까요?"
     assert donna.turn("카카오톡으로 보내 줘")["intent"] == "staff.yes"  # 도나 말과 겹쳐도 대답이다
 

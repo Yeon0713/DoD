@@ -32,7 +32,7 @@ from voice.dialog import echo, intent_rules
 from voice.dialog.intent_rules import Intent
 from voice.instagram import posts, story_event
 from voice.jobs import briefing as briefing_job
-from voice.jobs import batch_ask, done_report, hr_batch, review_loop, revise_jobs, staff_tasks
+from voice.jobs import batch_ask, done_report, hr_batch, hr_night, review_loop, revise_jobs, staff_tasks
 from voice.jobs.briefing import GAUGE, STEP_KEYS, TOTAL, answer, say
 
 BRIEFING_INTENTS = {"briefing.start", "briefing.next", "briefing.repeat", "briefing.restart", "briefing.jump",
@@ -50,7 +50,12 @@ SITUATIONS = {
     "ask_story_event": "도나가 비 오는 날 이벤트 포스터 이야기를 하며 '스토리에 올릴까요?' 하고 물었어요",
     "ask_tasks": "도나가 '알바생 할 일로 첫째 …, 둘째 …를 넣을까요?' 하고 물었어요",
     "ask_holiday": "도나가 '○월 ○일을 쉬는 날로 적을게요. 맞아요?' 하고 물었어요",
+    "ask_detail": "도나가 오늘 요약을 말한 뒤 '상세 브리핑을 시작할까요?' 하고 물었어요",
+    "ask_promotion": "인사과가 '이 업무는 앞으로 먼저 처리하고 저녁에 보고할까요?' 하고 승진을 물었어요",
 }
+# "상세 브리핑을 시작할까요?"(H-05)의 대답. 같은 "응"도 묻는 상황에 따라 다른 뜻으로 갈려서 모두 받는다
+DETAIL_YES = {"permission.yes", "instagram.post", "action.approve", "briefing.next"}
+DETAIL_NO = {"permission.no", "instagram.later", "action.cancel"}
 # 이 질문들을 묻는 중에는 놓친 알바생 할 일 질문으로 끼어들지 않는다
 LATER_RE = re.compile(r"나중|다음에|내일")  # 인스타 "나중에": 반려로 세지 않는다 (9-0 n)
 ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask_holiday", "ask", "show_detail")
@@ -76,17 +81,31 @@ def asking_story(session: dict) -> bool:
     return session.get("step") == "story_event" and session.get("last_type") == "ask"
 
 
+def asking_detail(session: dict) -> bool:
+    """브리핑 요약 뒤 '상세 브리핑을 시작할까요?'(H-05)를 묻고 대답을 기다리는 중."""
+    return session.get("step") == "detail_ask" and session.get("last_type") == "ask"
+
+
+def asking_promotion(session: dict) -> bool:
+    """밤 9시 인사과가 '스토리는 먼저 올리고 저녁에 보고할까요?'(K-01)를 묻고 대답을 기다리는 중."""
+    return bool(session.get("promotion")) and session.get("last_type") == "ask"
+
+
 def situation(session: dict) -> str:
     last = session.get("last_type") or ""
     if last == "ask_action" and session.get("story_id"):
         last = "ask_story"
     elif asking_story(session):
         last = "ask_story_event"
+    elif asking_detail(session):
+        last = "ask_detail"
+    elif asking_promotion(session):
+        last = "ask_promotion"
     return SITUATIONS.get(last, "도나는 듣고만 있어요")
 
 
 def understand(text: str, session: dict, view, addressed: bool = False) -> Intent:
-    found = intent_rules.match(text, session.get("last_type"), addressed, instagram=asking_instagram(session) or asking_story(session))
+    found = intent_rules.match(text, session.get("last_type"), addressed, instagram=asking_instagram(session) or asking_story(session) or asking_detail(session) or asking_promotion(session))  # "응"·"아니"를 예/아니오로
     if found is not None:
         return found
     judged = intent_judge.judge(view, text, situation(session))
@@ -110,8 +129,9 @@ def _go(brief: dict, session: dict, key: str | None) -> dict:
     if key is None:
         session.update(step=None, mode="ended")
         activity.log(brief["store_id"], "owner", "오늘 일정 브리핑을 들었어요", "briefing_heard")
-        return {**briefing_job.end_response(brief["store_id"]), "briefing": _gauge("end")}
+        return {**briefing_job.end_response(brief["store_id"], session), "briefing": _gauge("end")}
     session.update(step=key, mode="briefing")
+    session.setdefault("heard", {})[key] = iso(clock.now())
     return _step(brief, key)
 
 
@@ -259,8 +279,12 @@ def story_reply(name: str, session: dict, brief: dict, view, said: str | None = 
     if story_event.waiting_in_briefing(record):
         edits = intent_rules.edits_in(intent_rules.normalize(said or ""))  # "할 일은 빼고 올려"
         decided = story_event.decide(view, "action.approve" if yes else "action.cancel", edits, record["id"], said)
-        lead = [s["text"] for s in decided["say"]] if yes else ["네, 오늘은 스토리를 올리지 않을게요."]
         brief = briefing_job.refresh_instagram(view.store_id) or brief  # 오늘은 다시 묻지 않는다
+        if yes and decided["headline"] != "올리지 않을게요":  # H-07: 올린 모양을 그대로 보여 준다. 가만히 있으면 다음 단계로
+            session.update(step="story_event", mode="briefing")
+            return {**answer("스토리에 올렸어요", [say("스토리에 올렸어요.")], [story_event.story_card(record, posted=True)]),
+                    "briefing": _gauge("story_event")}
+        lead = [s["text"] for s in decided["say"]] if yes else ["네, 오늘은 스토리를 올리지 않을게요."]
         return _prefixed(_go(brief, session, _after(brief, "story_event")), *lead)
     if yes:
         story_event.start(view.store_id)
@@ -286,6 +310,8 @@ def _batch_reply(view, intent: Intent, session: dict) -> dict:
     if not in_briefing:
         return response
     brief = briefing_job.refresh_steps(view.store_id)
+    if response.get("own_screen"):  # J-10b: 고쳐 올린 화면을 따로 보여 주고, 가만히 있으면 다음 단계로
+        return {**response, "briefing": _gauge(step)}
     following = _go(brief, session, _after(brief, step))
     return {**following, "say": response["say"] + following["say"]}
 
@@ -303,10 +329,22 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
         return answer_question(view, intent.owner_said)
     if name.startswith("navigate."):
         return _navigate(view, name.split(".", 1)[1])
+    if name == "notice.open" and session.pop("hr_night", False):  # 밤 9시 인사과 보고 (K-01)
+        return hr_night.report(view) or answer("오늘은 보고할 게 없어요", [say("오늘은 인사과 보고가 없어요.")], [])
+    if session.get("promotion") and session.get("last_type") == "ask" and (name in DETAIL_YES or name in DETAIL_NO):  # K-01 대답
+        job = session.pop("promotion")
+        return hr_night.decide(view, job, name in DETAIL_YES, intent.owner_said)
+    if brief is not None and session.get("step") == "detail_ask" and session.get("last_type") == "ask":  # H-05 상세 브리핑을 시작할까요?
+        if name in DETAIL_YES:
+            return _go(brief, session, _after(brief, "detail_ask"))
+        if name in DETAIL_NO:
+            return _prefixed(_go(brief, session, None), "네, 필요하실 때 다시 불러 주세요.")
     if session.get("last_type") == "ask_tasks" and (name.startswith("action.") or name in ("permission.yes", "permission.no")):
         name = {"permission.yes": "action.approve", "permission.no": "action.cancel"}.get(name, name)
         response = staff_tasks.decide(view, name, intent.edits, session, intent.owner_said)
         briefing_job.refresh_steps(view.store_id)
+        if session.get("step") == "staff_tasks" and session.get("mode") == "briefing" and response["type"] == "answer":
+            response = {**response, "briefing": _gauge("staff_tasks")}  # 브리핑 중 대답(H-12): 가만히 있으면 끝(H-12b)으로 넘어간다
         return {**response, "answered_tasks": True, **({"keep_context": "ask_tasks"} if response["type"] == "ask_tasks" else {})}
     if name in ("store.holiday", "store.holiday_cancel"):  # 쉬는 날 (voice/holidays.py)
         return holidays.from_words(view, name, intent.owner_said)
@@ -360,7 +398,8 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
             return {**copy.deepcopy(brief["details"][intent.jump_to]["read"]), "briefing": _gauge(intent.jump_to)}
         name = "briefing.jump"  # 읽을 리뷰가 없으면 그 단계로만 옮긴다 (허락 질문 등)
     if name == "briefing.jump":
-        target = intent.jump_to if intent.jump_to in STEP_KEYS else "reviews"
+        target = {"schedule": "sum_weather", "positive": "reviews"}.get(intent.jump_to, intent.jump_to)
+        target = target if target in STEP_KEYS else "reviews"
         if not brief["steps"].get(target) and not (target == "reviews" and brief["steps"].get("negative")):
             return answer("지금은 알려 드릴 게 없어요", [say("지금은 알려 드릴 게 없어요.")], [])
         return _go(brief, session, _after(brief, target, inclusive=True))
@@ -458,6 +497,10 @@ def _handle(request: dict) -> dict:
         elif notice.get("kind") == story_event.KIND:  # 이벤트 포스터를 다 그렸어요
             session["story_id"] = notice.get("alert_id")
             session.pop("alert_id", None)
+        elif notice.get("kind") == hr_night.KIND:  # 밤 9시 인사과 보고 (jobs/hr_night.py)
+            session["hr_night"] = True
+            session.pop("alert_id", None)
+            session.pop("story_id", None)
         elif notice.get("kind") == hr_batch.KIND:  # 사원 업무 묶음 창 (jobs/hr_batch.py)
             session["hr_batch"] = notice.get("alert_id")
             session.pop("alert_id", None)
@@ -465,6 +508,12 @@ def _handle(request: dict) -> dict:
         else:
             session.pop("story_id", None)
             session["alert_id"] = notice.get("alert_id") or (review_loop.pending(store_id) or {}).get("id")
+        intent = Intent("notice.open", None)
+    elif request.get("event") == "night_hr":  # 시연: 아침 브리핑 끝 화면 뒤 밤 9시로 (jobs/hr_night.py)
+        if hr_night.has_scene(store_id):
+            hr_night.jump_to_night(store_id)
+            session["hr_night"] = True
+            session["clock_moved"] = True
         intent = Intent("notice.open", None)
     elif request.get("event") == "auto_next" or utterance is None:
         intent = Intent("briefing.next", None)
@@ -507,6 +556,8 @@ def _handle(request: dict) -> dict:
         session.pop("notebook_pending", None)  # "어느 규칙을 지울까요?"에 대답하지 않고 넘어갔다
     if response.get("report"):  # 사후 보고를 앱에 보냈다 (9-0 h)
         hr.mark_reported(store_id, response["report"])
+    if response.get("promotion"):  # 밤 9시 승진을 묻는 중 (K-01). 대답은 dispatch 가 hr_night.decide 로
+        session["promotion"] = response["promotion"]
     if response.get("holiday"):  # 쉬는 날을 묻는 중 (holiday.yes / holiday.no 가 본다)
         session["holiday_pending"] = response["holiday"]
     response.setdefault("briefing", None)
@@ -523,6 +574,8 @@ def _handle(request: dict) -> dict:
         **({"ask": response["ask"]} if response.get("ask") else {}),
         **({"tab": response["tab"]} if response.get("tab") else {}),
         **({"open": response["open"]} if response.get("open") else {}),
+        **({"next_scene": response["next_scene"]} if response.get("next_scene") else {}),
+        **({"clock_moved": True} if session.pop("clock_moved", False) else {}),
     }
     echo.remember(store_id, [item["text"] for item in response["say"]])  # 이 말이 마이크로 다시 들어오면 흘려듣는다
     session["last_turn_id"] = response["turn_id"]

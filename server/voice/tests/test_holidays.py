@@ -9,7 +9,7 @@ from voice import config, holidays, hours, repo
 from voice.context import load
 from voice.instagram import posts
 from voice.jobs import briefing
-from voice.tests.conftest import choongjang
+from voice.tests.conftest import choongjang, walk_to
 
 TUE = dt.date(2026, 11, 17)
 
@@ -67,8 +67,7 @@ def test_naver_day_is_asked_in_the_morning_before_it_counts(naver):
     [found] = holidays.items(repo.store("s005"))
     assert found == {"date": "2026-11-26", "source": "naver", "note": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다", "confirmed": False}
     assert hours.on(repo.store("s005"), dt.date(2026, 11, 26)) is not None  # 확인 전에는 쉬는 날이 아니다
-    donna.turn("오늘 일정 브리핑해 줘")
-    asked = donna.turn("다음")
+    asked = walk_to(donna, "holiday")  # 요약과 상세 브리핑 물음 다음, 상세 첫머리에 묻는다
     assert asked["type"] == "ask_holiday" and asked["briefing"]["step_key"] == "holiday"
     assert [s["text"] for s in asked["say"]] == ["네이버 소식에 '11월 26일(목) 가게 사정으로 하루 쉬어 갑니다'라고 있어요.",
                                                 "11월 26일 목요일을 쉬는 날로 적을게요. 맞아요?"]
@@ -79,8 +78,7 @@ def test_naver_day_is_asked_in_the_morning_before_it_counts(naver):
 def test_naver_day_rejected_is_not_a_day_off(naver):
     donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})], SAYS)
     briefing.prepare("s005")
-    donna.turn("오늘 일정 브리핑해 줘")
-    donna.turn("다음")
+    walk_to(donna, "holiday")
     donna.turn("아니")
     assert holidays.unconfirmed(repo.store("s005"), dt.date(2026, 11, 17)) == []  # 다시 묻지 않는다
     assert hours.on(repo.store("s005"), dt.date(2026, 11, 26)) is not None  # 쉬는 날이 아니다
@@ -93,8 +91,7 @@ def test_naver_day_rejected_is_not_asked_again_next_day(naver):
     item = {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]}
     donna = naver([call("submit_holidays", item)], SAYS, [call("submit_holidays", item)])  # 다음 날 같은 글의 감사는 캐시
     briefing.prepare("s005")
-    donna.turn("오늘 일정 브리핑해 줘")
-    donna.turn("다음")
+    walk_to(donna, "holiday")
     assert donna.turn("아니")["headline"] == "그대로 둘게요"
     donna.clock("2026-11-18T09:30:00+09:00")
     briefing.prepare("s005")

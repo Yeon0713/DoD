@@ -5,20 +5,20 @@ import datetime as dt
 from voice import clock, hr, repo
 from voice.clock import SEOUL
 from voice.jobs import briefing, done_report
-from voice.tests.conftest import FakeGraph, hr_log
+from voice.tests.conftest import FakeGraph, hr_log, walk_to
 from voice.tests.test_instagram import Choongjang, chj, connect  # noqa: F401 (chj 는 fixture)
 from voice.tests.test_scenario_b import night_then_morning
 
 
 def to_report(donna) -> dict:
-    donna.turn("오늘 일정 브리핑해 줘")
-    return donna.turn("다음")
+    """밤사이 바로 단 사과 답글을 알리는 단계(H-10 negative_done)까지 듣는다. 앱에 보내면 보고한 것으로 적는다."""
+    return walk_to(donna, "negative_done")
 
 
 def test_assistant_done_reported_then_undone_and_demoted():
     donna, rid = night_then_morning()
     report = to_report(donna)
-    assert report["briefing"]["step_key"] == "done_report"
+    assert report["briefing"]["step_key"] == "negative_done"
     [event] = [e for e in hr.events("s001") if e["reaction"] == "done"]
     assert event["reported_at"] == "2026-11-17T09:00:00+09:00"  # 앱에 보낸 때 (9-0 h)
     undone = donna.turn("그 답글 지워")
@@ -84,10 +84,7 @@ def test_instagram_undo_deletes_on_graph(chj: Choongjang, ig_on):
     step = briefing.current("s005")["steps"]["done_report"]
     assert "인스타에 게시물을 올렸어요." in [s["text"] for s in step["say"]]
     chj.session_id = "sess_ig"
-    chj.turn("오늘 일정 브리핑해 줘")
-    for _ in range(3):
-        if chj.turn("다음")["briefing"]["step_key"] == "done_report":
-            break
+    assert walk_to(chj, "done_report")["briefing"]["step_key"] == "done_report"
     undone = chj.turn("어제 인스타 지워")
     assert undone["headline"] == "지웠어요" and "DELETE" in [m for m, _, _ in fake.calls]
     statuses = sorted(p["status"] for p in repo.all_of("instagram_post", "s005") if p["kind"] == "feed")

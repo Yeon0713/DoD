@@ -25,6 +25,7 @@
 import datetime as dt
 import io
 import logging
+import shutil
 import threading
 
 from PIL import Image
@@ -36,6 +37,7 @@ from voice import activity, clock, hr, notices, repo, speech, staff
 from voice.clock import iso
 from voice.context import VoiceStore, load
 from voice.instagram import media, posts
+from voice.instagram.graph import InstagramError
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,8 @@ def preset(store_id: str) -> dict | None:
     found = repo.settings(store_id).get("story_event") or {}
     if not (found.get("offer") and found.get("staff_task")):
         return None
-    return {"headline": found.get("headline") or "비 오는 날 이벤트", "offer": found["offer"], "staff_task": found["staff_task"]}
+    return {"headline": found.get("headline") or "비 오는 날 이벤트", "offer": found["offer"], "staff_task": found["staff_task"],
+            **({"image": found["image"]} if found.get("image") else {})}
 
 
 # ── 1. 브리핑에서 묻기 ──
@@ -93,13 +96,10 @@ def step(view: VoiceStore) -> dict | None:
     if not posts.top_menus(view, 1)["items"]:
         return None
     record = get(event_id(view.store_id, today))
-    if waiting_in_briefing(record):  # 밤사이 그려 둔 포스터: 보여 주고 올릴지 묻는다
-        says = [say(f"오늘은 {rain_text(rain, today)} 소식이 있어요."),
-                say("비 오는 날 손님을 부르는 이벤트 포스터를 만들어 뒀어요.", None, ["story_images"]),
-                say(f"{record['offer']}.", None, ["story_offer"]),
-                say(_offer(record))]
-        cards = [_images(record), *_offer_cards(record, posted=False, use_card=record["use_card"])]
-        response = answer("이벤트 스토리를 올릴까요?", says, cards, kind="ask", ask={"key": "story_event"})
+    if waiting_in_briefing(record):  # 밤사이 그려 둔 포스터: 스토리에 올라갈 모양 그대로 보여 주고 올릴지 묻는다 (H-06)
+        says = [say(f"{record['headline']} 이미지를 만들었어요.", None, ["story_images"]),
+                say("인스타 스토리에 올릴까요?")]
+        response = answer(f"{speech.josa(record['headline'], '을', '를')} 올릴까요?", says, [story_card(record)], kind="ask", ask={"key": "story_event"})
         response["expects_reply"] = True
         return response
     if record and not (record.get("predrawn") and record["state"] == "failed"):
@@ -111,6 +111,30 @@ def step(view: VoiceStore) -> dict | None:
     response = answer("스토리 이벤트를 할까요?", says, _offer_cards(event, posted=False), kind="ask", ask={"key": "story_event"})
     response["expects_reply"] = True
     return response
+
+
+def auto_post(view: VoiceStore) -> dict | None:
+    """포스터 대리(사장님이 밤 9시에 승진을 허락, hr_night): 밤사이 준비한 포스터를 묻지 않고 그날 첫 식사 피크 한 시간 전에 올린다.
+    올라가면 인사과에 done 으로 남고(on_post_done), 그날 밤 9시 인사과 보고에서 알린다. 브리핑에서는 묻지 않는다 (step)."""
+    from voice.jobs import schedule
+
+    event = preset(view.store_id)
+    if event is None or hr.asks(view.store_id, "story_poster", offer=bool(event.get("offer"))) is not None:
+        return None
+    if not posts.connection(view.store_id)["connected"]:
+        return None
+    with repo._lock:
+        record = get(event_id(view.store_id, view.now.date()))
+        if not waiting_in_briefing(record):
+            return None
+        built = {"kind": "story", "slides": [{"src": record["image_url"], "top_label": record["headline"], "title": record["offer"]}],
+                 "caption": None, "quote": None}
+        post = posts.save({**posts.create(view.store_id, built), "event_id": record["id"]})
+        record = save({**record, "state": "approved", "post_id": post["id"], "decided_at": iso(clock.now()), "auto": True})
+    due = next((at for at, _ in schedule.slots(view.store, view.now.date(), 1) if at > view.now), view.now)
+    posts.queue_publish(view.store_id, post, due)
+    activity.log(view.store_id, "donna", "비 오는 날 이벤트 스토리를 올리기로 했어요 (저녁에 보고)", "story_event_auto")
+    return record
 
 
 def waiting_in_briefing(record: dict | None) -> bool:
@@ -153,8 +177,29 @@ def prepare_poster(view: VoiceStore) -> dict | None:
             "use_card": True, "drawn": 0, "image_url": None, "poster_url": None, "post_id": None, "task_id": None,
             "error": None, "started_at": iso(clock.now()), "created_at": iso(clock.now()),
         })
+    if event.get("image"):  # 사장님이 준 이벤트 그림이 있으면 그리지 않고 그대로 쓴다 (Figma v0.2.1 H '사장님이 준 것')
+        return use_owner_image(se_id, event["image"])
     activity.log(view.store_id, "donna", "비 오는 날 이벤트 포스터를 미리 그렸어요", "story_event_predrawn")
     return draw(se_id, notify=False)
+
+
+def use_owner_image(se_id: str, url: str) -> dict | None:
+    """설정의 story_event.image ('/static/events/….jpg', 1080×1920 JPEG)를 스토리 사진과 포스터로 둔다. 파일이 없으면 failed."""
+    record = get(se_id)
+    try:
+        source = media.source_path(url)
+        folder = media.MEDIA_DIR / se_id
+        folder.mkdir(parents=True, exist_ok=True)
+        story = folder / "story_1.jpg"
+        shutil.copyfile(source, story)
+        with Image.open(story) as picture:
+            size = f"{picture.width}:{picture.height}"
+    except (InstagramError, OSError) as error:
+        logger.warning("사장님이 준 이벤트 그림을 쓰지 못했어요 %s: %s", se_id, error)
+        return save({**record, "state": "failed", "error": str(error)})
+    activity.log(record["store_id"], "donna", "사장님이 준 비 오는 날 이벤트 그림을 준비했어요", "story_event_predrawn")
+    return save({**record, "state": "ready", "drawn": 1, "image_url": f"/media/{se_id}/{story.name}",
+                 "poster_url": f"/media/{se_id}/{story.name}", "poster_aspect": size, "ready_at": iso(clock.now())})
 
 
 def start(store_id: str) -> dict | None:
@@ -235,6 +280,13 @@ def draw(se_id: str, notify: bool = True) -> dict | None:
 
 
 # ── 3. 미리보기와 대답 ──
+
+
+def story_card(record: dict, posted: bool = False) -> dict:
+    """브리핑의 스토리 사진 한 장 (H-06 '스토리', H-07 '✓ 스토리에 올림'). 9:16 그대로."""
+    return {"type": "images", "id": "story_images",
+            "items": [{"id": "story", "label": "스토리에 올림" if posted else "스토리", "photo_url": record["image_url"], "aspect": "9:16",
+                       **({"checked": True} if posted else {})}]}
 
 
 def _images(record: dict) -> dict:
@@ -348,6 +400,8 @@ def on_post_done(store_id: str, post: dict) -> None:
                      say=["이벤트 스토리를 올리지 못했어요.", "알바생 할 일에도 넣지 않았어요."])
         return
     activity.log(store_id, "donna", "인스타에 비 오는 날 이벤트 스토리를 올렸어요", "story_event_posted")
+    if record.get("auto"):  # 대리가 묻지 않고 올렸다: 밤 9시 인사과 보고에서 알린다 (jobs/hr_night.py)
+        _record(record, "done", None)
     if not record["use_card"]:
         save({**record, "state": "published", "permalink": post.get("permalink")})
         notices.push(store_id, KIND, "이벤트 스토리를 올렸어요", say=["이벤트 스토리를 올렸어요."])

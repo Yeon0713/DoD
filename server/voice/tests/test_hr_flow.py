@@ -7,7 +7,7 @@ from voice import clock, hr, repo
 from voice.instagram import posts
 from voice.jobs import briefing
 from voice.tests.conftest import FakeGraph, baseline, hr_log, prepared
-from voice.tests.test_instagram import Choongjang, chj, connect, run_publish  # noqa: F401 (chj 는 fixture)
+from voice.tests.test_instagram import Choongjang, chj, connect, no_story_event, run_publish  # noqa: F401 (chj 는 fixture)
 
 
 # ── 4-b 칭찬 리뷰 답글 ──
@@ -65,6 +65,7 @@ def test_assistant_posts_instagram_before_the_first_peak(chj: Choongjang, ig_on)
 
 def test_staff_instagram_is_asked_like_intern(chj: Choongjang, ig_on):
     ig_on(FakeGraph())
+    no_story_event(chj)  # 비 오는 날 이벤트가 있는 날은 스토리만 묻는다
     connect(chj)
     chj.client.post("/v1/dev/hr", json={"store_id": "s005", "ranks": {"instagram_post": "staff"}})
     briefing.prepare("s005")
@@ -145,11 +146,11 @@ def test_intern_staff_tasks_are_asked_one_by_one():
     from voice.tests.conftest import choongjang
 
     choongjang(keep_tasks=True, at=None)
-    assert len(proposals.for_briefing("s005", "2026-11-17")) == 1  # 픽스처의 면 교정 제안
+    assert len(proposals.for_briefing("s005", "2026-11-17")) == 2  # 픽스처의 면 교정 제안과 예약 메모의 알레르기 (규칙)
     proposals.create("s005", dept="customer", by="negative_review", ask_on="2026-11-17", dedupe=False,
                      payload={"title": "배달 용기 이중 실링", "detail": "랩을 두 번 씌워 주세요", "phase": "open", "days": 2,
                               "must_confirm": True, "urgent": False}, reason={"type": "review", "review_id": "rv_0410"})
-    assert len(staff_tasks.step(load("s005"), clock.now())["tasks"]) == 2  # 사원: 묶어서
+    assert len(staff_tasks.step(load("s005"), clock.now())["tasks"]) == 3  # 사원: 묶어서
     hr.set_ranks("s005", {"review_fix_task": "intern"})
     first = staff_tasks.step(load("s005"), clock.now())
     assert len(first["tasks"]) == 1  # 인턴: 한 건씩
@@ -191,8 +192,12 @@ def test_waiting_replies_go_out_once_promoted(monkeypatch):
     assert {r["reply_status"] for r in after} == {"scheduled"} and {r["reply_trigger"] for r in after} == {"auto"}
     assert all(clock.parse(r["reply_post_at"]) > clock.now() for r in after)  # 지난 때로 올리지 않는다
     donna.clock("2026-11-19T09:30:00+09:00")
-    report = briefing.current("s005")["steps"]["done_report"]
-    assert report is not None and any(row["id"] == "dr_negative_reply" for row in report["cards"][0]["rows"])  # 다음 날 사후 보고
+    steps = briefing.current("s005")["steps"]
+    # 다음 날 알린다: 바로 단 사과 답글은 H-10 단계가 보여 주고 보고하며 (report), 사후 보고(done_report)에서는 뺀다
+    negative_reply = [e["id"] for e in hr.events("s005") if e["job"] == "negative_reply" and e["reaction"] == "done"]
+    assert steps["negative_done"] is not None and steps["negative_done"]["report"] == negative_reply
+    report = steps["done_report"]
+    assert report is None or all(row["id"] != "dr_negative_reply" for row in report["cards"][0]["rows"])
 
 
 def briefing_step(donna, key: str) -> dict:

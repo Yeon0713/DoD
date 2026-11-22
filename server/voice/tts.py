@@ -1,5 +1,11 @@
-"""도나의 숫자 읽기와 CLOVA Voice 실시간 음성 합성."""
+"""도나의 숫자 읽기와 CLOVA Voice 실시간 음성 합성.
+
+같은 문장은 한 번만 합성하고 기억해 둔다 (CACHE_SIZE 개까지, 서버를 다시 켜면 비운다). 브리핑은 미리 짠 문장이라
+시연 데이터를 넣을 때 warm 으로 뒤에서 미리 합성해 두면, 단계가 넘어갈 때 목소리를 기다리지 않는다 (2026-11-22).
+"""
 import re
+import threading
+from collections import OrderedDict
 
 import httpx
 
@@ -52,7 +58,42 @@ def available() -> bool:
     return ENABLED and all(re.fullmatch(r"[!-~]+", key) for key in keys)
 
 
+CACHE_SIZE = 400
+_cache: "OrderedDict[str, bytes]" = OrderedDict()
+_cache_lock = threading.Lock()
+
+
 def synthesize(text: str) -> bytes:
+    """text 는 spoken() 을 거친 문장. 기억해 둔 소리가 있으면 그것을 준다."""
+    with _cache_lock:
+        if text in _cache:
+            _cache.move_to_end(text)
+            return _cache[text]
+    audio = _request(text)
+    with _cache_lock:
+        _cache[text] = audio
+        while len(_cache) > CACHE_SIZE:
+            _cache.popitem(last=False)
+    return audio
+
+
+def warm(lines: list[str]) -> None:
+    """앱이 곧 읽을 문장들을 뒤에서 미리 합성해 둔다 (기다리지 않는다). 실패하면 그 문장은 앱이 부를 때 다시 한다."""
+    if not available():
+        return
+    phrases = list(dict.fromkeys(spoken(line.strip()) for line in lines if line and line.strip()))
+
+    def run() -> None:
+        for phrase in phrases:
+            try:
+                synthesize(phrase)
+            except httpx.HTTPError:
+                continue
+
+    threading.Thread(target=run, name="tts-warm", daemon=True).start()
+
+
+def _request(text: str) -> bytes:
     response = httpx.post(
         "https://naveropenapi.apigw.ntruss.com/tts-premium/v1/tts",
         headers={

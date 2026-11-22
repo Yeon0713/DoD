@@ -100,6 +100,7 @@ def seed(name: str, *, fresh: bool) -> dict:
         # 밤사이 준비 결과 저장본 (voice/prepared_snapshot.py): CLOVA 를 기다리지 않고 바로 브리핑할 수 있다
         _mark_fixture(store_id)
         queue.run_due()
+        briefing.assemble(store_id)  # 브리핑 단계는 지금 코드로 다시 짠다 (순서·문구를 고쳐도 저장본을 다시 만들지 않게, 모델 안 부름)
         return {"store_id": store_id, "loaded": True, "prepared": "snapshot", "now": clock.iso(clock.now())}
     if fresh or repo.store(store_id) is None:
         result = {**load_fixtures(payload), "loaded": True}

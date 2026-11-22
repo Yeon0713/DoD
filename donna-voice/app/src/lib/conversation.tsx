@@ -40,7 +40,10 @@ type Convo = {
 
 const Ctx = createContext<Convo | null>(null);
 const TAB_PATH = { home: '/', week: '/calendar', sales: '/sales', settings: '/settings' } as const;
-const AUTO_NEXT_MS = 3000;
+// 한 단계를 다 말한 뒤 다음 단계로 넘어가기 전 쉬는 시간. 사장님이 끼어들 틈이다.
+// 요약 세 줄(sum_*)은 같은 카드에서 줄만 바뀌어서 짧게 쉰다 (Figma v0.2.1 H-02 ~ H-04, 2026-11-22: 3초는 너무 길었다)
+const AUTO_NEXT_MS = 1200;
+const SUMMARY_NEXT_MS = 500;
 /** 도나가 답한 뒤, 또는 "도나야"만 부른 뒤 이만큼은 부르지 않아도 듣는다 (빅스비가 답한 뒤 이어서 듣는 것과 같다). */
 const FOLLOW_MS = 8000;
 
@@ -214,6 +217,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
         if (await speakAll(t.say, my)) openFollow();
         return;
       }
+      if (t.clock_moved) reloadHome(); // 밤 9시로 넘어갔다: 가게 상태 줄(영업 끝)을 다시 불러온다
       setCaption(t.say.find((s) => s.caption)?.caption ?? null);
       setFocus([]);
       setProgress(0);
@@ -223,6 +227,20 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
       if (finished) openFollow();
       // 한 단계를 다 말하고 사장님이 가만히 있으면 다음 단계로 넘어간다. 물어본 뒤에는 대답을 기다린다.
       const briefingStep = t.type === 'answer' && !!t.briefing && !t.expects_reply && !/^detail\./.test(t.intent);
+      // 시연: 브리핑 끝 화면을 보여 준 뒤 밤 9시 인사과 보고로 넘어간다 (Figma J-12b → K-01)
+      const scene = t.next_scene;
+      if (finished && scene) {
+        clearAuto();
+        autoTimer.current = setTimeout(() => {
+          if (token.current !== my) return;
+          api
+            .turn({ event: scene.event, lastTurnId: lastTurnId.current })
+            .then((n) => {
+              if (token.current === my) void handle(n);
+            })
+            .catch(() => {});
+        }, scene.after_ms);
+      }
       if (finished && briefingStep) {
         clearAuto();
         autoTimer.current = setTimeout(() => {
@@ -233,7 +251,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
               if (token.current === my) void handle(n);
             })
             .catch(() => {});
-        }, AUTO_NEXT_MS);
+        }, t.briefing?.step_key?.startsWith('sum_') ? SUMMARY_NEXT_MS : AUTO_NEXT_MS);
       }
     },
     [reloadHome, router, speakAll, openFollow, closeFollow, cancelPlayback],

@@ -3,30 +3,40 @@
 import time
 
 from voice import width
-from voice.tests.conftest import Donna, baseline, prepared
+from voice.tests.conftest import Donna, baseline, prepared, walk_to
 
 AWAITING = {"rv_0412", "rv_0405", "rv_0409", "rv_0410", "rv_0408"}
 
 
 def test_d1_nothing_scheduled_today():
+    """행사·경기·예약이 없으면 요약에 일정 줄이 없다. 밤사이 리뷰도 없으면 요약 없이 "오늘은 평소와 같아요"로 바로 묻는다 (H-05)."""
     payload = baseline()
     payload["events"], payload["games"], payload["reservations"] = [], [], []
-    d1 = prepared(payload).turn("오늘 일정 브리핑해 줘")
-    assert d1["headline"] == "오늘은 평소와 같아요" and d1["cards"] == [] and d1["briefing"]["step"] == 1
+    donna = prepared(payload)
+    assert donna.home()["cards"][0]["rows"][0] == {"id": "p_schedule", "kind": "schedule", "value": "평소와 같아요"}
+    d1 = donna.turn("오늘 일정 브리핑해 줘")
+    assert d1["briefing"]["step_key"] == "sum_reviews" and [r["kind"] for r in d1["cards"][0]["rows"]] == ["reviews"]
+    assert donna.turn("다음")["briefing"]["step_key"] == "detail_ask"  # 예약 줄(sum_resv)이 없다
+
+    payload["reviews"] = []
+    empty = prepared(payload).turn("오늘 일정 브리핑해 줘")
+    assert empty["type"] == "ask" and empty["briefing"] == {"step": 1, "total": 4, "step_key": "detail_ask"}
+    assert empty["headline"] == "오늘은 평소와 같아요" and empty["cards"] == []
+    assert [s["text"] for s in empty["say"]] == ["오늘은 행사나 예약이 없어요.", "상세 브리핑을 시작할까요?"]
 
 
-def test_d2_no_reviews_waiting_skips_steps_2_and_3():
+def test_d2_no_reviews_waiting_skips_reply_steps():
+    """답글 기다리는 리뷰가 없으면 밤사이 리뷰 수만 알리고, 예약한 답글(H-09)·아쉬운 리뷰 단계를 건너뛴다."""
     payload = baseline()
     for review in payload["reviews"]:
         if review["id"] in AWAITING:
             review.update(reply_status="posted", reply_by="owner", reply_text="감사해요!", reply_posted_at="2026-11-17T08:00:00+09:00")
     donna = prepared(payload)
-    donna.turn("오늘 일정 브리핑해 줘")
-    d2 = donna.turn("다음")
-    assert d2["briefing"]["step"] == 3  # 리뷰 칸을 건너뛰어 게이지바가 한꺼번에 두 칸 찬다
-    d3 = donna.turn("다음")  # 예약할 좋은 리뷰도 없어 5단계도 건너뛴다
-    assert d3["type"] == "end"
-    assert "p_reviews" not in [r["id"] for r in donna.home()["cards"][0]["rows"]]
+    d2 = walk_to(donna, "reviews")
+    assert d2["briefing"]["step"] == 3 and d2["headline"] == "리뷰 4건이 도착했습니다"  # 사장님이 이미 답한 리뷰도 도착한 리뷰로 센다
+    d3 = donna.turn("다음")
+    assert d3["briefing"]["step_key"] == "staff_tasks"  # 답글 단계는 모두 건너뛰어 알바생 할 일로
+    assert "p_replies" not in [r["id"] for r in donna.home()["cards"][0]["rows"]]
 
 
 def test_d3_no_scheduled_replies_goes_to_end():
@@ -34,14 +44,14 @@ def test_d3_no_scheduled_replies_goes_to_end():
     for review in payload["reviews"]:
         if review["id"] in {"rv_0409", "rv_0410", "rv_0408"}:
             review.update(reply_status="posted", reply_by="owner", reply_text="감사해요!", reply_posted_at="2026-11-17T08:00:00+09:00")
-    donna = prepared(payload, permission=True)  # 허락했지만 바로 답한 리뷰가 없어 3단계도 건너뛴다
-    steps = [donna.turn("오늘 일정 브리핑해 줘")["briefing"]["step"]]
+    donna = prepared(payload, permission=True)  # 부정 리뷰 답글 대리지만 바로 답한 리뷰가 없어 H-10 단계도 건너뛴다
+    steps = [donna.turn("오늘 일정 브리핑해 줘")["briefing"]["step_key"]]
     while True:
         response = donna.turn("다음")
         if response["type"] == "end":
             break
-        steps.append(response["briefing"]["step"])
-    assert steps == [1, 2, 3]
+        steps.append(response["briefing"]["step_key"])
+    assert steps == ["sum_reviews", "sum_resv", "detail_ask", "reviews", "staff_tasks"]
 
 
 def test_d4_every_response_fits_the_screen():

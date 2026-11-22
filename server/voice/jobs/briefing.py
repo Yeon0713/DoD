@@ -15,20 +15,30 @@ v0.2.1 화면 규칙 (문서 17장, Figma 'v0.2.1 : 디자인개선' D-07 ~ D-16
 - 고칠 점(tip improve)은 화면에서 뺐다 (17-4). 인스타 단계(4)는 인스타를 연결한 가게에만 있다 (D-14, D-15).
 """
 
+import copy
 import datetime as dt
 
-from voice import activity, audit, clock, config, departments, holidays, hr, locks, marketing, proposals, repo, speech, width
+from voice import activity, audit, clock, config, departments, holidays, hr, locks, marketing, proposals, repo, speech, tts, width
 from voice.agents import field_tasks, fix_card, voice_reply
 from voice.audit import log as audit_log
 from voice.clock import iso, parse
 from voice.context import VoiceStore, load
 from voice.instagram import posts, story_event
-from voice.jobs import auto_reply, batch_ask, done_report, queue, revise_jobs, schedule, staff_tasks, strengths
+from voice.jobs import auto_reply, batch_ask, done_report, hr_night, queue, revise_jobs, schedule, staff_tasks, strengths
 
-TOTAL = 5  # 게이지바 다섯 칸: 일정, 리뷰, 좋은 리뷰, 인스타, 끝. 건너뛴 칸이 있어도 그대로다 (문서 10장)
-STEP_KEYS = ["schedule", "holiday", "done_report", "reviews", "negative", "positive", "scheduling", "instagram", "story_event", "staff_tasks"]
-GAUGE = {"schedule": 1, "holiday": 1, "done_report": 1, "reviews": 2, "negative": 2, "positive": 3, "scheduling": 3, "instagram": 4, "story_event": 4,
-         "staff_tasks": 5, "end": 5}
+# v0.2.1 H (Figma '새 오늘 일정 브리핑', 2026-11-22): 요약 세 줄 → "상세 브리핑을 시작할까요?" → 상세 (인스타 → 리뷰 → 알바생) → 끝.
+# 진행 띠는 네 칸: 요약, 인스타, 리뷰, 알바생. 건너뛴 칸이 있어도 그대로다.
+# 요약 세 줄(sum_*)은 같은 카드를 두고 지금 말하는 줄만 진하게 바꾼다 (H-02 ~ H-04). 묻지 않는 단계는 가만히 있어도 넘어간다.
+TOTAL = 4
+STEP_KEYS = ["sum_weather", "sum_reviews", "sum_resv", "detail_ask", "holiday",
+             "story_event", "instagram",
+             "reviews", "scheduling", "positive_scheduled", "negative", "negative_done", "done_report",
+             "staff_tasks"]
+GAUGE = {"sum_weather": 1, "sum_reviews": 1, "sum_resv": 1, "detail_ask": 1, "holiday": 1,
+         "story_event": 2, "instagram": 2,
+         "reviews": 3, "scheduling": 3, "positive_scheduled": 3, "negative": 3, "negative_done": 3, "done_report": 3,
+         "staff_tasks": 4, "end": 4}
+SUMMARY_KEYS = ("sum_weather", "sum_reviews", "sum_resv")
 INSTAGRAM_ROW = {"id": "p_instagram", "kind": "instagram", "value": "인기 메뉴 피드 준비"}
 ORDINAL = ["첫", "둘째", "셋째", "넷째", "다섯째"]
 RAIN_CHANCE = 0.6
@@ -58,10 +68,16 @@ def rain_today(view: VoiceStore, day: dt.date) -> dict | None:
     return w if w and w.get("rain_chance", 0) >= RAIN_CHANCE else None
 
 
+def _at_hour(day: dt.date, hour: int) -> str:
+    return speech.clock_label(dt.datetime(day.year, day.month, day.day, hour))
+
+
 def rain_text(w: dict, day: dt.date) -> str:
-    """'오후 2시부터 비' 또는 '하루 종일 비' (화면 글)."""
-    hour = w.get("rain_from")
-    return f"{speech.clock_label(dt.datetime(day.year, day.month, day.day, hour))}부터 비" if hour else "하루 종일 비"
+    """'오전 11시~저녁 8시 비', '오후 2시부터 비' 또는 '하루 종일 비' (화면 글). 끝나는 시각(rain_to)이 있으면 범위로."""
+    hour, until = w.get("rain_from"), w.get("rain_to")
+    if hour and until:
+        return f"{_at_hour(day, hour)}~{_at_hour(day, until)} 비"
+    return f"{_at_hour(day, hour)}부터 비" if hour else "하루 종일 비"
 
 
 def awaiting(view: VoiceStore) -> list[dict]:
@@ -218,21 +234,155 @@ def step_schedule(view: VoiceStore, today: dt.date) -> dict:
     return answer(headline, says, [{"type": "rows", "id": "schedule", "rows": rows[:4]}])
 
 
-def step_reviews(waiting: list[dict]) -> dict | None:
-    if not waiting:
+# ── H: 요약 세 줄 → 상세 브리핑 물음 (Figma v0.2.1 H-02 ~ H-05) ──
+
+
+def arrived(view: VoiceStore, now: dt.datetime) -> list[dict]:
+    """밤사이 도착한 리뷰 (지난 하루). 도나가 이미 답한 것도 센다 (H-03 '도착한 리뷰 5건', H-08 좋은 4건·아쉬운 1건)."""
+    return [r for r in view.reviews() if now - dt.timedelta(days=1) <= parse(r["written_at"]) <= now]
+
+
+def short_clock(moment: dt.datetime) -> str:
+    """'3시', '3시 30분' (오전·오후 없이. H-04 '3시 손님 요청사항')."""
+    hour = moment.hour % 12 or 12
+    return f"{hour}시 {moment.minute}분" if moment.minute else f"{hour}시"
+
+
+def with_memo(reservations: list[dict]) -> list[dict]:
+    return [r for r in reservations if (r.get("memo") or "").strip()]
+
+
+def summary_steps(view: VoiceStore, today: dt.date, reviews_in: list[dict]) -> dict[str, dict | None]:
+    """요약 세 줄 (날씨, 도착한 리뷰, 예약)과 상세 브리핑 물음. 같은 카드를 두고 단계마다 지금 말하는 줄만 진하게 한다.
+    없는 줄은 빼고, 그 단계도 없다. 줄이 하나도 없으면 물음만 남는다."""
+    rain = rain_today(view, today)
+    reservations = _today(view.data.get("reservation", []), today)
+    events, games = _today(view.data.get("event", []), today), _today(view.data.get("game", []), today)
+    memos = with_memo(reservations)
+    groups = [r for r in reservations if r["party_size"] >= config.GROUP_MIN_PEOPLE]
+
+    rows: list[dict] = []
+    if rain:
+        rows.append({"id": "s_rain", "kind": "weather", "value": rain_text(rain, today)})
+    if reviews_in:
+        rows.append({"id": "s_reviews", "kind": "reviews", "value": f"도착한 리뷰 {len(reviews_in)}건"})
+    for item, kind in ((events[:1], "event"), (games[:1], "game")):
+        if item:
+            start = parse(item[0]["starts_at"])
+            rows.append({"id": f"s_{kind}", "kind": kind,
+                         "value": width.fit("rows.value", f"{item[0]['name']} {speech.clock_label(start)}", item[0]["name"])})
+    if reservations:
+        value = f"예약 {len(reservations)}팀" + (f", 요청사항 {len(memos)}건" if memos else "")
+        rows.append({"id": "s_resv", "kind": "reservation", "value": value})
+    card = [{"type": "rows", "id": "summary", "rows": rows[:4]}] if rows else []
+
+    def show(headline: str, says: list[dict]) -> dict:
+        return answer(width.fit("headline", headline, headline[:14]), says, copy.deepcopy(card))
+
+    steps: dict[str, dict | None] = {key: None for key in SUMMARY_KEYS}
+    if rain:
+        start = rain.get("rain_from")
+        if start and rain.get("rain_to"):
+            line = f"오늘은 {_at_hour(today, start)}부터 {_at_hour(today, rain['rain_to'])} 사이에 비 소식이 있습니다."
+        elif start:
+            line = f"오늘은 {_at_hour(today, start)}부터 비 소식이 있습니다."
+        else:
+            line = "오늘은 하루 종일 비 소식이 있습니다."
+        steps["sum_weather"] = show(f"{_at_hour(today, start)}부터 비가 와요" if start else "오늘은 비가 와요",
+                                    [say(line, None, ["s_rain"])])
+    if reviews_in:
+        steps["sum_reviews"] = show(f"도착한 리뷰는 {len(reviews_in)}건이에요",
+                                    [say(f"오늘 도착한 리뷰는 {speech.count(len(reviews_in), '건')}입니다.", None, ["s_reviews"])])
+    if reservations or events or games:
+        says: list[dict] = []
+        names = [e["name"] for e in events[:1]] + [g["name"] for g in games[:1]]
+        if names:
+            joined = speech.josa(names[0], "과", "와") + " " + names[1] if len(names) == 2 else names[0]
+            says.append(say(f"오늘은 {speech.josa(joined, '이', '가')} 있어요.", None, [r["id"] for r in rows if r["kind"] in ("event", "game")]))
+        if memos:
+            at = short_clock(parse(memos[0]["starts_at"]))
+            headline = f"{at} 손님 요청사항이 왔어요"
+            says.append(say(f"오늘 예약은 총 {speech.count(len(reservations), '건')}이며, {at} 예약 손님의 요청사항이 도착했습니다.", None, ["s_resv"]))
+        elif groups:
+            start = parse(groups[0]["starts_at"])
+            headline = f"{speech.clock_label(start)}에 단체 {groups[0]['party_size']}명이 와요"
+            says.append(say(f"오늘 예약은 총 {speech.count(len(reservations), '건')}이고, {speech.clock_label(start)}에 단체 손님 "
+                            f"{speech.count(groups[0]['party_size'], '분')}이 오세요.", None, ["s_resv"]))
+        elif reservations:
+            headline = f"예약이 {len(reservations)}팀이에요"
+            says.append(say(f"오늘 예약은 총 {speech.count(len(reservations), '건')}입니다.", None, ["s_resv"]))
+        else:
+            headline = "오늘 일정이 있어요"
+        steps["sum_resv"] = show(headline, says)
+
+    ask = answer("상세 브리핑을 시작할까요?" if rows else "오늘은 평소와 같아요",
+                 [say("상세 브리핑을 시작할까요?")] if rows else [say("오늘은 행사나 예약이 없어요."), say("상세 브리핑을 시작할까요?")],
+                 copy.deepcopy(card), kind="ask", ask={"key": "detail"})
+    ask["expects_reply"] = True
+    steps["detail_ask"] = ask
+    return steps
+
+
+def step_reviews(reviews_in: list[dict]) -> dict | None:
+    """밤사이 도착한 리뷰를 좋은 리뷰와 아쉬운 리뷰로 나눠 센다 (H-08). 이 뒤에 예약한 답글(H-09)과 바로 단 답글(H-10)이 온다."""
+    if not reviews_in:
         return None
-    pos = sum(1 for r in waiting if r.get("sentiment") == "positive")
-    neg = len(waiting) - pos
-    total = len(waiting)
+    pos = sum(1 for r in reviews_in if r.get("sentiment") == "positive")
+    neg = len(reviews_in) - pos
     return answer(
-        f"답글 기다리는 리뷰 {total}개",
-        [say("이제 리뷰예요."),
-         say(f"답글을 기다리는 리뷰가 {speech.count(total, '개')}예요."),
-         say(f"좋은 리뷰 {speech.count(pos, '개')}, 아쉬운 리뷰 {speech.count(neg, '개')}예요.", None, ["c_pos", "c_neg"])],
+        f"리뷰 {len(reviews_in)}건이 도착했습니다",
+        [say(f"도착한 리뷰는 좋은 리뷰 {speech.count(pos, '건')}, 아쉬운 리뷰 {speech.count(neg, '건')}이에요.", None, ["c_pos", "c_neg"])],
         [{"type": "counts", "id": "review_counts", "items": [
-            {"id": "c_pos", "kind": "positive", "label": "좋은 리뷰", "count": pos, "unit": "개"},
-            {"id": "c_neg", "kind": "negative", "label": "아쉬운 리뷰", "count": neg, "unit": "개"}]}],
+            {"id": "c_pos", "kind": "positive", "label": "좋은 리뷰", "count": pos, "unit": "건"},
+            {"id": "c_neg", "kind": "negative", "label": "아쉬운 리뷰", "count": neg, "unit": "건"}]}],
     )
+
+
+def slot_label(moment: dt.datetime) -> str:
+    """'토요일 오전 11시'."""
+    return f"{speech.weekday(moment.date())}요일 {speech.clock_label(moment)}"
+
+
+def step_positive_scheduled(view: VoiceStore, now: dt.datetime) -> dict | None:
+    """묻지 않고 예약해 둔 좋은 리뷰 답글 (H-09). 리뷰 한 줄과 예약한 답글을 짝지어 보인다.
+    칭찬 답글을 묻는 직급(인턴·사원)이면 scheduling 단계가 대신 묻는다."""
+    if hr.asks(view.store_id, "positive_reply") is not None:
+        return None
+    fresh = {r["id"] for r in arrived(view, now)}  # 밤사이 온 리뷰만 (그 전에 예약한 답글은 지난 브리핑에서 알렸다)
+    found = sorted((r for r in view.reviews() if r["id"] in fresh and r.get("sentiment") == "positive" and r.get("reply_status") == "scheduled"
+                    and r.get("reply_text") and parse(r["reply_post_at"]) > now), key=lambda r: r["written_at"], reverse=True)
+    if not found:
+        return None
+    slots = sorted({r["reply_post_at"] for r in found})
+    first = parse(slots[0])
+    says = []
+    if len(slots) == 1:
+        headline = f"{slot_label(first)}에\n답변을 예약해두었습니다"  # Figma H-09 처럼 두 줄
+        says.append(say(f"좋은 리뷰 {speech.count(len(found), '건')}은 {slot_label(first)}에 답변을 예약해두었습니다.", None, ["scheduled_list"]))
+    else:
+        headline = "좋은 리뷰 답변을 예약해두었습니다"
+        says.append(say(f"좋은 리뷰 {speech.count(len(found), '건')}은 손님이 외식을 고민할 때 올리려고 답변을 예약해두었습니다.", None, ["scheduled_list"]))
+    reason = (found[0].get("reply_reason") or {}).get("explanation")
+    if reason:
+        says.append(say(reason.rstrip(".") + "."))
+    items = [{"id": r["id"], "quote": f"“{r['text']}”", "reply": r["reply_text"]} for r in found[:4]]
+    return answer(headline, says, [{"type": "reply_list", "id": "scheduled_list", "items": items}])
+
+
+def step_negative_done(view: VoiceStore, now: dt.datetime) -> dict | None:
+    """허락받은 대로(부정 리뷰 답글 대리·과장) 밤사이 바로 단 사과 답글 (H-10). 사후 보고(done_report)에서는 이 답글을 빼고,
+    이 단계를 앱에 보내면 보고한 것으로 적는다 (report)."""
+    found = auto_replied(view, now)
+    if not found:
+        return None
+    review = found[0]
+    minutes = max(1, round((parse(review["reply_posted_at"]) - parse(review["written_at"])).total_seconds() / 60))
+    took = f"{minutes}분" if minutes < 60 else f"{minutes // 60}시간"
+    says = [say(f"아쉬운 리뷰 {speech.count(len(found), '건')}은 허락해 주신 대로 {took} 만에 답변했어요.", "허락해 주신 대로 바로 답했어요", [review["id"]])]
+    card = review_card(review, {"text": review["reply_text"], "posted_at": review["reply_posted_at"], "by": "donna"})
+    refs = {r["id"] for r in found}
+    report = [e["id"] for e in hr.report_items(view.store_id, now) if e["job"] == "negative_reply" and e["ref"] in refs]
+    return answer(f"{took} 만에 답했어요", says, [card], report=report)
 
 
 def review_card(review: dict, reply: dict | None) -> dict:
@@ -363,8 +513,11 @@ def auto_instagram(view: VoiceStore, now: dt.datetime) -> dict | None:
 def step_instagram(view: VoiceStore) -> tuple[dict | None, dict | None]:
     """인스타에 올릴까요 (D-14). 연결 안 됨, 오늘 이미 올림, 메뉴 사진이 3개보다 적으면 건너뛴다. 대리면 묻지 않는다 (auto_instagram).
     자세히 보기는 올라갈 모양 그대로 한 장씩 (D-15, '다음 사진'으로 넘긴다)."""
-    if hr.asks(view.store_id, "instagram_post") is None and not (marketing.today(view) or {}).get("audit_hold"):
+    held = bool((marketing.today(view) or {}).get("audit_hold"))
+    if hr.asks(view.store_id, "instagram_post") is None and not held:
         return None, None  # 대리: 묻지 않고 올렸다. 감사 보류면 묻는다
+    if not held and story_event.get(story_event.event_id(view.store_id, view.now.date())):
+        return None, None  # H: 비 오는 날 이벤트가 있는 날은 스토리만 묻는다 (감사가 보류한 글은 그날도 묻는다)
     connection = posts.connection(view.store_id)
     if not connection["connected"] or posts.posted_on(view.store_id, "feed", view.now.date()):
         return None, None
@@ -410,8 +563,11 @@ def refresh_instagram(store_id: str) -> dict | None:
     brief["details"].pop("instagram", None)
     if detail:
         brief["details"]["instagram"] = detail
-    rows = [row for row in brief["home_rows"] if row["id"] != "p_instagram"]
-    brief["home_rows"] = rows + [INSTAGRAM_ROW] if step and len(rows) < 4 else rows
+    # 홈 줄은 H-01 차례대로 다시 짠다 (인스타·이벤트 줄은 일정·리뷰 다음 자리. 끝에 붙이면 네 줄이 찬 날은 빠졌다)
+    now = clock.now()
+    scheduled_n = sum(1 for r in view.reviews() if r.get("reply_status") == "scheduled" and parse(r["reply_post_at"]) > now)
+    brief["home_rows"] = home_rows(view, now.date(), arrived(view, now), scheduled_n, story=bool(brief["steps"]["story_event"]),
+                                   instagram=bool(step))
     return repo.put("briefing", f"{store_id}:{brief['date']}", store_id, brief)
 
 
@@ -423,37 +579,71 @@ def plain_detail(step: dict) -> dict:
     }
 
 
-def end_response(store_id: str) -> dict:
-    """브리핑 끝 (D-16 '오늘 아침에 한 것'). 허락하자마자 단 답글까지 들어가야 해서 그때그때 만든다."""
+def hm(moment: dt.datetime) -> str:
+    """'9:04' (끝 화면 줄 아래 시각)."""
+    return f"{moment.hour}:{moment.minute:02d}"
+
+
+def end_response(store_id: str, session: dict | None = None) -> dict:
+    """브리핑 끝 (H-12b '오늘 아침에 한 것'). 줄마다 무엇을 했고 언제 했는지 적는다. 허락하자마자 한 일까지 들어가야 해서 그때그때 만든다.
+    session.heard: 단계를 앱에 보낸 시각 (예약해 둔 답글을 들은 때를 '9:05에 토요일 답변을 예약했어요'로 적는다, dialog/turn.py)."""
     view = load(store_id)
     now = clock.now()
-    done: list[tuple[str, str]] = []  # (화면 글, 말할 때 쓰는 줄기)
-    if auto_replied(view, now):
-        done.append(("아쉬운 리뷰에 답글", "아쉬운 리뷰에 답했"))
-    if any(r.get("reply_status") == "scheduled" and parse(r["reply_post_at"]) > now for r in view.reviews()):
-        done.append(("좋은 리뷰 답글 예약", "좋은 리뷰 답글은 예약했"))
+    heard = (session or {}).get("heard") or {}
+    rows: list[dict] = []
+
+    def add(value: str, sub: str) -> None:
+        rows.append({"id": f"d_{len(rows)}", "kind": "done", "value": value, "sub": sub})
+
+    event = story_event.get(story_event.event_id(store_id, now.date()))
+    if event and event["state"] in story_event.DONE and event.get("decided_at"):
+        add(f"{event.get('headline') or '이벤트'} 스토리", f"{hm(parse(event['decided_at']))}에 스토리에 올렸어요")
+    elif event and event["state"] == "generating":
+        add("이벤트 포스터", "지금 그리고 있어요")
     feed = posts.posted_on(store_id, "feed", now.date())
     if any(p["status"] == "published" for p in feed):
-        done.append(("인스타에 인기 메뉴 올림", "인스타에 인기 메뉴를 올렸"))
+        add("인스타에 인기 메뉴", "피드에 올렸어요")
     elif feed:
-        done.append(("인스타에 올리는 중", "인스타에 올리고 있"))
-    event = story_event.get(story_event.event_id(store_id, now.date()))
-    if event and event["state"] == "generating":
-        done.append(("이벤트 포스터 그리는 중", "이벤트 포스터를 그리고 있"))
-    says = [say("오늘 브리핑은 여기까지예요.")]
-    if done:
-        stems = [stem for _, stem in done]
-        says.append(say("".join(f"{s}고, " for s in stems[:-1]) + f"{stems[-1]}어요."))
-    rows = [{"id": f"d_{n}", "kind": "done", "value": text} for n, (text, _) in enumerate(done)]
-    return answer("브리핑은 여기까지예요", says,
-                  [{"type": "rows", "id": "checked", "title": "오늘 아침에 한 것", "rows": rows}] if rows else [], kind="end")
+        add("인스타에 인기 메뉴", "지금 올리고 있어요")
+    fresh = {r["id"] for r in arrived(view, now)}
+    scheduled = [r for r in view.reviews() if r["id"] in fresh and r.get("sentiment") == "positive" and r.get("reply_status") == "scheduled"
+                 and parse(r["reply_post_at"]) > now]
+    if scheduled:
+        first = parse(min(r["reply_post_at"] for r in scheduled))
+        when = f"{hm(parse(heard['positive_scheduled']))}에 " if heard.get("positive_scheduled") else ""
+        add(f"좋은 리뷰 {len(scheduled)}건 답변", f"{when}{speech.weekday(first.date())}요일 답변을 예약했어요")
+    replied = auto_replied(view, now)
+    if replied:
+        minutes = max(1, round((parse(replied[0]["reply_posted_at"]) - parse(replied[0]["written_at"])).total_seconds() / 60))
+        took = f"{minutes}분" if minutes < 60 else f"{minutes // 60}시간"
+        add(f"아쉬운 리뷰 {len(replied)}건 답변", f"{took} 만에 답변했어요")
+    asked = [r for r in view.reviews() if r.get("sentiment") == "negative" and r.get("reply_trigger") == "owner_yes"
+             and r.get("reply_status") == "posted" and parse(r["reply_posted_at"]).date() == now.date()]
+    if asked:  # 브리핑에서 여쭤보고 올린 사과 답글 (Figma J-12b '9:06에 고쳐서 올렸어요')
+        last = max(asked, key=lambda r: r["reply_posted_at"])
+        fixed = any((r.get("reply_ready") or {}).get("revised") for r in asked)
+        add(f"아쉬운 리뷰 {len(asked)}건 사과 답변", f"{hm(parse(last['reply_posted_at']))}에 {'고쳐서 ' if fixed else ''}올렸어요")
+    today = now.date().isoformat()
+    for p in repo.all_of(proposals.KIND, store_id):
+        if p["state"] == "applied" and (p.get("decided_at") or "")[:10] == today and p.get("decided_by") != "auto":
+            # 할 일 제목(staff.title 16)이 줄 한도(rows.value 14)보다 길 수 있다
+            add(width.fit("rows.value", p["payload"]["title"], "알바생 할 일"), f"{hm(parse(p['decided_at']))}에 알바생 할 일에 넣었어요")
+    cards = [{"type": "rows", "id": "checked", "title": "오늘 아침에 한 것", "rows": rows[:4]}] if rows else []
+    response = answer("오늘 브리핑은 여기까지예요", [say("오늘 브리핑은 여기까지예요.")], cards, kind="end")
+    if hr_night.has_scene(store_id):  # 시연: 끝 화면을 보여 준 뒤 밤 9시 인사과 보고로 (K-01)
+        response["next_scene"] = {"event": "night_hr", "after_ms": hr_night.SCENE_AFTER_MS}
+    return response
 
 
-def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n: int, instagram: bool = False) -> list[dict]:
-    """홈 '오늘 준비한 것' (D-07). 이름표 없이 한 줄로 읽힌다."""
+def home_rows(view: VoiceStore, today: dt.date, reviews_in: list[dict], scheduled_n: int, *, story: bool = False,
+              instagram: bool = False) -> list[dict]:
+    """홈 '오늘 일정 브리핑 준비했어요' (H-01). 이름표 없이 한 줄로 읽힌다. 많아야 네 줄:
+    오늘 일정(비, 예약) → 밤사이 리뷰 → 비 오는 날 이벤트(또는 인기 메뉴 피드) → 예약 손님 요청사항 → 예약한 답글."""
     reservations = _today(view.data.get("reservation", []), today)
     groups = [r for r in reservations if r["party_size"] >= config.GROUP_MIN_PEOPLE]
     parts = []
+    if rain_today(view, today):
+        parts.append("오늘 비")
     if _today(view.data.get("event", []), today):
         parts.append("행사")
     if _today(view.data.get("game", []), today):
@@ -462,21 +652,23 @@ def home_rows(view: VoiceStore, today: dt.date, waiting: list[dict], scheduled_n
         parts.append(f"단체 {groups[0]['party_size']}명")
     elif reservations:
         parts.append(f"예약 {len(reservations)}팀")
-    rain = rain_today(view, today)
-    if rain:
-        parts.append("오후 비" if (rain.get("rain_from") or 0) >= 12 else "비")
     rows = [{"id": "p_schedule", "kind": "schedule",
              "value": width.fit("rows.value", ", ".join(parts), "오늘 일정이 있어요") if parts else "평소와 같아요"}]
-    if waiting:
-        rows.append({"id": "p_reviews", "kind": "reviews", "value": f"밤사이 리뷰 {len(waiting)}개 읽어 둠"})
+    if reviews_in:
+        rows.append({"id": "p_reviews", "kind": "reviews", "value": f"밤사이 리뷰 {len(reviews_in)}건 읽어 둠"})
+    if story:
+        rows.append({"id": "p_story", "kind": "instagram", "value": "비 오는 날 이벤트 준비"})
+    elif instagram:
+        rows.append(INSTAGRAM_ROW)
+    memos = with_memo(reservations)
+    if memos:
+        rows.append({"id": "p_request", "kind": "task", "value": f"{short_clock(parse(memos[0]['starts_at']))} 손님 요청사항 받아 둠"})
     if scheduled_n:
-        rows.append({"id": "p_replies", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {scheduled_n}개 예약"})
+        rows.append({"id": "p_replies", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {scheduled_n}건 예약"})
     drafted_n = sum(1 for r in view.reviews() if r.get("reply_status") == "awaiting")  # 칭찬 답글 인턴·사원: 써 두고 묻는다
     if drafted_n:
-        rows.append({"id": "p_replies_ask", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {drafted_n}개 써 둠"})
-    if instagram:
-        rows.append(INSTAGRAM_ROW)
-    return rows
+        rows.append({"id": "p_replies_ask", "kind": "scheduled_replies", "value": f"좋은 리뷰 답글 {drafted_n}건 써 둠"})
+    return rows[:4]
 
 
 def prepare(store_id: str) -> dict | None:
@@ -508,15 +700,36 @@ def _prepare(store_id: str) -> dict | None:
     auto_instagram(load(store_id), now)  # 인스타 게시 대리: 묻지 않고 첫 식사 피크 한 시간 전에 올린다 (9-0 d)
     story_event.prepare_poster(load(store_id))  # 비 오는 날 이벤트 포스터를 미리 그려 둔다 (브리핑에서 바로 보여 주고 묻게, 2026-11-22)
     departments.run_reports(load(store_id))  # 부서 보고를 남기고, 부서 사이 충돌을 거른다 (voice/departments.py)
+    story_event.auto_post(load(store_id))  # 포스터 대리(밤 9시 승진): 묻지 않고 올리고 저녁에 보고한다
+    hr_night.schedule(store_id, now.date())  # 밤 9시 인사과 보고 (jobs/hr_night.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
-    waiting = awaiting(view)
+    overnight = arrived(view, now)
+    if overnight:
+        activity.log(store_id, "donna", f"리뷰 {len(overnight)}개를 읽고 나눴어요", "reviews_read")
+    if newly_scheduled:
+        activity.log(store_id, "donna", f"좋은 리뷰 답글 {newly_scheduled}개를 예약했어요", "replies_scheduled")
+    activity.log(store_id, "donna", "오늘 일정 브리핑을 준비했어요", "briefing_prepared")
+    return assemble(store_id)
 
-    steps: dict[str, dict | None] = {"schedule": step_schedule(view, now.date()), "holiday": holidays.step(view),
-                                     "reviews": step_reviews(waiting)}
-    steps["done_report"], report_detail = done_report.step(view, now)  # 대리·과장이 처리한 것 사후 보고 (인사과 5단계)
+
+def assemble(store_id: str) -> dict | None:
+    """밤사이 해 둔 일(리뷰 분류, 답글, 예약, 제안, 포스터)로 오늘 브리핑 단계를 짠다. 모델을 부르지 않는다.
+    prepare 끝에서 부르고, 밤사이 준비 결과 저장본을 넣은 뒤에도 부른다 (voice/prepared_snapshot.py):
+    저장본은 데이터만 쓰고 단계는 지금 코드로 다시 짜서, 브리핑 순서·문구를 고쳐도 저장본을 다시 만들 필요가 없다."""
+    view = load(store_id)
+    if view is None:
+        return None
+    now = clock.now()
+    waiting = awaiting(view)
+    reviews_in = arrived(view, now)
+    steps: dict[str, dict | None] = {**summary_steps(view, now.date(), reviews_in), "holiday": holidays.step(view),
+                                     "reviews": step_reviews(reviews_in)}
+    steps["negative_done"] = step_negative_done(view, now)  # H-10: 허락받은 대로 바로 단 사과 답글
+    shown = set((steps["negative_done"] or {}).get("report") or [])
+    steps["done_report"], report_detail = done_report.step(view, now, skip=shown)  # 그 밖에 대리·과장이 처리한 것 (인사과 5단계)
     steps["negative"], negative_detail = step_negative(view, now, waiting)
-    steps["positive"] = step_positive(view, now)
     steps["scheduling"], scheduling_detail = step_scheduling(view, now)
+    steps["positive_scheduled"] = step_positive_scheduled(view, now)  # H-09: 예약해 둔 좋은 리뷰 답글
     steps["instagram"], instagram_detail = step_instagram(view)
     steps["story_event"] = story_event.step(view)  # 비 오는 날 스토리 이벤트 (instagram/story_event.py)
     steps["staff_tasks"] = staff_tasks.step(view, now)  # 알바생 할 일 묻기 (jobs/staff_tasks.py, 2026-11-20)
@@ -531,20 +744,22 @@ def _prepare(store_id: str) -> dict | None:
         details["instagram"] = instagram_detail
     scheduled_n = sum(1 for r in view.reviews() if r.get("reply_status") == "scheduled" and parse(r["reply_post_at"]) > now)
 
-    overnight = [r for r in view.reviews() if now - dt.timedelta(days=1) <= parse(r["written_at"]) <= now]
-    if overnight:
-        activity.log(store_id, "donna", f"리뷰 {len(overnight)}개를 읽고 나눴어요", "reviews_read")
-    if newly_scheduled:
-        activity.log(store_id, "donna", f"좋은 리뷰 답글 {newly_scheduled}개를 예약했어요", "replies_scheduled")
-    activity.log(store_id, "donna", "오늘 일정 브리핑을 준비했어요", "briefing_prepared")
-
     briefing = {
         "store_id": store_id, "date": now.date().isoformat(), "prepared_at": iso(now),
-        "home_rows": home_rows(view, now.date(), waiting, scheduled_n, instagram=bool(steps["instagram"])),
+        "home_rows": home_rows(view, now.date(), reviews_in, scheduled_n, story=bool(steps["story_event"]),
+                               instagram=bool(steps["instagram"])),
         "steps": steps, "details": details,
         "sources": {"replies": sorted({r.get("reply_source") for r in view.reviews() if r.get("reply_source")} - {None})},
     }
-    return repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
+    saved = repo.put("briefing", f"{store_id}:{briefing['date']}", store_id, briefing)
+    tts.warm(briefing_lines(briefing))  # 단계가 넘어갈 때 목소리를 기다리지 않게 미리 합성
+    return saved
+
+
+def briefing_lines(briefing: dict) -> list[str]:
+    """브리핑에서 도나가 읽을 문장 (단계, 끝 인사)."""
+    lines = [s["text"] for step in briefing["steps"].values() if step for s in step["say"]]
+    return lines + ["오늘 브리핑은 여기까지예요.", "스토리에 올렸어요.", "알바생 할 일에 넣었어요."]
 
 
 def refresh_steps(store_id: str) -> dict | None:

@@ -1,8 +1,9 @@
 """매뉴얼 한 줄 다듬기 (에이전트 조직 개편 2단계, 매뉴얼 코칭 사원. donna-voice/docs/agent-org-plan.md 2-4).
 
 일주일에 세 번 같은 할 일이 나오면 매일 할 일(매뉴얼)로 올리자고 제안한다. 그 한 줄을 여기서 다듬는다.
-묶음 안 할 일에 없는 행동을 더하지 않는다 (1차 코드 감사 rules.manual_line 의 겹침, 2차 LLM 감사 inspector.manual_line 의 manual_added).
-실패하거나 끄거나 감사를 끝내 통과하지 못하면 None (부르는 쪽이 첫 할 일 제목을 그대로 쓴다, 결정 7).
+묶음 안 할 일에 없는 행동을 더하지 않는다 (1차 코드 감사 rules.manual_line 의 겹침).
+2차 LLM 감사(manual_added)는 판정 세트 목표를 넘지 못해 아직 잇지 않았다 (voice/audit/inspector.py). 감사 자리가 없어 audit 은 None 이다.
+실패하거나 끄면 None (부르는 쪽이 첫 할 일 제목을 그대로 쓴다). 감사를 잇게 되면 끝내 불합격도 None 이다 (결정 7).
 """
 
 from Harness import runner
@@ -11,7 +12,7 @@ from Harness.tools import obj, string
 from voice import config, notebook
 from voice.agents import load_prompt
 from voice import audit
-from voice.audit import inspector, rules
+from voice.audit import rules
 from voice.audit import log as audit_log
 from voice.context import VoiceStore, run_context
 
@@ -32,10 +33,6 @@ SPEC = AgentSpec(
     tools=[],
     submit=SUBMIT,
     check=rules.manual_line,  # 1차 코드 감사 (감사팀)
-    audit=inspector.manual_line,  # 2차 LLM 감사 (감사팀)
-    audit_returns=config.AUDIT_RETURNS,
-    audit_seconds=config.AUDIT_ROUND_SECONDS,
-    cache_scope=lambda task: audit.version(),
     task_id=lambda task: "|".join(task["items"]),
     budget=Budget(max_steps=3, max_rejections=2, max_seconds=20),
     temperature=0.2,

@@ -39,9 +39,10 @@ def test_g5_agent_draft_with_refund_falls_back(monkeypatch):
     # 첫 제출 + 되돌림 2번 (감사 불합격은 1차 거절과 따로 센다). 같은 글의 보상 판정은 캐시라 처음 한 번만 묻는다
     fake = FakeClova([refund], found, [refund], [refund])
     monkeypatch.setattr(context, "post", fake)
-    donna.demo_review("leak")
+    rid = donna.demo_review("leak")
     text = donna.open_notice()["cards"][0]["reply"]["text"]
     assert "환불" not in text and text.endswith(PRESET)
+    assert repo.get("alert", f"al_{rid}")["reply_source"] == "TEMPLATE"  # 인턴 가게: 끝내 불합격 → 템플릿 (감사팀 결정 7)
     assert fake.done()
 
 

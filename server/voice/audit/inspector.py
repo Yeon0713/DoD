@@ -1,12 +1,16 @@
 """2차 LLM 감사: 1차 코드 감사를 통과한 제출을 기준마다 좁은 질문 하나로 검사한다 (감사팀 계획 7장).
 
-담당 SPEC.audit 이 업무별 감사 함수(reply, fix_card, field_tasks, manual_line, topic_finder, caption_writer, holiday_reader)를 가리킨다.
+담당 SPEC.audit 이 업무별 감사 함수(reply, fix_card, field_tasks, caption_writer, holiday_reader)를 가리킨다.
 모양은 Harness.spec.AuditFunc: (제출 인자, 근거, task, 맥락) → AuditVerdict.
 - 질문은 quote_judge 로 묻는다. LLM 은 해당하는 부분을 글자 그대로 옮기기만 하고, 합격·불합격은 코드가 정한다.
 - 기준은 정한 순서대로 묻고 처음 걸린 기준에서 멈춘다 (가정 i). 고친 뒤 다시 처음부터 본다 (같은 글·같은 질문은 캐시).
 - 불합격(fail)이면 reason 이 담당에게 돌아갈 지적이다. 어느 기준을 부르지 못하면, 다른 기준에 걸리지 않는 한 감사 못 함(unchecked).
 - 업무 수첩 규칙 중 코드로 못 보는 것은 보지 않는다 (결정 13).
 - improve_tip(고칠 점)은 기준만 두고 담당에 잇지 않는다 (가정 h).
+- 판정 세트 목표(놓침 5%·오탐 10% 이하, 결정 14)를 넘은 기준만 담당에 잇는다 (18장 3번: 실행 중 스위치 대신 개발 규칙).
+  2026-11-22 측정(audit_cases.json, 2회)에서 넘은 것: card_promise, caption_off, holiday_says.
+  못 넘어 잇지 않은 것: occasion_claim, fix_relevance, field_link, today_need, manual_added, angle_menu, store_claim(인스타 글).
+  이들은 기준 함수와 질문만 두어 판정 세트로 다시 잰다 (python -m Harness.evals audit). 넘으면 아래 업무별 감사에 한 줄씩 더한다.
 
 기준 하나는 Finding(불합격·감사 못 함) 또는 None(합격)을 돌려준다. judge_case 는 판정 세트 평가(Harness/evals/audit_eval.py)가 부른다.
 """
@@ -180,14 +184,6 @@ def _critic(text: str, review: dict, args: dict, ctx: RunContext) -> Finding | N
     return None
 
 
-def occasion_text(task: dict, ctx: RunContext) -> str:
-    """올리는 날 정보 (답글 담당의 get_reply_occasion 도구 결과와 같은 내용)."""
-    from voice.agents.voice_reply import reply_occasion
-
-    found = reply_occasion(ctx, task, {})
-    return f"{found['label']} ({found['why']}), {found['post_day']}: " + ", ".join(found["that_day"])
-
-
 def reply(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:
     ctx, counter = _counted(ctx)
     review = ctx.snapshot.review(task["review_id"]) or {}
@@ -198,8 +194,6 @@ def reply(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditV
         yield _critic(text, review, args, ctx)
         if job == "negative_reply" and task.get("fix") and not task.get("revise"):  # 고쳐 쓰기는 사장님 지시가 우선
             yield card_promise(text, task["fix"]["action"], ctx)
-        if job == "positive_reply" and task.get("occasion"):
-            yield occasion_claim(text, occasion_text(task, ctx), ctx)
 
     return _decide(counter, findings())
 
@@ -211,52 +205,22 @@ def fix_card(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> Aud
     review = ctx.snapshot.review(task["review_id"]) or {}
     title, detail = (args.get("title") or "").strip(), (args.get("detail") or "").strip()
 
-    def findings():
-        yield staff_scope(title, detail, ctx, mask_personal_info(review.get("text", "")))
-        yield fix_relevance(title, detail, (args.get("quote") or "").strip(), ctx)
-
-    return _decide(counter, findings())
+    return _decide(counter, [staff_scope(title, detail, ctx, mask_personal_info(review.get("text", "")))])
 
 
 def field_tasks(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:
-    from voice.agents.field_tasks import source_text
-
     ctx, counter = _counted(ctx)
 
     def findings():
         for n, item in enumerate(args.get("items") or [], 1):
-            title, detail = (item.get("title") or "").strip(), (item.get("detail") or "").strip()
-            source = source_text(ctx, item)
-            yield staff_scope(title, detail, ctx, n=n)
-            yield field_link(title, detail, source, (item.get("quote") or "").strip(), ctx, n)
-            if item.get("today_impact") is True:
-                yield today_need(title, detail, source, ctx, n)
+            yield staff_scope((item.get("title") or "").strip(), (item.get("detail") or "").strip(), ctx, n=n)
 
     return _decide(counter, findings())
-
-
-def manual_line(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:
-    ctx, counter = _counted(ctx)
-    title, detail = (args.get("title") or "").strip(), (args.get("detail") or "").strip()
-    return _decide(counter, [manual_added(title, detail, task["items"], ctx)])
-
-
-def topic_finder(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:
-    ctx, counter = _counted(ctx)
-    names = {m["id"]: m["name"] for m in ctx.snapshot.menus}
-    menus = [names.get(str(i), str(i)) for i in args.get("menu_ids") or []]
-    angle = (args.get("angle") or "").strip()
-    return _decide(counter, [angle_menu(angle, menus, ctx)])
 
 
 def caption_writer(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:
     ctx, counter = _counted(ctx)
-    body = (args.get("body") or "").strip()
-    def findings():
-        yield caption_off(body, task["menus"], task["angle"], ctx)
-        yield store_claim(body, ctx)
-
-    return _decide(counter, findings())
+    return _decide(counter, [caption_off((args.get("body") or "").strip(), task["menus"], task["angle"], ctx)])
 
 
 def holiday_reader(args: dict, evidence: Evidence, task: dict, ctx: RunContext) -> AuditVerdict:

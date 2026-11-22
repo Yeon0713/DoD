@@ -195,7 +195,7 @@ def revise(view: VoiceStore, review: dict, kind: str, previous: str, instruction
     proposal = _run(view, review, task)
     if proposal is None or proposal.source != "AGENT" or (proposal.audit or {}).get("passed") is False:
         return None
-    return {"text": proposal.content["text"], "source": "AGENT", "notes": _notes(proposal), "audit": proposal.audit}
+    return {"text": proposal.content["text"], "source": "AGENT", "notes": _notes(proposal), "audit": audit.brief(proposal.audit)}
 
 
 def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = None, fix: dict | None = None) -> dict:
@@ -209,7 +209,7 @@ def write(view: VoiceStore, review: dict, kind: str, occasion: dict | None = Non
     proposal = _run(view, review, task)
     if proposal is None:
         return {"text": template(view, review, occasion, fix), "source": "TEMPLATE", "notes": [], "audit": None}
-    return {"text": proposal.content["text"], "source": proposal.source, "notes": _notes(proposal), "audit": proposal.audit}
+    return {"text": proposal.content["text"], "source": proposal.source, "notes": _notes(proposal), "audit": audit.brief(proposal.audit)}
 
 
 # ── 사장님이 정한 보상 문장 (2026-11-18) ──

@@ -34,6 +34,23 @@ def version() -> str:
     return cache.digest([p.read_text(encoding="utf-8") for p in files])
 
 
+def brief(audit: dict | None) -> dict | None:
+    """결과물 문서에 적을 감사 요약 (회차 기록 trail 은 감사 기록 audit 에만 둔다)."""
+    return None if audit is None else {"passed": audit.get("passed"), "rounds": audit.get("rounds", 0)}
+
+
+def held(store_id: str, job: str, ref: str) -> bool:
+    """그 결과물이 감사 보류(audit_hold) 건인지. 인사과는 보류 건의 반응을 남기지 않는다 (가정 e, 8-5).
+    ref 는 인사과 기록의 ref: 답글은 리뷰 id, 인스타는 instagram:<가게>:<날짜>."""
+    from voice import repo
+
+    if job in ("negative_reply", "positive_reply"):
+        return bool((repo.review(ref) or {}).get("audit_hold"))
+    if job == "instagram_post" and ref.startswith("instagram:"):
+        return bool((repo.get("marketing_plan", f"{store_id}:{ref.rsplit(':', 1)[1]}") or {}).get("audit_hold"))
+    return False
+
+
 def settle(store_id: str, job: str, audit: dict | None, *, offer: bool = False) -> str:
     """끝내 불합격(또는 감사 못 함)한 결과를 어떻게 할지 (결정 7, 가정 g). 'ok' | 'hold' | 'template' | 'fallback'.
     ok        그대로 지금 흐름 (합격, 감사 자리 없음, 템플릿 결과)

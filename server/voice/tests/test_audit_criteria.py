@@ -91,10 +91,11 @@ def test_question_that_cannot_be_asked_is_unchecked():
 
 
 def test_first_failing_criterion_stops(reply_ctx):
-    c, fake = reply_ctx(judged(), judged())  # staff_scope 통과 → fix_relevance 불합격
-    verdict = inspector.fix_card({"actionable": True, "quote": "배달이 너무 늦어서", "title": "실링", "detail": "랩을 두 번 씌워요"},
-                                 Evidence([]), {"review_id": "rv_0412"}, c)
-    assert verdict.status == "fail" and verdict.detail["criterion"] == "fix_relevance" and verdict.detail["calls"] == 2
+    offer = "다음 주문 때 음료 서비스로 드릴게요."
+    c, fake = reply_ctx(judged(offer))  # 첫 기준(보상)에 걸리면 뒤 기준(교정 카드 조치 약속)은 묻지 않는다
+    verdict = inspector.reply({"text": f"늦어서 죄송합니다. {offer}"}, Evidence([]), {"review_id": "rv_0412", "fix": FIX}, c)
+    assert verdict.status == "fail" and verdict.detail["criterion"] == "COMPENSATION" and verdict.detail["calls"] == 1
+    assert fake.done()
 
 
 def test_not_actionable_asks_nothing():

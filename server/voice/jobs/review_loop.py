@@ -8,6 +8,8 @@
   4. 알바생이 카드를 확인하면 사장님께 알린다 (notice staff_checked) → 고리가 닫힌다
   대답이 없으면 15분 뒤 한 번 더 알리고, 25분이 되면 초안으로 남긴다.
 부정 리뷰 답글 직급이 대리·과장이면(voice/hr.py, 인사과 4-a) 묻지 않고 바로 올리고 알리지 않는다 (다음 날 아침 사후 보고).
+감사팀(voice/audit/)이 답글을 끝내 통과시키지 않으면 대리·과장이어도 그 건만 인턴처럼 묻고(보류, 걸린 초안 그대로),
+인턴·사원은 원인별 템플릿 답글로 묻는다 (감사팀 결정 7·12).
 교정 할 일은 제안으로 남겨 다음 아침 브리핑에서 묻는다.
 문을 닫은 뒤에 온 리뷰는 지금처럼 10분 뒤 바로 답하기(auto_reply)를 탄다.
 
@@ -21,7 +23,7 @@
 
 import datetime as dt
 
-from voice import activity, clock, config, hours, hr, notices, proposals, repo, speech
+from voice import activity, audit, clock, config, hours, hr, notices, proposals, repo, speech
 from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
 from voice.context import load
@@ -92,9 +94,13 @@ def alert(store_id: str, review_id: str) -> dict | None:
         written = voice_reply.write(view, review, "AUTO", fix=fix)
     else:
         written = {"text": found["reply"], "source": "TEMPLATE", "notes": []}
+    settled = audit.settle(store_id, "negative_reply", written.get("audit"))
+    if settled == "template":  # 인턴·사원: 감사를 끝내 통과하지 못한 글 대신 원인별 템플릿으로 묻는다
+        written = {**written, "text": found["reply"], "source": "TEMPLATE"}
+    hold = settled == "hold"  # 대리·과장: 올리지 않고 걸린 초안 그대로 그 건만 묻는다 (보상·가격은 아래 safe_reply 가 거른다)
     base, notes = voice_reply.safe_reply(written["text"], None, found["reply"])  # 에이전트 글에는 보상이 없어야 한다
     now = clock.now()
-    auto = _auto(store_id)
+    auto = _auto(store_id) and not hold
     preset = None if auto else _preset(store_id, found["type"])  # 자동 답글에는 보상 문장을 붙이지 않는다 (2026-11-20)
     proposal = _propose(store_id, review, card) if card else None
     if proposal and proposal["state"] == "merged":  # 같은 할 일이 이미 알바생 화면에 있다. 다시 묻지 않는다
@@ -106,13 +112,21 @@ def alert(store_id: str, review_id: str) -> dict | None:
         "compensation": preset, "use_compensation": bool(preset), "use_card": bool(card),
         "created_at": iso(now), "deadline_at": iso(parse(review["written_at"]) + config.AUTO_REPLY_WINDOW),
         "task_id": None, "proposal_id": proposal["id"] if proposal else None, "decided_by": None, "decided_at": None,
+        "audit": {"reply": written.get("audit")}, "audit_hold": hold,
     })
-    review.update({"reply_status": "proposed", "summary": found["summary"], "cause": found["type"]})
+    review.update({"reply_status": "proposed", "summary": found["summary"], "cause": found["type"], "audit_hold": hold})
     repo.save_review(review)
     platform = PLATFORMS.get(review.get("platform"), "리뷰 앱")
     if auto:
         return _auto_post(record, platform)
-    if hr.asks(store_id, "negative_reply") == "batch":
+    if hold:  # 인턴처럼: 다시 알림(15분)과 대체 작업(25분)도 잡는다 (on_new_review 는 대리·과장이라 잡지 않았다)
+        from voice.audit import log as audit_log
+
+        audit_log.mark_hold(store_id, review_id)
+        written_at = parse(review["written_at"])
+        queue.add(store_id, "review_remind", written_at + config.ALERT_REMIND_AFTER, {"review_id": review_id})
+        queue.add(store_id, "review_fallback", written_at + config.ALERT_FALLBACK_AFTER, {"review_id": review_id})
+    elif hr.asks(store_id, "negative_reply") == "batch":
         return _batch(record)
     notices.push(store_id, "negative_review", f"{platform}에 아쉬운 리뷰가 올라왔어요", opens_turn=True, alert_id=record["id"])
     return record

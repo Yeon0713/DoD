@@ -724,7 +724,7 @@ sequenceDiagram
 
 거절 세는 법이 "코드 2 + 감사 2"로 바뀌어 고친 테스트입니다.
 - `voice/tests/test_agents.py::test_voice_reply_tool_rejection_and_resubmit`: `voice_reply.write` 결과에 `audit`이 더해져 나머지 칸만 비교하고, 한 번에 합격했는지 봅니다.
-- `voice/tests/test_compensation_guard.py::test_g5_agent_draft_with_refund_falls_back`: 보상 초안이 되돌림 2번 뒤 끝내 불합격하는 차례로 바꿨습니다(같은 글의 판정은 캐시라 한 번만 묻습니다). `reply_source`는 6단계에서 템플릿 처리와 함께 다시 봅니다.
+- `voice/tests/test_compensation_guard.py::test_g5_agent_draft_with_refund_falls_back`: 보상 초안이 되돌림 2번 뒤 끝내 불합격하는 차례로 바꿨습니다(같은 글의 판정은 캐시라 한 번만 묻습니다). `reply_source`는 6단계에서 템플릿 처리가 들어간 뒤 `TEMPLATE`인지 다시 봅니다.
 
 ### 5단계에서 고친 기존 테스트
 
@@ -734,6 +734,30 @@ sequenceDiagram
 - `test_marketing.py`(4개): 소재 뒤 `angle_menu`, 캡션 뒤 `caption_off` → `store_claim` 답. 감사 질문이 요청 하나를 차지해 거절 메시지의 요청 번호가 3 → 4
 - `test_holidays.py`(3개): `holiday_says` 답 (다음 날 같은 글은 캐시)
 - `test_dedupe.py::test_manual_line_rejects_new_actions`: `manual_added` 답
+
+측정(아래) 뒤 목표를 넘지 못한 기준을 담당에서 빼면서 위 차례도 남은 기준(`staff_scope`, `caption_off`, `holiday_says`)만 남겼습니다.
+
+### 5단계 측정 (2026-11-22)
+
+`python -m Harness.evals audit --runs 2` (새 기준 사례 80건 × 2회, 실제 CLOVA HCX-005). 결과 폴더 `db/app_data/harness_eval/audit-20261122-142605`.
+판정 세트는 0단계 초안(기준마다 걸려야 함 4 · 걸리면 안 됨 4, 팀 검토 전)이라 건수가 계획(13-1)보다 적습니다.
+
+| 업무 | 기준 | 놓침 | 오탐 | 못 부름 | 목표 | 담당에 이음 |
+|---|---|---|---|---|---|---|
+| 부정 답글 | `card_promise` | 0/8 | 0/8 | 0 | 넘음 | 예 |
+| 칭찬 답글 | `occasion_claim` | 2/8 | 0/8 | 0 | 못 넘음 | 아니요 |
+| 교정 할 일 | `fix_relevance` | 4/8 | 0/8 | 1 | 못 넘음 | 아니요 |
+| 현장 변수 | `field_link` | 5/8 | 4/8 | 0 | 못 넘음 | 아니요 |
+| 현장 변수 | `today_need` | 2/8 | 0/8 | 0 | 못 넘음 | 아니요 |
+| 매뉴얼화 | `manual_added` | 5/8 | 1/8 | 0 | 못 넘음 | 아니요 |
+| 인스타 | `angle_menu` | 0/8 | 1/8 | 1 | 못 넘음 (오탐 12.5%) | 아니요 |
+| 인스타 | `caption_off` | 0/8 | 0/8 | 0 | 넘음 | 예 |
+| 인스타 | `store_claim` | 2/8 | 0/8 | 1 | 못 넘음 | 아니요 |
+| 휴무 | `holiday_says` | 0/8 | 0/8 | 0 | 넘음 | 예 |
+
+18장 3번(스위치 없음, 목표를 넘지 못한 기준은 코드에 잇지 않음)에 따라 넘은 3개만 담당에 이었습니다. 나머지는 질문·프롬프트·판정 함수와
+판정 세트를 남겨 두어, 프롬프트나 세트를 고친 뒤 다시 재고 넘으면 `voice/audit/inspector.py`의 업무별 감사에 한 줄씩 더합니다.
+그래서 `manual_line`, `topic_finder`는 지금 2차 감사 자리가 없습니다(감사 결과 `None`).
 
 ---
 

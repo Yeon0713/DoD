@@ -27,7 +27,7 @@
 import datetime as dt
 import sys
 
-from voice import clock, config, repo
+from voice import audit, clock, config, repo
 from voice.clock import iso, parse
 
 RANK_KIND = "hr_rank"
@@ -140,6 +140,8 @@ def record(store_id: str, job: str, ref: str, reaction: str, said: str | None = 
         return None
     if reaction not in REACTIONS:
         raise ValueError(f"모르는 반응: {reaction}")
+    if audit.held(store_id, job, ref):  # 감사 보류 건은 직급에 반영하지 않는다 (감사팀 결정 8, 가정 e)
+        return None
     kinds = DECISIONS if reaction in DECISIONS else (reaction,)
     with repo.lock():
         same = next((e for e in events(store_id, job) if e["ref"] == ref and e["reaction"] in kinds), None)

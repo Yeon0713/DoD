@@ -120,3 +120,44 @@ def test_read_and_remove_by_words_or_number():
     assert asked["headline"] == "어느 규칙을 지울까요?"
     done = donna.turn("두 번째 거 지워")
     assert done["headline"] == "규칙을 지웠어요" and [r["text"] for r in notebook.all_rules("s005")] == ["답글은 세 문장으로 쓰기"]
+
+
+def test_unanswered_remove_question_does_not_take_a_later_undo():
+    """"어느 규칙을 지울까요?"에 대답하지 않고 다른 말로 넘어가면, 그 뒤 사후 취소("두 번째 답글 지워")는 수첩 규칙을 지우지 않는다
+    (2026-11-22 버그 V4)."""
+    donna = choongjang()
+    donna.clock("2026-11-17T16:00:00+09:00")
+    notebook.add("s005", "common", "이모티콘 쓰지 않기", "x")
+    notebook.add("s005", "common", "느낌표 쓰지 않기", "y")
+    assert donna.turn("수첩 규칙 지워")["headline"] == "어느 규칙을 지울까요?"
+    assert donna.turn("오늘 예약 몇 팀이야?")["intent"] == "question"
+    undo = donna.turn("두 번째 답글 지워")
+    assert undo["intent"] == "report.undo" and undo["headline"] != "규칙을 지웠어요"
+    assert [r["text"] for r in notebook.all_rules("s005")] == ["이모티콘 쓰지 않기", "느낌표 쓰지 않기"]
+
+
+def test_remove_question_does_not_survive_the_night():
+    """어제 "어느 규칙을 지울까요?"에 대답하지 않았으면, 오늘 첫 "도나야, 두 번째 답글 지워"는 수첩 규칙을 지우지 않는다 (2026-11-22 버그 V13)."""
+    from voice.tests.conftest import no_morning_tasks
+
+    donna = choongjang()
+    donna.clock("2026-11-17T16:00:00+09:00")
+    notebook.add("s005", "common", "이모티콘 쓰지 않기", "x")
+    notebook.add("s005", "common", "느낌표 쓰지 않기", "y")
+    assert donna.turn("수첩 규칙 지워")["headline"] == "어느 규칙을 지울까요?"
+    donna.clock("2026-11-18T10:00:00+09:00")
+    no_morning_tasks()
+    undo = donna.turn("두 번째 답글 지워", addressed=True)
+    assert undo["headline"] != "규칙을 지웠어요"
+    assert [r["text"] for r in notebook.all_rules("s005")] == ["이모티콘 쓰지 않기", "느낌표 쓰지 않기"]
+
+
+def test_kitchen_talk_between_keeps_the_remove_question():
+    donna = choongjang()
+    donna.clock("2026-11-17T16:00:00+09:00")
+    notebook.add("s005", "common", "이모티콘 쓰지 않기", "x")
+    notebook.add("s005", "common", "느낌표 쓰지 않기", "y")
+    donna.turn("수첩 규칙 지워")
+    assert donna.turn("3번 테이블 치워 줘")["type"] == "ignore"
+    assert donna.turn("두 번째 거 지워")["headline"] == "규칙을 지웠어요"
+    assert [r["text"] for r in notebook.all_rules("s005")] == ["이모티콘 쓰지 않기"]

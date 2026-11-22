@@ -120,3 +120,62 @@ def test_not_asked_after_close_and_expired_next_day():
     briefing.prepare("s005")
     assert {p["state"] for p in proposals.for_briefing("s005", "2026-11-17", include_asked=True)} == set()
     assert review_tasks() == []
+
+
+# ── 대답하지 않은 "그 전에 하나만요"의 원래 말은 버린다 (2026-11-22 버그 V6) ──
+
+
+def test_unanswered_cut_in_does_not_replay_the_call_later():
+    from voice import staff_db
+
+    donna = morning()
+    donna.clock("2026-11-17T15:35:00+09:00")
+    assert donna.turn("하린이 초대해 줘", addressed=True)["say"][0]["text"] == "그 전에 하나만요."
+    assert donna.turn("오늘 예약 몇 팀이야?")["intent"] == "question"  # 할 일 질문에 대답하지 않고 넘어갔다
+    invites = staff_db.invites_of("st_harin")
+    donna.clock("2026-11-18T09:30:00+09:00")
+    briefing.prepare("s005")
+    add_seal("rv_y")
+    briefing.prepare("s005")
+    to_tasks_step(donna)
+    yes = donna.turn("응, 넣어")
+    assert yes["intent"] == "action.approve" and not any("초대" in s["text"] for s in yes["say"])
+    assert staff_db.invites_of("st_harin") == invites
+
+
+def test_unanswered_cut_in_is_not_replayed_by_a_later_briefing_the_same_day():
+    from voice import staff_db
+
+    donna = morning()
+    donna.clock("2026-11-17T15:35:00+09:00")
+    donna.turn("하린이 초대해 줘", addressed=True)
+    donna.turn("오늘 예약 몇 팀이야?")
+    invites = staff_db.invites_of("st_harin")
+    add_seal("rv_y")
+    briefing.prepare("s005")
+    to_tasks_step(donna)
+    yes = donna.turn("응, 넣어")
+    assert yes["intent"] == "action.approve" and not any("초대" in s["text"] for s in yes["say"])
+    assert staff_db.invites_of("st_harin") == invites
+
+
+def test_deferred_text_cleared_on_new_day():
+    """어제 "그 전에 하나만요"에 대답하지 않았으면, 날짜가 바뀐 뒤 같은 세션의 첫 말에서 원래 말을 버린다 (2026-11-22 버그 V13)."""
+    from voice import repo
+
+    donna = morning()
+    donna.clock("2026-11-17T15:35:00+09:00")
+    assert donna.turn("하린이 초대해 줘", addressed=True)["say"][0]["text"] == "그 전에 하나만요."
+    assert repo.get("session", donna.session_id)["deferred_text"] == "하린이 초대해 줘"
+    donna.clock("2026-11-18T09:30:00+09:00")
+    assert donna.turn("3번 테이블 치워 줘")["type"] == "ignore"  # 흘려듣는 말이어도 날짜가 바뀌었으면 비운다
+    assert "deferred_text" not in repo.get("session", donna.session_id)
+
+
+def test_kitchen_talk_after_cut_in_still_answers_the_call():
+    donna = morning()
+    donna.clock("2026-11-17T15:35:00+09:00")
+    donna.turn("하린이 초대해 줘", addressed=True)
+    assert donna.turn("3번 테이블 치워 줘")["type"] == "ignore"
+    done = donna.turn("응, 넣어")
+    assert any("초대" in s["text"] for s in done["say"])

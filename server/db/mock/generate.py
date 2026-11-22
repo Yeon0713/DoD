@@ -29,7 +29,7 @@ from sqlalchemy import insert
 from sqlalchemy.schema import CreateIndex, CreateTable
 
 from db import models
-from db.session import DATA_DIR, engine, store_engine
+from db.session import DATA_DIR, dispose_all, engine, store_engine
 
 SEED = 20260817
 KST = ZoneInfo("Asia/Seoul")
@@ -932,7 +932,7 @@ def create_tables(conn, tables) -> None:
 
 def load_db(data: dict[str, dict[str, list[dict]]]) -> None:
     """db/data/*.db 를 지우고 새로 만든다. 공통 테이블은 common.db, 매장 테이블은 매장 파일(s001.db ...)."""
-    engine.dispose()  # 열려 있는 연결이 옛 파일을 붙잡고 있지 않게
+    dispose_all()  # 열려 있는 연결이 옛 파일을 붙잡고 있지 않게
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     for path in DATA_DIR.glob("*.db"):
         path.unlink()
@@ -951,7 +951,7 @@ def load_db(data: dict[str, dict[str, list[dict]]]) -> None:
             create_tables(conn, per_store)
             for name in models.STORE_TABLES:  # 부모 테이블부터
                 conn.execute(insert(TABLES[name]), table_rows(name, data[sid][name]))
-    engine.dispose()
+    dispose_all()
 
 
 def main() -> None:

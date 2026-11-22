@@ -89,8 +89,7 @@ def step(view: VoiceStore, now: dt.datetime, *, lead: list[str] | None = None) -
 
 def unasked_today(view: VoiceStore, now: dt.datetime) -> bool:
     """오늘 물을 제안이 남았고, 아직 문 닫기 전이다 (브리핑에서 못 물은 것을 다음 '도나야' 때 묻는다)."""
-    today = hours.on(view.store, now.date())
-    if not today or now >= at_time(now.date(), today["close"]):
+    if hours.business_day(view.store, now) is None:  # 자정 넘김 가게의 새벽은 어제 영업
         return False
     return bool(proposals.for_briefing(view.store_id, now.date().isoformat()))
 

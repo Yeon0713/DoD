@@ -83,7 +83,15 @@ class PlaceInfo:
 
     @staticmethod
     def from_dict(d: dict) -> "PlaceInfo":
-        return PlaceInfo(**{**d, "menus": [PlaceMenu(**m) for m in d.get("menus", [])], "news": [PlaceNews(**n) for n in d.get("news", [])]})
+        # 예전에 "24:00" 그대로 저장해 둔 정보도 읽을 때 맞춘다
+        weekly = {code: h and {**h, "close": _midnight_close(h["close"])} for code, h in d["weekly_hours"].items()}
+        menus, news = [PlaceMenu(**m) for m in d.get("menus", [])], [PlaceNews(**n) for n in d.get("news", [])]
+        return PlaceInfo(**{**d, "weekly_hours": weekly, "menus": menus, "news": news})
+
+
+def _midnight_close(end: str) -> str:
+    """자정 마감 "24:00" 은 "23:59" 로 맞춘다 (가게 시간 규칙은 00:00~23:59). "00:00" 은 그대로 둔다 (자정을 넘기는 가게로 본다)."""
+    return "23:59" if end == "24:00" else end
 
 
 def _get(url: str, params: dict | None = None) -> str:
@@ -179,7 +187,7 @@ def parse_place(place_id: str, html: str) -> PlaceInfo:
     for codes, day in sorted(rows, key=lambda r: -len(r[0])):
         hours = day["businessHours"]
         for code in codes:
-            weekly[code] = {"open": hours["start"], "close": hours["end"]}
+            weekly[code] = {"open": hours["start"], "close": _midnight_close(hours["end"])}
         for brk in day.get("breakHours") or []:
             breaks.append((brk["start"], brk["end"]))
     break_time = None

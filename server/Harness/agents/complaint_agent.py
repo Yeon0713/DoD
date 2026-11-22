@@ -255,6 +255,7 @@ SPEC = AgentSpec(
     finalize=finalize,
     budget=Budget(max_steps=8, max_rejections=2, max_seconds=60),
     temperature=0.2,
+    cache_scope=lambda task: task["risk_id"],  # risk_id 는 user 메시지에 없고 도구와 finalize 가 읽는다 (H8)
 )
 
 

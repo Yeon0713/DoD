@@ -52,6 +52,8 @@ class RunContext:
     post: Post = httpx.post  # 테스트에서 가짜를 넣는다
     store_facts: list[str] = field(default_factory=list)  # 가게가 등록한 사실 메모. 받는 곳이 아직 없어 기본은 비어 있다
     call_budget: CallBudget | None = None
+    # 이 실행이 넘기지 않을 시각 (runner.clock, monotonic). runner 가 시작할 때 채우고 일꾼(child)에게 물려준다 (H7)
+    deadline: float | None = None
 
     @property
     def store_id(self) -> str:
@@ -126,6 +128,11 @@ class AgentSpec:
     temperature: float = 0.3
     # 거절 메시지 끝에 붙이는 안내. {submit} 은 제출 도구 이름으로 바뀐다
     retry_hint: str = "이 부분만 고치고 나머지는 그대로 두어 {submit} 로 다시 제출해 줘."
+    # 캐시 키 입력 해시에 더할 값. 도구가 읽는 task 칸처럼 user 메시지에 없지만 결과를 바꾸는 것 (JSON 으로 바꿀 수 있어야 한다).
+    # None 이면(대부분의 에이전트) 예전과 같은 키를 쓴다
+    cache_scope: Callable[[dict], object] | None = None
+    # 시간 예산(마감)이 지난 뒤에도 물러나기(fallback)를 부를지. 사장님이 기다리는 에이전트는 False 로 둘 수 있다 (H7)
+    fallback_after_deadline: bool = True
 
     def tool_schemas(self) -> list[dict]:
         return [tool.schema() for tool in self.tools] + [self.submit.schema()]

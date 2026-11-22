@@ -12,8 +12,8 @@ from app.planner.data_shapes import Basis, CustomerCycle, PlanItem, Review, Stor
 from app.planner.notification_time_helpers import slot_at
 from app.planner.rule_review_reply import (
     SATURDAY_APPROVAL_SLOT,
-    SATURDAY_SEND_TIME,
     classify_review,
+    reply_send_time,
     saturday_reply_times,
 )
 
@@ -30,7 +30,7 @@ def plan_reorder_nudges(
             continue
         reply_approval_at, _ = saturday_reply_times(review.written_at, store)
         nudge_saturday = reply_approval_at.date() + dt.timedelta(weeks=NUDGE_AFTER_WEEKS)
-        send_at = at_time(nudge_saturday, SATURDAY_SEND_TIME)
+        send_at = at_time(nudge_saturday, reply_send_time(store))
         items.append(
             PlanItem(
                 plan_id=f"REORDER_NUDGE:{review.customer_key}:{nudge_saturday}",

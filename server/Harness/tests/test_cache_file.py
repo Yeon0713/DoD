@@ -44,3 +44,27 @@ def test_no_file_when_path_is_none():
     cache.put(KEY, proposal())
     cache.clear()
     assert cache.get(KEY) is None
+
+
+def test_nested_proposal_survives_restart(tmp_path, monkeypatch):
+    """supervisor 처럼 content 안에 Proposal 을 품은 값도 그대로 돌아온다 (H1)."""
+    monkeypatch.setattr(cache, "CACHE_PATH", tmp_path / "harness_cache.db")
+    outer = Proposal("supervisor", "BATCH:x", {"headline": None, "revised": {"p1": proposal()}}, "AGENT", "run_2")
+    cache.put(KEY, outer)
+    cache.clear()
+    again = cache.get(KEY)
+    assert isinstance(again.content["revised"]["p1"], Proposal)
+    assert again == outer
+
+
+def test_legacy_nested_entry_is_a_miss(tmp_path, monkeypatch):
+    """예전 모양(asdict)으로 저장된, 안쪽 Proposal 이 dict 가 된 항목은 빗나감으로 본다 (H1)."""
+    import dataclasses
+    import json
+
+    monkeypatch.setattr(cache, "CACHE_PATH", tmp_path / "harness_cache.db")
+    outer = Proposal("supervisor", "BATCH:x", {"headline": None, "revised": {"p1": proposal()}}, "AGENT", "run_2")
+    text = json.dumps({"type": "proposal", "fields": dataclasses.asdict(outer)}, ensure_ascii=False)
+    with cache._db() as conn:
+        conn.execute("INSERT INTO results (agent, store_id, input_hash, prompt_hash, value) VALUES (?, ?, ?, ?, ?)", (*KEY, text))
+    assert cache.get(KEY) is None

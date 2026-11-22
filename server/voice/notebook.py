@@ -211,6 +211,7 @@ def remove_by_words(store_id: str, said: str | None, session: dict) -> dict:
         response = answer("어느 규칙을 지울까요?", [say("어느 규칙을 지울까요?"), *[say(line) for line in _listing(found)],
                                                   say("'두 번째 규칙 지워'처럼 말씀해 주세요.")], [])
         response["expects_reply"] = True
+        response["notebook_ask"] = True  # 다음 말이 이 대답이 아니면 turn.handle 이 notebook_pending 을 지운다 (앱에는 보내지 않는다)
         return response
     remove(store_id, picked[0]["id"])
     return answer("규칙을 지웠어요", [say(f"수첩에서 '{picked[0]['text']}' 규칙을 지웠어요.")], [])

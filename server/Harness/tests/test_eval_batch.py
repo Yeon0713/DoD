@@ -142,7 +142,7 @@ def test_b_batch_conflicts_left_and_no_extra_calls(clova):
     mismatch, same, clean = rows
     assert mismatch["source"] == "AGENT" and mismatch["left"] == ["REPLY_VS_DIAGNOSIS"]
     assert mismatch["consistency"]["REVISIT_REPLY:r1:2026-11-15"]["ok"] is False
-    assert mismatch["rework"] == {"per_item": {}, "total": 0, "ok": True}
+    assert mismatch["rework"] == {"per_item": {}, "total": 0, "ok": True, "unreadable": 0}
     assert set(mismatch["fit_before"]) == {"REVISIT_REPLY:r1:2026-11-15"}  # 조율 전 고정 초안도 채점
     assert same["left"] == ["SAME_CUSTOMER_TWICE"]  # 규칙은 두 할 일이 함께 있으면 남은 것으로 본다
     assert clean["source"] == "NONE" and clean["calls"] == 0 and clean["left"] == []
@@ -174,3 +174,48 @@ def test_suite_writes_counts(tmp_path, monkeypatch, clova):
     assert found[("diagnosis_cause_found", "B")]["note"].startswith("B 4건 중")
     assert ("no_conflict_calls", "A") not in found and found[("no_conflict_calls", "B")]["value"] == 2
     assert len(body["cases"]) == 4 * 2 + 5 + 4  # 진단 4 × 2, 묶음 B 5 + A 4
+
+
+# ── 근거 장부 다시 세기 (H6) ──
+
+
+def test_tool_evidence_keeps_long_results_and_input(frozen_clock, make_ctx):
+    """trace 로 다시 센 근거 장부가 러너가 검사에 쓴 장부(user 메시지 + 도구 결과 전체)와 같다."""
+    from Harness import grounding, runner
+    from Harness.spec import AgentSpec, Tool
+    from Harness.tests.fakes import FakeClova, call
+    from Harness.tools import obj, string
+
+    long_result = lambda ctx, task, args: {"rows": "가" * 700, "last": 987}  # noqa: E731  987 은 600자 뒤에 있다
+    spec = AgentSpec(
+        name="long", system_prompt=lambda task, ctx: "시스템", user_message=lambda task, ctx: "근거 리뷰 31건",
+        tools=[Tool("get_long", "긴 결과", obj({}), long_result)], submit=Tool("submit_text", "제출", obj({"text": string("글")})),
+        check=lambda args, evidence, task, ctx, notes: None, task_id=lambda task: "T",
+    )
+    text = "리뷰 31건, 주문 987건이에요"
+    ctx = make_ctx(FakeClova([call("get_long", {})], [call("submit_text", {"text": text})]))
+    assert runner.run(spec, {}, ctx).source == "AGENT"
+    evidence = batch_eval.tool_evidence([ctx.run_id])
+    assert {"31", "987"} <= evidence.numbers()
+    assert grounding.ungrounded_numbers(text, evidence) == []  # 진단 행의 grounded 와 같은 계산
+
+
+def test_tool_evidence_keeps_very_long_input(frozen_clock, make_ctx):
+    """user 메시지가 아주 길어도(6000자) 끝쪽 근거 숫자를 trace 로 다시 셀 수 있다 (H10)."""
+    from Harness import grounding, runner
+    from Harness.spec import AgentSpec, Tool
+    from Harness.tests.fakes import FakeClova, call
+    from Harness.tools import obj, string
+
+    user = "가" * 5990 + " 리뷰 4321건"
+    spec = AgentSpec(
+        name="long_input", system_prompt=lambda task, ctx: "시스템", user_message=lambda task, ctx: user,
+        tools=[], submit=Tool("submit_text", "제출", obj({"text": string("글")})),
+        check=lambda args, evidence, task, ctx, notes: None, task_id=lambda task: "T",
+    )
+    text = "리뷰 4321건이에요"
+    ctx = make_ctx(FakeClova([call("submit_text", {"text": text})]))
+    assert runner.run(spec, {}, ctx).source == "AGENT"
+    evidence = batch_eval.tool_evidence([ctx.run_id])
+    assert "4321" in evidence.numbers()
+    assert grounding.ungrounded_numbers(text, evidence) == []

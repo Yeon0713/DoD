@@ -14,7 +14,7 @@ import datetime as dt
 from collections import defaultdict
 
 from app.analysis.input_shapes import AnalysisInputs
-from app.analysis.pattern.daypart_time import dayparts_of
+from app.analysis.pattern.daypart_time import business_date, dayparts_of
 from app.analysis.store_calendar.calendar_day import HIGH_RATIO, LOW_RATIO
 from app.core.seoul_time import to_seoul
 from app.planner.data_shapes import CalendarCell, CalendarReason
@@ -70,7 +70,7 @@ def apply_reservations(cells: list[CalendarCell], reservations: list[dict], inpu
     for r in confirmed:
         daypart = _daypart_of(r["at"], inputs)
         if daypart:
-            by_cell[(to_seoul(r["at"]).date(), daypart)].append(r)
+            by_cell[(business_date(r["at"], inputs.store), daypart)].append(r)  # 칸 날짜는 영업일 (자정 넘는 가게의 새벽은 전날)
     out = []
     for cell in cells:
         found = by_cell.get((cell.date, cell.daypart))

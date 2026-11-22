@@ -69,9 +69,9 @@ def add(body: NewReservation, store_id: str = Depends(store_id_param)):
     return _view(row)
 
 
-def _change(reservation_id: int, status: str, owner_only: bool = False) -> dict:
+def _change(reservation_id: int, store_id: str, status: str, owner_only: bool = False) -> dict:
     row = reservations.get(reservation_id)
-    if row is None:
+    if row is None or row["store_id"] != store_id:  # 다른 가게 예약은 있는지도 알려 주지 않는다
         raise ApiError(404, "NOT_FOUND", "예약을 찾지 못했어요")
     if owner_only and row["source"] != "OWNER":
         raise ApiError(400, "NAVER_RESERVATION", "네이버 예약은 받기·어렵다고 답하기로 정해 주세요")
@@ -84,15 +84,15 @@ def _change(reservation_id: int, status: str, owner_only: bool = False) -> dict:
 
 
 @router.post("/{reservation_id}/confirm", summary="예약 문의 받기")
-def confirm(reservation_id: int):
-    return _change(reservation_id, "CONFIRMED")
+def confirm(reservation_id: int, store_id: str = Depends(store_id_param)):
+    return _change(reservation_id, store_id, "CONFIRMED")
 
 
 @router.post("/{reservation_id}/decline", summary="예약 문의에 어렵다고 답하기")
-def decline(reservation_id: int):
-    return _change(reservation_id, "DECLINED")
+def decline(reservation_id: int, store_id: str = Depends(store_id_param)):
+    return _change(reservation_id, store_id, "DECLINED")
 
 
 @router.delete("/{reservation_id}", summary="직접 적은 예약 지우기")
-def remove(reservation_id: int):
-    return _change(reservation_id, "CANCELED", owner_only=True)
+def remove(reservation_id: int, store_id: str = Depends(store_id_param)):
+    return _change(reservation_id, store_id, "CANCELED", owner_only=True)

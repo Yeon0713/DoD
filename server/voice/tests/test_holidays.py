@@ -72,13 +72,31 @@ def test_naver_day_is_asked_in_the_morning_before_it_counts(naver):
     assert hours.on(repo.store("s005"), dt.date(2026, 11, 26)) is None
 
 
-def test_naver_day_rejected_is_removed(naver):
+def test_naver_day_rejected_is_not_a_day_off(naver):
     donna = naver([call("submit_holidays", {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]})])
     briefing.prepare("s005")
     donna.turn("오늘 일정 브리핑해 줘")
     donna.turn("다음")
     donna.turn("아니")
-    assert holidays.items(repo.store("s005")) == []
+    assert holidays.unconfirmed(repo.store("s005"), dt.date(2026, 11, 17)) == []  # 다시 묻지 않는다
+    assert hours.on(repo.store("s005"), dt.date(2026, 11, 26)) is not None  # 쉬는 날이 아니다
+    cancel = donna.turn("26일 휴무 취소해 줘", addressed=True)
+    assert cancel["headline"] == "적힌 휴무가 없어요"
+
+
+def test_naver_day_rejected_is_not_asked_again_next_day(naver):
+    """다음 날 같은 네이버 글을 다시 읽어도 아니라고 한 날은 다시 묻지 않는다 (2026-11-22 버그 V5)."""
+    item = {"items": [{"date": "2026-11-26", "quote": "11월 26일(목) 가게 사정으로 하루 쉬어 갑니다"}]}
+    donna = naver([call("submit_holidays", item)], [call("submit_holidays", item)])
+    briefing.prepare("s005")
+    donna.turn("오늘 일정 브리핑해 줘")
+    donna.turn("다음")
+    assert donna.turn("아니")["headline"] == "그대로 둘게요"
+    donna.clock("2026-11-18T09:30:00+09:00")
+    briefing.prepare("s005")
+    assert briefing.current("s005")["steps"]["holiday"] is None
+    assert holidays.unconfirmed(repo.store("s005"), dt.date(2026, 11, 18)) == []
+    assert hours.on(repo.store("s005"), dt.date(2026, 11, 26)) is not None
 
 
 def test_naver_quote_must_be_in_the_text(naver):

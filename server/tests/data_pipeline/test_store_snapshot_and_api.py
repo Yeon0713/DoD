@@ -48,6 +48,28 @@ def test_only_this_reply_week_replies_remain():
     assert batch_ids <= {item.plan_id for item in snapshot.plan.plan_items}  # 알림 묶음도 남은 할 일만 가리킨다
 
 
+def test_late_opening_store_keeps_saturday_replies_until_approval():
+    """17:00 에 여는 가게(OPENING 16:30): 토요일 11:00 이 지나도 이번 주 답글이 남고, 16:30 승인 요청 묶음이 있다."""
+    import json
+    from pathlib import Path
+
+    from app.planner.data_shapes import PlanInputs, PlanResult
+    from app.planner.rule_review_reply import plan_review_replies
+
+    sample = Path(__file__).parents[1] / "planner" / "sample_inputs" / "demo_week_inputs.example.json"
+    inputs = PlanInputs.model_validate(json.loads(sample.read_text(encoding="utf-8")))
+    store = inputs.store.model_copy(update={"open_time": "17:00", "close_time": "23:30", "slots": inputs.store.slots.model_copy(update={"OPENING": "16:30", "AFTERNOON": "20:30", "CLOSING": "23:00"})})
+    review = next(r for r in inputs.reviews if r.review_id == "rv_121").model_copy(update={"written_at": dt.datetime(2026, 11, 17, 18, 0, tzinfo=SEOUL)})
+    items = plan_review_replies([review], {}, store)
+    plan = PlanResult(plan_items=items, notice_items=[], batches=[])
+    approval_at = dt.datetime(2026, 11, 21, 16, 30, tzinfo=SEOUL)
+
+    for now in (dt.datetime(2026, 11, 21, 10, 0, tzinfo=SEOUL), approval_at):
+        kept = store_snapshot_cache.keep_this_week_replies(plan, now, store)
+        assert [item.task_type for item in kept.plan_items] == ["REVISIT_REPLY"]
+        assert any(batch.slot_at == approval_at for batch in kept.batches)
+
+
 def test_overnight_store_has_analysis_but_no_plan():
     snapshot = store_snapshot_cache.get_snapshot("s002", NOW)
     assert snapshot.calendar_cells
@@ -59,6 +81,16 @@ def test_snapshot_is_reused_until_refresh_time():
     first = store_snapshot_cache.get_snapshot("s001", NOW)
     assert store_snapshot_cache.get_snapshot("s001", NOW + dt.timedelta(minutes=5)) is first
     assert store_snapshot_cache.get_snapshot("s001", NOW + dt.timedelta(minutes=30)) is not first
+
+
+def test_snapshot_is_recomputed_when_date_changes():
+    """자정이 지나면 10분이 안 됐어도 다시 계산한다 ('오늘'이 어제로 나오지 않게)."""
+    try:
+        first = store_snapshot_cache.get_snapshot("s003", dt.datetime(2026, 11, 12, 23, 58, tzinfo=SEOUL))
+        second = store_snapshot_cache.get_snapshot("s003", dt.datetime(2026, 11, 13, 0, 3, tzinfo=SEOUL))
+        assert second is not first and second.computed_at.date() == dt.date(2026, 11, 13)
+    finally:
+        store_snapshot_cache.forget("s003")
 
 
 ENDPOINTS = [

@@ -83,7 +83,8 @@ def test_owner_edits_hours_per_weekday(chj: Choongjang):
 
 
 def test_bad_hours_are_refused(chj: Choongjang):
-    days = [{"open": "20:30", "close": "10:30"}] * 7
+    days = [{"open": "10:30", "close": "10:30"}] * 7  # 닫는 시각이 이르면 자정 넘김이라 받는다 (V7). 같으면 거절
     response = chj.client.patch("/v1/settings", json={"store_id": "s005", "hours": {"days": days}})
-    assert response.status_code == 400 and response.json()["error"] == "bad_hours"
+    error = response.json()["error"]  # 다른 오류와 같은 모양 {"error": {"code", "message"}} (2026-11-22 버그 V8)
+    assert response.status_code == 400 and error["code"] == "bad_hours" and error["message"]
     assert chj.get("/v1/settings")["hours"]["summary_label"] == "10:30 ~ 20:30"

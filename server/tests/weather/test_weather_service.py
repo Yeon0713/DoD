@@ -82,7 +82,7 @@ def store_s150(tmp_path, monkeypatch):
             "open_time": dt.time(11), "close_time": dt.time(21), "closed_weekdays": [], "slots": ["10:30", "15:00", "20:30"],
         }])
     yield "s150"
-    session.engine.dispose()
+    session.dispose_all()
 
 
 def test_store_without_saved_weather_uses_common_mock(store_s150):

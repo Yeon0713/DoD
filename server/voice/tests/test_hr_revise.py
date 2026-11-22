@@ -172,3 +172,52 @@ def test_window_reply_revise_keeps_the_owner_compensation(monkeypatch):
     assert SOFT in second and comp not in second  # 고친 글에서 이어 고친다
     donna.turn("응")
     assert fake.done() and repo.review(rid)["reply_text"] == f"{shorter} {comp}"
+
+
+# ── 답글을 고쳐 쓰는 동안 저장소 락을 잡지 않는다 (2026-11-22 버그 V3) ──
+
+
+def test_revise_does_not_hold_the_repo_lock(monkeypatch):
+    import threading
+
+    from voice.agents import voice_reply
+
+    seen = {}
+
+    def fake_revise(view, review, kind, previous, instruction, occasion=None, fix=None):
+        def other():
+            ok = repo._lock.acquire(timeout=0.3)
+            seen["other_thread_got_lock"] = ok
+            if ok:
+                repo._lock.release()
+        t = threading.Thread(target=other)
+        t.start()
+        t.join()
+        return {"text": previous + " 고침", "source": "AGENT", "notes": []}
+
+    monkeypatch.setattr(voice_reply, "revise", fake_revise)
+    donna, rid = leak_alert()
+    before = repo.get("alert", f"al_{rid}")
+    revised = donna.turn("좀 더 부드럽게 써 줘")
+    assert revised["intent"] == "action.revise" and revised["say"][0]["text"] == "이렇게 고쳤어요."
+    assert seen == {"other_thread_got_lock": True}
+    assert repo.get("alert", f"al_{rid}")["reply_base"] == before["reply_base"] + " 고침"
+
+
+def test_revise_result_dropped_if_fallback_ran_meanwhile(monkeypatch):
+    from voice.agents import voice_reply
+    from voice.jobs import review_loop
+
+    def fake_revise(view, review, kind, previous, instruction, occasion=None, fix=None):
+        review_loop.fallback("s005", review["id"])  # 고쳐 쓰는 사이 25분이 되어 초안으로 남겼다
+        return {"text": previous + " 고침", "source": "AGENT", "notes": []}
+
+    monkeypatch.setattr(voice_reply, "revise", fake_revise)
+    donna, rid = leak_alert()
+    before = repo.get("alert", f"al_{rid}")
+    revised = donna.turn("좀 더 부드럽게 써 줘")
+    assert revised["type"] != "ask_action" and revised["say"][0]["text"] == "그 리뷰는 이미 처리했어요."
+    after = repo.get("alert", f"al_{rid}")
+    assert after["state"] == "left_draft"
+    assert (after["reply_base"], after["reply_plain"]) == (before["reply_base"], before["reply_plain"])
+    assert ("negative_reply", "edited") not in hr_log()

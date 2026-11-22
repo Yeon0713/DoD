@@ -18,6 +18,7 @@
 5. 단계마다 trace 에 기록하고, 통과한 제안은 캐시에 넣는다.
 """
 
+import dataclasses
 import json
 import logging
 import time
@@ -31,12 +32,16 @@ from Harness.tools import to_content
 logger = logging.getLogger(__name__)
 
 clock = time.monotonic  # 테스트에서 바꾼다
-MIN_CALL_SECONDS = 0.5  # 엄격한 예산(Budget.strict)에서 남은 시간이 거의 없어도 호출 하나에 주는 최소 시간
+MIN_CALL_SECONDS = 0.5  # 남은 시간이 거의 없어도 호출 하나에 주는 최소 시간
+CALL_SECONDS = 20  # 엄격하지 않은 예산에서 호출 하나의 제한 시간 상한 (clova_tools.chat_with_tools 기본값과 같다)
 
 
 def cache_key(spec: AgentSpec, task: dict, ctx: RunContext, system: str, user: str) -> tuple[str, str, str, str]:
     # 프롬프트 칸에 도구 모양도 넣는다: 칸 순서·설명만 바꿔도 예전 모양으로 받은 결과를 다시 쓰지 않게 (2026-11-21)
-    return (spec.name, ctx.store_id, cache.digest([user, ctx.store_facts]), cache.digest([system, spec.tool_schemas()]))
+    # 입력 칸에는 user 메시지에 없는 할 일 정체(spec.cache_scope)를 더한다. 없으면 예전 해시 그대로 (음성 서버 캐시가 빗나가지 않게)
+    extra = spec.cache_scope(task) if spec.cache_scope else None
+    inputs = [user, ctx.store_facts] if extra is None else [user, ctx.store_facts, extra]
+    return (spec.name, ctx.store_id, cache.digest(inputs), cache.digest([system, spec.tool_schemas()]))
 
 
 def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
@@ -45,7 +50,8 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
     user = spec.user_message(task, ctx)
     log = partial(trace.record, run_id=ctx.run_id, parent_run_id=ctx.parent_run_id, agent=spec.name, store_id=ctx.store_id)
 
-    log(step=0, kind="start", name=task_id)  # 개발자 대시보드가 '지금 도는 실행'과 맡은 일을 이 줄로 안다
+    # 개발자 대시보드가 '지금 도는 실행'과 맡은 일을 이 줄로 안다. 입력(user 메시지)은 근거 장부의 첫 줄이라 평가가 다시 쓴다 (자르지 않는다, H10)
+    log(step=0, kind="start", name=task_id, detail={"input": user}, limit=None)
     key = cache_key(spec, task, ctx, system, user)
     cached = cache.get(key)
     if isinstance(cached, Proposal):
@@ -55,11 +61,15 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
     messages: list[dict] = [{"role": "system", "content": system}, {"role": "user", "content": user}]
     evidence = Evidence([user])
     rejections, nudged, force_submit, started = 0, False, False, clock()
+    # 마감: 이 실행의 예산 끝과, 이미 있으면(supervisor 아래 일꾼) 부모 마감 중 이른 쪽. 도구·검사·일꾼에게도 물려준다 (H7)
+    deadline = started + spec.budget.max_seconds if ctx.deadline is None else min(started + spec.budget.max_seconds, ctx.deadline)
+    ctx = dataclasses.replace(ctx, deadline=deadline)
     seen_calls: set[str] = set()
     submit_only = {"type": "function", "function": {"name": spec.submit.name}}
 
     for step in range(1, spec.budget.max_steps + 1):
-        if clock() - started > spec.budget.max_seconds:
+        now = clock()
+        if now > deadline:
             log(step=step, kind="end", name="time_budget")
             break
         if ctx.call_budget is not None and not ctx.call_budget.take():
@@ -68,11 +78,12 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
         # 글로만 답했거나, 조회만 되풀이했거나, 마지막 단계면 제출 도구를 강제한다
         forced = force_submit or step == spec.budget.max_steps
         strict = spec.budget.strict
+        left = max(MIN_CALL_SECONDS, deadline - now)
+        # 엄격하지 않아도 호출 하나를 남은 시간으로 묶는다 (재시도 규칙은 그대로, H7). 검사 안의 LLM 검토는 마감을 보지 않는다
         reply = clova_tools.chat_with_tools(
             messages, spec.tool_schemas(), feature=spec.name, store_id=ctx.store_id,
             tool_choice=submit_only if forced else "auto", temperature=spec.temperature, post=ctx.post,
-            **({"timeout": max(MIN_CALL_SECONDS, spec.budget.max_seconds - (clock() - started)), "retry": False}
-               if strict else {}),
+            **({"timeout": left, "retry": False} if strict else {"timeout": min(CALL_SECONDS, left)}),
         )
         call_id = clova_tools.last_call_id()
         if reply is None:
@@ -114,7 +125,8 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
                 else:
                     seen_calls.add(signature)
                     result = _run_tool(spec, call.name, call.arguments, task, ctx, evidence)
-                log(step=step, kind="tool", name=call.name, detail={"args": call.arguments, "result": result})
+                log(step=step, kind="tool", name=call.name, detail={"args": call.arguments, "result": result},
+                    limit=None)  # 근거 줄이라 자르지 않는다 (평가가 다시 센다, H10)
             messages.append({"role": "tool", "toolCallId": call.id, "content": result})
         if lookups and repeats == len(lookups):  # 새로 본 것이 없으면 다음엔 제출하게 한다
             force_submit = True
@@ -122,6 +134,9 @@ def run(spec: AgentSpec, task: dict, ctx: RunContext) -> Proposal | None:
             log(step=step, kind="end", name="too_many_rejections")
             break
 
+    if not spec.fallback_after_deadline and clock() > deadline:
+        log(step=0, kind="fallback", name="deadline")
+        return None
     return _fallback(spec, task, ctx, task_id, log)
 
 

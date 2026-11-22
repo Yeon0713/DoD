@@ -5,10 +5,12 @@
 """
 
 import base64
+import binascii
 import io
 import datetime as dt
 import json
 import re
+import shutil
 import tempfile
 import threading
 import uuid
@@ -69,7 +71,10 @@ def get(job_id: str) -> dict | None:
 def _photo_bytes(source: str) -> bytes:
     match = DATA_URL.match(source.strip())
     if match:
-        raw = base64.b64decode(match.group(2))
+        try:
+            raw = base64.b64decode(match.group(2))
+        except (binascii.Error, ValueError):
+            raise PhotoError("사진을 읽지 못했어요") from None
         if len(raw) > MAX_UPLOAD:
             raise PhotoError("8MB 보다 작은 사진으로 골라 주세요")
         return raw
@@ -101,8 +106,12 @@ def start(situation: Situation, choice: prompt_builder.PosterChoice, photos: lis
     logo = store_logo.path_of(situation.store_id) if choice.has_logo else None
     if logo:
         files.append(logo)
-    for i, (_, source) in enumerate(photos[:MAX_PHOTOS]):
-        files.append(_normalized(_photo_bytes(source), work / f"photo-{i + 1}.jpg"))
+    try:
+        for i, (_, source) in enumerate(photos[:MAX_PHOTOS]):
+            files.append(_normalized(_photo_bytes(source), work / f"photo-{i + 1}.jpg"))
+    except Exception:
+        shutil.rmtree(work, ignore_errors=True)  # 뒤에서 만들 일감이 없으니 여기서 지운다
+        raise
     choice.has_logo = logo is not None
     choice.photo_labels = tuple(label for label, _ in photos[:MAX_PHOTOS])
     text = prompt_builder.build(situation, choice)

@@ -180,6 +180,15 @@ def user_message(task: dict, ctx: RunContext) -> str:
     return "\n".join(rows)
 
 
+def _accepted(args: dict, task: dict) -> list[str]:
+    """받아들여 실제로 반영할 재작업. 검사와 finalize 가 같은 거름을 쓴다 (H3).
+    다시 쓰게 하지 않은 할 일 id 는 거절하지 않고 뺀다 (실제 CLOVA 가 REVIEW_FIX 를 섞은 일이 있다). id 하나를 글자로 내도 받아 준다."""
+    raw = args.get("accepted") or []
+    if isinstance(raw, str):
+        raw = [raw]
+    return [str(a) for a in raw if str(a) in task["revised"]]
+
+
 def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: list[str]) -> str | None:
     extra = set(args) - SUBMIT_KEYS
     if extra:
@@ -198,10 +207,14 @@ def check(args: dict, evidence: Evidence, task: dict, ctx: RunContext, notes: li
     loose = ungrounded_numbers(" ".join(str(r.get("note")) for r in raw_notes), evidence)
     if loose:
         return f"메모에 초안·충돌 목록에 없는 숫자를 썼어요: {', '.join(dict.fromkeys(loose))}. 그 숫자를 빼 주세요"
-    handled = set(task["asked"]) | noted
+    if not isinstance(args.get("accepted") or [], (list, str)):
+        return "accepted 는 할 일 id 목록이어야 해요"
+    # 처리는 받아들인 재작업이나 메모다. 다시 쓰게 하기만 하고 실패했거나 받아들이지 않은 것은 처리가 아니다 (H3)
+    handled = set(_accepted(args, task)) | noted
     unhandled = [c for c in task["conflicts"] if not handled & set(c.plan_ids)]
     if unhandled:
-        return "처리하지 않은 충돌이 있어요: " + "; ".join(KIND_NAMES[c.kind] for c in unhandled)
+        return ("처리하지 않은 충돌이 있어요: " + "; ".join(KIND_NAMES[c.kind] for c in unhandled)
+                + ". 다시 쓰기에 실패했거나 받아들이지 않은 할 일은 item_notes 로 메모를 남겨 주세요")
     return None
 
 
@@ -217,8 +230,7 @@ def usable_headline(headline: str, evidence_text: str) -> str | None:
 
 
 def finalize(args: dict, task: dict, ctx: RunContext) -> dict:
-    # 다시 쓰게 하지 않은 할 일 id 는 거절하지 않고 뺀다 (실제 CLOVA 가 REVIEW_FIX 를 섞은 일이 있다)
-    accepted = [str(a) for a in args.get("accepted") or [] if str(a) in task["revised"]]
+    accepted = _accepted(args, task)
     notes: dict[str, list[str]] = {}
     for raw in args.get("item_notes") or []:
         notes.setdefault(str(raw["plan_id"]), []).append(str(raw["note"]).strip())

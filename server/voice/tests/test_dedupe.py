@@ -124,3 +124,16 @@ def test_manual_line_rejects_new_actions(clova_on, monkeypatch):
     [made] = proposals.promote_repeats("s005")
     assert made["payload"]["title"] == "국물 포장 이중 실링" and fake.done()
     assert "새 행동을 더하지 마세요" in fake.tool_messages(1)[0]
+
+
+def test_stale_asked_proposal_is_not_a_candidate():
+    """영업 중 알림에서 물었다가(asked, 물을 날 없음) 2시간이 지난 제안은 끝난 것이다. 같은 일로 묶지 않는다 (2026-11-22 버그 V2)."""
+    donna = choongjang()
+    donna.clock("2026-11-17T16:00:00+09:00")
+    old = proposals.create("s005", dept="customer", by="negative_review", payload=SEAL, state="asked",
+                           reason={"type": "review", "review_id": "rv_a"}, link={"type": "review", "review_id": "rv_a"})
+    donna.clock("2026-11-17T17:00:00+09:00")
+    assert propose(SEAL, "rv_b")["state"] == "merged"  # 2시간 안이면 아직 묻는 중일 수 있다
+    donna.clock("2026-11-17T18:30:00+09:00")
+    fresh = propose(SEAL, "rv_c")
+    assert fresh["state"] == "proposed" and proposals.get(old["id"])["state"] == "asked"

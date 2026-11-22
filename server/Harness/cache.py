@@ -48,13 +48,44 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
-def _dump(value: object) -> str | None:
+PROPOSAL_TAG = "__proposal__"
+_PROPOSAL_KEYS = {"agent", "task_id", "content", "source", "run_id"}
+
+
+def _encode(value: object) -> object:
+    """Proposal 을 안쪽까지 표시를 달아 바꾼다. asdict 는 안쪽 Proposal 을 표시 없는 dict 로 만들어 되살리지 못했다 (H1).
+    새 dict·list 를 만들어 원본은 고치지 않는다."""
     from Harness.spec import Proposal
 
+    if isinstance(value, Proposal):
+        return {PROPOSAL_TAG: {f.name: _encode(getattr(value, f.name)) for f in dataclasses.fields(value)}}
+    if isinstance(value, dict):
+        return {key: _encode(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_encode(item) for item in value]
+    return value
+
+
+def _decode_hook(data: dict) -> object:
+    from Harness.spec import Proposal
+
+    if set(data) == {PROPOSAL_TAG}:
+        return Proposal(**data[PROPOSAL_TAG])
+    return data
+
+
+def _has_bare_proposal(value: object) -> bool:
+    """예전 모양(asdict)에서 Proposal 이었다가 표시 없는 dict 가 된 것이 안에 있는지."""
+    if isinstance(value, dict):
+        return _PROPOSAL_KEYS <= set(value) or any(_has_bare_proposal(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_has_bare_proposal(item) for item in value)
+    return False
+
+
+def _dump(value: object) -> str | None:
     try:
-        if isinstance(value, Proposal):
-            return json.dumps({"type": "proposal", "fields": dataclasses.asdict(value)}, ensure_ascii=False)
-        return json.dumps({"type": "json", "value": value}, ensure_ascii=False)
+        return json.dumps({"type": "tagged", "value": _encode(value)}, ensure_ascii=False)
     except (TypeError, ValueError):
         return None  # JSON 으로 못 바꾸는 값은 메모리에만
 
@@ -62,9 +93,14 @@ def _dump(value: object) -> str | None:
 def _load(text: str) -> object | None:
     from Harness.spec import Proposal
 
-    data = json.loads(text)
-    if data.get("type") == "proposal":
-        return Proposal(**data["fields"])
+    data = json.loads(text, object_hook=_decode_hook)
+    if data.get("type") == "tagged":
+        return data.get("value")
+    if data.get("type") == "proposal":  # 예전 모양 (파일에 이미 쌓여 있다)
+        fields = data["fields"]
+        if _has_bare_proposal(fields.get("content")):
+            return None  # 안쪽 Proposal 을 되살릴 수 없어 빗나감으로 본다. 다시 부르면 새 모양으로 저장된다
+        return Proposal(**fields)
     return data.get("value")
 
 

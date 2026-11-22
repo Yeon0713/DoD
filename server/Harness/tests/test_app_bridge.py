@@ -97,6 +97,59 @@ def test_supervisor_revision_replaces_the_draft(snapshot, monkeypatch):
     assert app_bridge.status()["stores"][0]["batches"][0]["headline"] == "오늘은 맛 불만 정리가 먼저예요"
 
 
+def test_bad_supervisor_result_does_not_stop_other_batches(snapshot, monkeypatch):
+    """묶음 하나의 결과가 이상해도(제안 자리에 dict) 남은 묶음과 작업 상태는 끝까지 간다 (H1 방어)."""
+    from app.planner.data_shapes import BatchEntry, NotificationBatch
+
+    fake_agents(monkeypatch, [])
+    bad = NotificationBatch(slot_at=snapshot.computed_at + dt.timedelta(hours=1), slot="AFTERNOON",
+                            entries=[BatchEntry(plan_id=R1, notify_kind="APPROVAL_REQUEST", priority=2)])
+    good = NotificationBatch(slot_at=snapshot.computed_at + dt.timedelta(hours=3), slot="AFTERNOON",
+                             entries=[BatchEntry(plan_id=R4, notify_kind="APPROVAL_REQUEST", priority=2)])
+    snapshot.plan = snapshot.plan.model_copy(update={"batches": [bad, good]})
+
+    def coordinate(batch, proposals, ctx):
+        broken = {R1: {"agent": "reply_agent", "content": {"text": "dict"}}} if batch is bad else {}
+        return SimpleNamespace(source="AGENT", proposals={**proposals, **broken}, run_id=ctx.run_id,
+                               headline="묶음 첫 줄이에요", conflicts=[], item_notes={})
+
+    monkeypatch.setattr(supervisor, "coordinate_batch", coordinate)
+    app_bridge.run_all(snapshot, [R1, R4])
+    store = app_bridge.status()["stores"][0]
+    assert store["job"]["state"] == "done"
+    assert [b["slot_at"] for b in store["batches"]] == [good.slot_at.isoformat(timespec="minutes")]
+
+
+def test_bad_agent_result_does_not_stop_other_items(snapshot, monkeypatch):
+    """할 일 하나의 결과가 이상해도(제안 자리에 dict) 남은 할 일과 supervisor 조율은 끝까지 간다 (H9)."""
+    from app.planner.data_shapes import BatchEntry, NotificationBatch
+
+    fake_agents(monkeypatch, [])
+    called: list[str] = []
+
+    def reply(item, ctx, **kwargs):
+        called.append(item.plan_id)
+        if len(called) == 1:  # 첫 할 일만 모양이 틀린 값
+            return {"agent": "reply_agent", "content": {"text": "dict"}}
+        return Proposal("reply_agent", item.plan_id, {"kind": "REPLY", "text": f"에이전트 답글 {item.plan_id}"}, "AGENT", ctx.run_id)
+
+    monkeypatch.setattr(reply_agent, "draft", reply)
+    batch = NotificationBatch(slot_at=snapshot.computed_at + dt.timedelta(hours=1), slot="AFTERNOON",
+                              entries=[BatchEntry(plan_id=R4, notify_kind="APPROVAL_REQUEST", priority=2)])
+    snapshot.plan = snapshot.plan.model_copy(update={"batches": [batch]})
+    monkeypatch.setattr(supervisor, "coordinate_batch", lambda batch, proposals, ctx: SimpleNamespace(
+        source="AGENT", proposals=proposals, run_id=ctx.run_id, headline="묶음 첫 줄이에요", conflicts=[], item_notes={}))
+
+    app_bridge.run_all(snapshot, [R1, R4, NUDGE])
+    assert len(called) == 3
+    proposals = app_bridge._proposals["t001"]
+    assert called[0] not in proposals and all(pid in proposals for pid in called[1:])
+    assert MENU in proposals and POSTER in proposals  # 뒤쪽 할 일도 돌았다
+    store = app_bridge.status()["stores"][0]
+    assert store["job"]["state"] == "done"
+    assert [b["slot_at"] for b in store["batches"]] == [batch.slot_at.isoformat(timespec="minutes")]  # supervisor 가 불렸다
+
+
 def test_set_enabled_clears_results_and_snapshots(snapshot, monkeypatch):
     from app.data_pipeline import store_snapshot_cache
 

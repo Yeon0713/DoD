@@ -98,3 +98,49 @@ def test_non_strict_agents_still_retry_forced_400(monkeypatch):
                                         tool_choice={"type": "function", "function": {"name": "submit_intent"}}, post=post)
     assert reply is None and len(post.timeouts) == 2 and post.timeouts[0] == 20  # 기본 제한 시간, 다시 묻기 한 번
 
+
+
+# ── 자리(동시 호출 한도) 기다리기 (H4): 실제 시간으로 기다리므로 시간은 작게 둔다 ──
+
+ASK = [{"role": "user", "content": "x"}]
+
+
+def test_strict_call_does_not_wait_forever_for_a_slot(monkeypatch):
+    import threading
+    import time
+
+    from Harness.tests.fakes import FakeClova
+
+    monkeypatch.setattr(limiter, "_semaphore", threading.BoundedSemaphore(1))
+    limiter._semaphore.acquire()  # 다른 백그라운드 에이전트가 자리를 잡고 있다
+    fake = FakeClova("됐어요")
+    started = time.perf_counter()
+    try:
+        reply = clova_tools.chat_with_tools(ASK, [], feature="t", store_id=None, timeout=0.2, retry=False, post=fake)
+    finally:
+        limiter._semaphore.release()
+    assert reply is None and fake.requests == [] and time.perf_counter() - started < 0.5
+
+
+def test_strict_call_subtracts_slot_wait_from_http_timeout(monkeypatch):
+    import threading
+
+    monkeypatch.setattr(limiter, "_semaphore", threading.BoundedSemaphore(1))
+    limiter._semaphore.acquire()
+    threading.Timer(0.2, limiter._semaphore.release).start()  # 0.2초 뒤 자리가 난다
+    post = SlowClova(Clock(), 0.0)
+    clova_tools.chat_with_tools(ASK, [], feature="t", store_id=None, timeout=1.0, retry=False, post=post)
+    assert len(post.timeouts) == 1 and 0.5 <= post.timeouts[0] <= 0.85  # 기다린 만큼 뺀다
+
+
+def test_non_strict_still_waits(monkeypatch):
+    import threading
+
+    from Harness.tests.fakes import FakeClova
+
+    monkeypatch.setattr(limiter, "_semaphore", threading.BoundedSemaphore(1))
+    limiter._semaphore.acquire()
+    threading.Timer(0.1, limiter._semaphore.release).start()
+    fake = FakeClova("됐어요")
+    reply = clova_tools.chat_with_tools(ASK, [], feature="t", store_id=None, timeout=0.2, retry=True, post=fake)
+    assert reply.content == "됐어요" and len(fake.requests) == 1

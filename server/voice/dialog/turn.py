@@ -23,6 +23,7 @@ import datetime as dt
 import re
 
 from voice import activity, clock, holidays, hr, locks, notebook, repo, speech, staff_orders, width
+from voice.clock import iso, parse
 from voice.agents import intent_judge
 from voice.context import load
 from voice.dialog import echo, intent_rules
@@ -51,6 +52,9 @@ SITUATIONS = {
 # 이 질문들을 묻는 중에는 놓친 알바생 할 일 질문으로 끼어들지 않는다
 LATER_RE = re.compile(r"나중|다음에|내일")  # 인스타 "나중에": 반려로 세지 않는다 (9-0 n)
 ASKING_TYPES = ("ask_action", "ask_staff", "ask_permission", "ask_tasks", "ask_holiday", "ask", "show_detail")
+# 묻고 기다리는 세션 칸. 날짜가 바뀌면 비운다 (어제 물은 것이 오늘 첫 말을 가로채지 않게, 버그 V13)
+ASKING_KEYS = ("notebook_pending", "deferred_text", "batch", "tasks_pending", "holiday_pending", "staff_pending",
+               "alert_id", "story_id", "hr_batch")
 
 
 class StoreNotFound(Exception):
@@ -378,6 +382,13 @@ def _handle(request: dict) -> dict:
 
     session_id = request.get("session_id") or f"sess_{clock.now():%Y%m%d}_{store_id}"
     session = repo.get("session", session_id) or {"id": session_id, "store_id": store_id, "step": None, "mode": "idle", "last_type": None}
+    today = clock.now().date().isoformat()  # 앱의 session_id 는 날짜를 넘겨 이어진다 (달력 날짜로 본다)
+    if session.get("day") != today:
+        for key in ASKING_KEYS:
+            session.pop(key, None)
+        if session.get("last_type") in ASKING_TYPES:
+            session["last_type"] = None
+        session["day"] = today
     utterance = request.get("utterance") or None
     addressed = False
     if request.get("event") == "notice":
@@ -398,9 +409,13 @@ def _handle(request: dict) -> dict:
         intent = Intent("briefing.next", None)
     else:
         addressed = bool(utterance.get("addressed"))
-        # 묻고 있는 아쉬운 리뷰가 있으면 "도나야, 진행해"도 그 대답이다 (허락 질문·자세히 보기 중이면 그쪽이 먼저)
+        # 묻고 있는 아쉬운 리뷰가 있으면 "도나야, 진행해"도 그 대답이다 (다른 질문을 묻는 중이면 그쪽이 먼저)
+        # 다만 알림이 그 질문보다 나중에 왔으면 알림의 대답이다 (버그 V10). 언제 물었는지 모르는 예전 세션은 질문이 먼저
         live = review_loop.pending(store_id) if addressed else None
-        if session.get("last_type") not in ("ask_permission", "show_detail", "ask_tasks") and live:
+        asked_at = session.get("last_at")
+        other_question = (session.get("last_type") in ASKING_TYPES and session.get("last_type") != "ask_action"
+                          and (asked_at is None or live is None or parse(asked_at) >= parse(live["created_at"])))
+        if live and not other_question:
             session["last_type"] = "ask_action"
             if live["state"] in review_loop.ASKING:  # 묻고 있는 리뷰가 있으면 그 대답이다 (스토리 이벤트보다 먼저)
                 session.pop("story_id", None)
@@ -413,16 +428,22 @@ def _handle(request: dict) -> dict:
             intent = understand(utterance["text"], session, view, addressed)
 
     brief = briefing_job.current(store_id)
+    answered = False
     if _missed_tasks(intent, session, view, addressed):  # 브리핑에서 못 물은 알바생 할 일을 먼저 묻는다 (2026-11-20)
         response = staff_tasks.step(view, clock.now(), lead=["그 전에 하나만요."])
         session["deferred_text"] = utterance["text"]
     else:
         response = dispatch(intent, session, brief, view)
-        if response.pop("answered_tasks", False) and response["type"] != "ask_tasks" and session.get("deferred_text"):
+        answered = response.pop("answered_tasks", False)
+        if answered and response["type"] != "ask_tasks" and session.get("deferred_text"):
             later = dispatch(understand(session.pop("deferred_text"), session, view, True), session, briefing_job.current(store_id), view)
             response = {**later, "say": response["say"] + later["say"], "cards": response["cards"] + later["cards"]}
+    if response["type"] not in ("ask_tasks", "ignore", "not_understood") and not answered:
+        session.pop("deferred_text", None)  # "그 전에 하나만요"에 대답하지 않고 넘어갔다. 원래 말은 버린다
     staff_tasks.remember_asked(response, session)
     batch_ask.remember(response, session)
+    if not response.get("notebook_ask") and response["type"] not in ("ignore", "not_understood"):
+        session.pop("notebook_pending", None)  # "어느 규칙을 지울까요?"에 대답하지 않고 넘어갔다
     if response.get("report"):  # 사후 보고를 앱에 보냈다 (9-0 h)
         hr.mark_reported(store_id, response["report"])
     if response.get("holiday"):  # 쉬는 날을 묻는 중 (holiday.yes / holiday.no 가 본다)
@@ -430,6 +451,7 @@ def _handle(request: dict) -> dict:
     response.setdefault("briefing", None)
     if response["type"] not in ("ignore", "not_understood"):
         session["last_type"] = response.get("keep_context") or response["type"]
+        session["last_at"] = iso(clock.now())
     response = {
         "turn_id": f"t_{repo.next_number(f'turn:{store_id}'):04d}", "type": response["type"], "intent": intent.name,
         "owner_said": None if response["type"] == "ignore" else intent.owner_said, "briefing": response["briefing"],

@@ -429,3 +429,94 @@ def test_a4_late_delivery_makes_no_card():
                                                      "text": "배달이 한 시간 걸려서 다 식어서 왔어요."}).json()["review_id"]
     record = alert_of(rid)
     assert record["cause"]["detail"] == "late" and record["card"] is None and record["proposal_id"] is None
+
+
+# ── 끝난 알림이 다른 질문의 대답을 가로채지 않는다 (2026-11-22 버그 V1) ──
+
+
+def test_called_yes_to_another_question_is_not_a_review_answer():
+    """반려한 알림이 2시간 안에 남아 있어도, 쉬는 날을 묻는 중의 "도나야, 응"은 그 질문의 대답이다."""
+    from voice import holidays
+
+    donna, rid = leak()
+    donna.open_notice()
+    donna.turn("안 해")
+    donna.clock("2026-11-17T16:30:00+09:00")
+    asked = donna.turn("다음 주 수요일 쉬어", addressed=True)
+    assert asked["type"] == "ask_holiday"
+    yes = donna.turn("응", addressed=True)
+    assert yes["intent"] == "holiday.yes"
+    assert review(rid)["reply_status"] == "drafted" and alert_of(rid)["state"] == "canceled"
+    assert {"date": "2026-11-25", "confirmed": True}.items() <= holidays.items(repo.store("s005"))[0].items()
+
+
+def test_called_yes_to_a_staff_question_is_not_a_review_answer():
+    donna, rid = leak()
+    donna.open_notice()
+    donna.turn("안 해")
+    donna.clock("2026-11-17T16:30:00+09:00")
+    assert donna.turn("민지 초대해 줘", addressed=True)["type"] == "ask"
+    yes = donna.turn("응", addressed=True)
+    assert yes["intent"] == "staff.yes"
+    assert review(rid)["reply_status"] == "drafted" and alert_of(rid)["state"] == "canceled"
+
+
+def test_newer_alert_wins_over_old_unanswered_question():
+    """한 시간 전 인스타 질문에 대답하지 않은 채 새 알림이 오면, "도나야, 진행해"는 나중에 온 알림의 대답이다 (2026-11-22 버그 V10)."""
+    donna, rid = leak()
+    repo.put("session", donna.session_id, "s005", {"id": donna.session_id, "store_id": "s005", "step": None, "mode": "idle",
+                                                   "last_type": "ask", "last_at": "2026-11-17T14:40:00+09:00", "day": "2026-11-17"})
+    approved = donna.turn("진행해", addressed=True)
+    assert approved["intent"] == "action.approve" and review(rid)["reply_status"] == "posted"
+
+
+# ── 끝난 알림의 할 일 제안을 정리한다 (2026-11-22 버그 V2) ──
+
+
+def test_canceled_alert_does_not_swallow_the_next_fix_card():
+    from voice import proposals
+
+    donna, rid = leak()
+    donna.open_notice()
+    donna.turn("안 해")
+    assert proposals.get(alert_of(rid)["proposal_id"])["state"] == "declined"
+    donna.clock("2026-11-17T18:40:00+09:00")
+    rid2 = donna.demo_review("leak")
+    second = alert_of(rid2)
+    assert second["card"] is not None and second["use_card"] is True
+    assert proposals.get(second["proposal_id"])["state"] == "asked"
+    assert "알바생 할 일에 배달 용기 이중 실링을" in donna.open_notice()["say"][-1]["text"]
+
+
+def test_left_draft_proposal_is_closed():
+    from voice import proposals
+
+    donna, rid = leak()
+    donna.clock("2026-11-17T16:06:00+09:00")
+    assert alert_of(rid)["state"] == "left_draft"
+    assert proposals.get(alert_of(rid)["proposal_id"])["state"] == "declined"
+
+
+def test_fallback_posted_proposal_goes_to_next_morning():
+    """25분 동안 대답이 없어 사과 답글만 올렸으면(알림 뒤 대리로 오름), 할 일은 다음 날 아침 브리핑에서 묻는다."""
+    from voice import proposals
+
+    donna, rid = leak()
+    donna.settings(True)
+    donna.clock("2026-11-17T16:06:00+09:00")
+    assert alert_of(rid)["state"] == "fallback_posted"
+    carried = proposals.get(alert_of(rid)["proposal_id"])
+    assert carried["state"] == "proposed" and carried["ask_on"] == "2026-11-18"
+    reopened = donna.turn("진행해", addressed=True)  # 그 뒤 "도나야, 진행해"면 카드만 넣는다 (지금처럼)
+    assert reopened["headline"] == "알바생 할 일을 넣었어요" and len(fix_cards(donna)) == 1
+    assert proposals.get(carried["id"])["state"] == "applied"
+
+
+def test_reopen_after_cancel_still_pins_the_card():
+    donna, rid = leak()
+    donna.open_notice()
+    donna.turn("안 해")
+    donna.clock("2026-11-17T15:50:00+09:00")
+    reopened = donna.turn("진행해", addressed=True)
+    assert reopened["intent"] == "action.approve" and alert_of(rid)["state"] == "card_pinned"
+    assert len(fix_cards(donna)) == 1

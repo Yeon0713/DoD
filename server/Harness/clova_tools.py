@@ -43,6 +43,7 @@ from Harness import limiter
 logger = logging.getLogger(__name__)
 
 MIN_MAX_TOKENS = 1024
+MIN_CALL_SECONDS = 0.5  # 자리를 기다린 뒤 남은 제한 시간의 최소값 (runner.MIN_CALL_SECONDS 와 같게)
 MAX_COMPLETION_TOKENS = 32768  # 추론 모델 한도 (추론 + 답)
 REASONING_MODELS = ("HCX-007",)  # maxTokens 대신 maxCompletionTokens 를 쓰는 모델 (이름이 이것으로 시작하면)
 
@@ -185,7 +186,7 @@ def chat_with_tools(
     request_text = _last_text(messages)
     for attempt in range(limiter.RATE_LIMIT_RETRIES + 1):
         started = time.perf_counter()
-        response = _post(post, body, timeout, model)
+        response = _post(post, body, timeout, model, wait=None if retry else timeout)
         if response is None:
             _log(feature, model, store_id, started, "connection_error", None, None, request_text)
             return None
@@ -219,10 +220,13 @@ def chat_with_tools(
     return None
 
 
-def _post(post: Post, body: dict, timeout: float, model: str) -> httpx.Response | None:
-    """자리 하나를 잡고 보낸다. 연결이 실패하면 None."""
+def _post(post: Post, body: dict, timeout: float, model: str, wait: float | None = None) -> httpx.Response | None:
+    """자리 하나를 잡고 보낸다. 연결이 실패하면 None.
+    wait 가 있으면(엄격한 예산) 자리를 그만큼만 기다리고 못 잡으면 None, 잡으면 기다린 만큼 제한 시간에서 뺀다 (H4)."""
     try:
-        with limiter.slot():
+        with limiter.slot(wait) as waited:
+            if wait is not None and waited:
+                timeout = max(MIN_CALL_SECONDS, timeout - waited)
             return post(
                 # .env 의 주소 끝에 '/' 가 있으면 '…com//v3/…' 가 되어 모든 요청이 400 이다 (2026-11-17 실제로 겪음)
                 f"{settings.clova_studio_base_url.rstrip('/')}/v3/chat-completions/{model}",
@@ -234,6 +238,9 @@ def _post(post: Post, body: dict, timeout: float, model: str) -> httpx.Response 
                 json=body,
                 timeout=timeout,
             )
+    except limiter.SlotBusy:
+        logger.warning("CLOVA(도구) 자리를 %.1f초 안에 잡지 못했어요", wait)
+        return None
     except httpx.HTTPError as error:
         logger.warning("CLOVA(도구) 연결 실패: %s", error)
         return None

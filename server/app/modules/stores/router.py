@@ -146,7 +146,7 @@ def register(body: RegisterRequest, background: BackgroundTasks):
         raise ApiError(502, "PLACE_NOT_READ", f"네이버 지도에서 가게 정보를 읽지 못했어요. {error}")
     store_id = registered_stores.register(info)
     # 시연용: 그 가게의 영업시간과 메뉴를 따라 만든 목업 주문·매출·알바를 넣는다 (이미 있으면 그대로)
-    overnight = any(h and h["close"] <= h["open"] for h in info.weekly_hours.values())
+    overnight = registered_stores.is_overnight(info.weekly_hours)
     if settings.demo_store_data and not overnight:
         demo_data.fill(store_id, info.weekly_hours, info.break_time)
     # 요일별 영업시간과 브레이크 타임은 DB(등록 기록)에 있어 가게 설정의 기본이 된다 (store_snapshot_cache._registered_base).

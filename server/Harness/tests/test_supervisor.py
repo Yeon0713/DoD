@@ -68,6 +68,28 @@ def test_supervisor_asks_worker_and_accepts_rewrite(make_ctx, frozen_clock):
     assert worker and all(s["parent_run_id"] == ctx.run_id for s in worker)  # supervisor 실행 아래 일꾼 실행
 
 
+def test_cached_supervisor_result_keeps_proposals(make_ctx, frozen_clock, tmp_path, monkeypatch):
+    """서버를 다시 켠 뒤(메모리만 빔) 디스크 캐시에서 꺼낸 supervisor 결과도 재작업 제안이 Proposal 이다 (H1)."""
+    from Harness import cache
+
+    monkeypatch.setattr(cache, "CACHE_PATH", tmp_path / "harness_cache.db")  # 파일 층 켜기
+    rewritten = call("submit_campaign", {"theme": "축제 구경 전후 든든한 한 끼", "menu_ids": ["m2", "m3"],
+                                         "reason": "축제 날 든든하게 먹기 좋은 메뉴예요.", "ments": [MENTS[2], *NO_JANCHI]})
+    fake = FakeClova(
+        [call("get_proposal", {"plan_id": POSTER}),
+         call("ask_campaign_agent", {"plan_id": POSTER, "note": "잔치국수는 빼 줘", "exclude_menu_ids": ["m1"]})],
+        [rewritten],
+        [call("submit_batch", {"headline": "축제 홍보는 잔치국수를 빼고 준비했어요", "item_notes": [], "accepted": [POSTER]})],
+    )
+    first = coordinate_batch([POSTER, R4], PROPOSALS, make_ctx(fake))
+    assert isinstance(first.proposals[POSTER], Proposal)
+    cache.clear()  # 서버 재시작 = 메모리만 빔
+    again_fake = FakeClova()
+    again = coordinate_batch([POSTER, R4], PROPOSALS, make_ctx(again_fake))
+    assert isinstance(again.proposals[POSTER], Proposal) and again.proposals[POSTER] == first.proposals[POSTER]
+    assert again_fake.requests == []  # 디스크 캐시가 맞아 CLOVA 를 부르지 않음
+
+
 def test_every_conflict_must_be_handled_and_no_forbidden_fields(make_ctx, frozen_clock):
     fake = FakeClova(
         [call("submit_batch", {"headline": "오늘 답글 두 개를 확인해 주세요", "item_notes": [], "accepted": []})],
@@ -93,13 +115,57 @@ def test_revision_limits(make_ctx, frozen_clock):
     fake = FakeClova(
         [ask, again, call("ask_reply_agent", {"plan_id": FIX, "note": "x"})],
         500,  # 일꾼 재작업 실패 → 기존 물러나기도 실패 (conftest)
-        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [], "accepted": []})],
+        # 실패한 재작업은 처리가 아니므로 메모를 함께 낸다 (H3). 이 시험이 보려는 것은 재작업 한도다
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요",
+                               "item_notes": [{"plan_id": NUDGE, "note": "답글과 인사가 겹치지 않는지 봐 주세요"}], "accepted": []})],
     )
     coordinate_batch([R4, NUDGE, FIX], PROPOSALS, make_ctx(fake))
+    assert fake.done()
     first, second, third = fake.tool_messages(2)[-3:]
     assert '"status": "failed"' in first
     assert "이미 한 번 다시 쓰게 했어요" in second
     assert "이 도구로 다시 쓸 수 없는 할 일이에요 (REVIEW_FIX)" in third
+
+
+NOTE = {"plan_id": NUDGE, "note": "답글과 인사가 겹치지 않는지 봐 주세요"}
+NUDGE_TEXT = "늘 찾아 주셔서 감사해요. 이번 주말엔 새콤달콤한 비빔국수 한 그릇 어떠세요?"
+
+
+def test_failed_rewrite_still_needs_a_note(make_ctx, frozen_clock):
+    """재작업을 시도만 하고 실패했으면 처리가 아니다. 메모 없는 제출은 거절된다 (H3)."""
+    fake = FakeClova(
+        [call("ask_reply_agent", {"plan_id": NUDGE, "note": "답글과 겹치지 않게"})],
+        500,  # 일꾼 재작업 실패 (물러나기도 실패, conftest)
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [], "accepted": []})],
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [NOTE], "accepted": []})],
+    )
+    result = coordinate_batch([R4, NUDGE], PROPOSALS, make_ctx(fake))
+    rejected = fake.tool_messages(3)[-1]
+    assert "처리하지 않은 충돌이 있어요: 같은 손님에게 두 번" in rejected and "item_notes" in rejected
+    assert result.source == "AGENT" and result.item_notes == {NUDGE: [NOTE["note"]]}
+    assert result.proposals[NUDGE] is PROPOSALS[NUDGE]
+
+
+def test_unaccepted_rewrite_needs_a_note(make_ctx, frozen_clock):
+    """재작업은 성공했지만 accepted 에 넣지 않고 메모도 없으면 거절된다 (H3)."""
+    fake = FakeClova(
+        [call("ask_reply_agent", {"plan_id": NUDGE, "note": "답글과 겹치지 않게"})],
+        [call("submit_reply", {"text": NUDGE_TEXT, "quoted_review_words": [], "menus_mentioned": ["비빔국수"]})],  # 일꾼 재작업
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [], "accepted": []})],
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [], "accepted": NUDGE})],  # 글자 하나도 받아 준다
+    )
+    result = coordinate_batch([R4, NUDGE], PROPOSALS, make_ctx(fake))
+    assert "처리하지 않은 충돌이 있어요: 같은 손님에게 두 번" in fake.tool_messages(3)[-1]
+    assert result.source == "AGENT" and result.proposals[NUDGE].content["text"] == NUDGE_TEXT
+
+
+def test_accepted_must_be_a_list(make_ctx, frozen_clock):
+    fake = FakeClova(
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [NOTE], "accepted": {"x": 1}})],
+        [call("submit_batch", {"headline": "단골 손님 글을 확인해 주세요", "item_notes": [NOTE], "accepted": []})],
+    )
+    result = coordinate_batch([R4, NUDGE], PROPOSALS, make_ctx(fake))
+    assert "accepted 는 할 일 id 목록이어야 해요" in fake.tool_messages(1)[-1] and result.source == "AGENT"
 
 
 def test_supervisor_failure_falls_back_to_rule_notes(make_ctx, frozen_clock):

@@ -224,13 +224,10 @@ def task_view(task: dict, staff_id: str, now: dt.datetime, marks: list[dict] | N
 
 
 def _phase_now(store: dict, now: dt.datetime) -> str:
-    today_ = hours.on(store, now.date())
-    if today_ is None:
+    found = hours.business_day(store, now)  # 자정 넘김 가게의 새벽은 어제 영업
+    if found is None:
         return "closing"
-    t = now.strftime("%H:%M")
-    if t < today_["open"]:
-        return "before_open"
-    return "open" if t < today_["close"] else "closing"
+    return "before_open" if now < hours.open_at(*found) else "open"
 
 
 def unconfirmed_urgent(store_id: str, staff_id: str, now: dt.datetime) -> list[dict]:

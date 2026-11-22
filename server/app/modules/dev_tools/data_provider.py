@@ -23,7 +23,7 @@ from app.core.error_response import ApiError
 from app.core.seoul_time import clock_shift, now_seoul, set_clock_shift, to_seoul
 from app.data_pipeline import read_store_db, registered_stores, store_snapshot_cache
 from app.planner.notification_time_helpers import KOREAN_WEEKDAYS
-from app.planner.rule_review_reply import SATURDAY_SEND_TIME
+from app.planner.rule_review_reply import SATURDAY_SEND_TIME, reply_send_time
 from app.planner.rule_complaint_fix import COMPLAINT_NAMES
 from app.sentence_polish.polish_with_clova import polished
 
@@ -264,6 +264,7 @@ def timeline(store_id: str, days_before: int, days_after: int) -> dict:
             }
         )
     settings_now = snapshot.settings
+    send_time = reply_send_time(settings_now) if settings_now else SATURDAY_SEND_TIME
     return {
         "store": {"store_id": store_id, "name": snapshot.store["name"]},
         "computed_at": _iso(snapshot.computed_at),  # 보관해 둔 계산의 시각 (화면에 "n시 계산" 으로 보인다)
@@ -271,7 +272,7 @@ def timeline(store_id: str, days_before: int, days_after: int) -> dict:
         "slots": settings_now.slots.model_dump() if settings_now else None,
         "rules": [
             "불만 리뷰: 리뷰 뒤 첫 알림 시각에 승인 요청, 승인과 함께 답글",
-            f"그 밖의 리뷰: 지난 토요일 {SATURDAY_SEND_TIME} ~ 이번 토요일 {SATURDAY_SEND_TIME}에 달린 리뷰를 토요일 출근 후 승인, {SATURDAY_SEND_TIME} 게시",
+            f"그 밖의 리뷰: 지난 토요일 {send_time} ~ 이번 토요일 {send_time}에 달린 리뷰를 토요일 출근 후 승인, {send_time} 게시",
             "매달 단골 재주문 인사: 답글 4주 뒤 토요일",
             "메뉴판 순서: 바뀌는 날 전날 오후 승인, 당일 출근 후 실행",
             "행사·경기 포스터: 3일 전 오후 승인, 2일 전 출근 후 실행",

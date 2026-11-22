@@ -170,3 +170,43 @@ def test_passed_parts_are_locked_and_only_missing_part_is_asked(snapshot, make_c
     assert "확정한 부분은 다시 내지 말고" in message and "나머지는 그대로 두어" not in message
     assert proposal.source == "AGENT" and proposal.content["menu_ids"] == ["m1", "m3"]
     assert [m["kind"] for m in proposal.content["ments"]] == ["EVENT", "WEATHER", "MENU"]
+
+
+# ── 캐시 키에 할 일 정체 (H8) ──
+
+
+def test_campaign_cache_is_per_event(snapshot, make_ctx, frozen_clock):
+    """같은 날 같은 종류 행사가 둘이면 두 번째 포스터가 첫 행사의 문구를 캐시에서 받지 않는다."""
+    from app.planner.data_shapes import Basis
+
+    first = snapshot.inputs.events[0]
+    snapshot.inputs.events.append(first.model_copy(update={"event_id": "e2", "title": "춘천 겨울 빛 축제 둘째 마당"}))
+    poster = item(snapshot, POSTER)
+    other = poster.model_copy(update={"plan_id": "POSTER:e2:2026-11-21", "basis": Basis(kind="EVENT", ref_id="e2")})
+    fake = FakeClova([campaign()], [campaign()])
+    campaign_agent.plan_campaign(poster, make_ctx(fake))
+    second = campaign_agent.plan_campaign(other, make_ctx(fake))
+    assert len(fake.requests) == 2 and second.task_id == other.plan_id
+
+
+def test_campaign_menu_and_poster_share_same_day(snapshot, make_ctx, frozen_clock):
+    """같은 날·같은 상황의 메뉴판과 포스터는 캐시를 나눠 써 주제를 맞춘다 (지금 동작 유지)."""
+    fake = FakeClova([campaign()])
+    campaign_agent.plan_campaign(item(snapshot, POSTER), make_ctx(fake))
+    campaign_agent.plan_campaign(item(snapshot, MENU), make_ctx(fake))
+    assert len(fake.requests) == 1
+
+
+def test_diagnosis_cache_is_per_risk(snapshot, make_ctx, frozen_clock):
+    """모양이 같은 위험 신호 둘은 각자 진단하고, 결과 risk_id 도 각자 것이다."""
+    from app.planner.data_shapes import Basis
+
+    snapshot.risk_signals.append(snapshot.risk_signals[0].model_copy(update={"risk_id": "risk_002"}))
+    fix = item(snapshot, FIX)
+    other = fix.model_copy(update={"plan_id": "REVIEW_FIX:risk_002:2026-11-15", "basis": Basis(kind="RISK_SIGNAL", ref_id="risk_002")})
+    text = "저녁 7시 주문이 몰릴 때 국물 간이 흔들렸어요"
+    fake = FakeClova(LOOK, [diagnosis(text)], LOOK, [diagnosis(text)])
+    first = complaint_agent.diagnose(fix, make_ctx(fake))
+    second = complaint_agent.diagnose(other, make_ctx(fake))
+    assert len(fake.requests) == 4
+    assert first.content["risk_id"] == "risk_001" and second.content["risk_id"] == "risk_002"

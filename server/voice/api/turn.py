@@ -129,7 +129,7 @@ def patch_settings(body: SettingsPatch):
         try:
             store = hours.apply_week(store, days)
         except ValueError as error:
-            return JSONResponse(status_code=400, content={"error": "bad_hours", "message": str(error)})
+            return JSONResponse(status_code=400, content={"error": {"code": "bad_hours", "message": str(error)}})
         repo.put("store", body.store_id, body.store_id, store)
     repo.save_settings(body.store_id, saved)
     if body.hours is not None or body.briefing_notify is not None:

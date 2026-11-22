@@ -79,6 +79,36 @@ def test_reply_week_starts_at_saturday_eleven():
     assert current_reply_week_start(kst("2026-11-22 09:00")) == kst("2026-11-21 11:00")  # 일요일
 
 
+# 문을 늦게 여는 가게(17:00 개점, OPENING 16:30): 답글은 승인 요청(16:30) 뒤에 올린다 (예전에는 11:00 에 올리는 것으로 잡혀 승인보다 앞섰다)
+LATE_STORE = STORE.model_copy(update={"open_time": "17:00", "close_time": "23:30", "slots": STORE.slots.model_copy(update={"OPENING": "16:30", "AFTERNOON": "20:30", "CLOSING": "23:00"})})
+
+
+def test_saturday_reply_is_sent_after_approval_for_late_opening_store():
+    tuesday = review("rv_121").model_copy(update={"written_at": kst("2026-11-17 18:00")})
+    item = plan_review_replies([tuesday], CYCLES, LATE_STORE)[0]
+    assert item.approval_request_at == kst("2026-11-21 16:30")
+    assert item.execute_at == kst("2026-11-21 17:00")
+    assert item.execute_at > item.approval_request_at
+    assert "토요일 17시에" in item.reason_line
+
+
+def test_late_opening_store_reply_week_starts_at_its_send_time():
+    from app.planner.rule_review_reply import current_reply_week_start, reply_send_time
+
+    assert reply_send_time(STORE) == "11:00"  # OPENING 10:00 → 그대로 11:00
+    assert reply_send_time(LATE_STORE) == "17:00"
+    assert current_reply_week_start(kst("2026-11-21 16:59"), LATE_STORE) == kst("2026-11-14 17:00")
+    assert current_reply_week_start(kst("2026-11-21 17:00"), LATE_STORE) == kst("2026-11-21 17:00")
+
+
+def test_reorder_nudge_send_after_approval_for_late_opening_store():
+    items = plan_reorder_nudges(INPUTS.reviews, CYCLES, LATE_STORE)
+    assert [item.plan_id for item in items] == ["REORDER_NUDGE:c_m01:2026-11-21"]
+    assert items[0].approval_request_at == kst("2026-11-21 16:30")
+    assert items[0].execute_at == kst("2026-11-21 17:00")
+    assert items[0].execute_at > items[0].approval_request_at
+
+
 def test_unlabeled_review_is_skipped():
     unlabeled = review("rv_121").model_copy(update={"label": None})
     assert plan_review_replies([unlabeled], CYCLES, STORE) == []

@@ -251,6 +251,7 @@ SPEC = AgentSpec(
     finalize=finalize,
     budget=Budget(max_steps=5, max_rejections=2, max_seconds=40),
     temperature=0.5,
+    cache_scope=lambda task: task.get("plan_id"),  # 재주문 인사의 손님은 user 메시지에 없고 도구만 읽는다 (H2)
 )
 # 다시 쓰기는 사장님이 버튼을 누르고 기다리므로 더 짧게
 REWRITE_SPEC = dataclasses.replace(SPEC, name="reply_agent_rewrite", budget=Budget(max_steps=3, max_rejections=2, max_seconds=15))

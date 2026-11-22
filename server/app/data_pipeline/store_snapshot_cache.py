@@ -102,7 +102,12 @@ def get_snapshot(store_id: str, now: dt.datetime | None = None, *, wait_for_draf
     refresh = dt.timedelta(minutes=app_settings.snapshot_refresh_minutes)
     with _lock_for(store_id):
         snapshot = _snapshots.get(store_id)
-        if snapshot is None or now < snapshot.computed_at or now - snapshot.computed_at >= refresh:
+        if (
+            snapshot is None
+            or now < snapshot.computed_at
+            or now - snapshot.computed_at >= refresh
+            or now.date() != snapshot.computed_at.date()  # 자정이 지나면 바로 다시 계산한다 ('오늘'이 어제로 남지 않게)
+        ):
             snapshot = _compute(store_id, now, previous=snapshot, wait_for_drafts=wait_for_drafts, polish=polish)
             _snapshots[store_id] = snapshot
         return snapshot
@@ -116,7 +121,7 @@ def _registered_base(store_id: str) -> dict:
     info = registered_stores.place_info(store_id)
     if info is None or not any(info.weekly_hours.values()):
         return {}
-    if any(h and h["close"] <= h["open"] for h in info.weekly_hours.values()):
+    if registered_stores.is_overnight(info.weekly_hours):
         return {}  # 자정을 넘겨 여는 가게는 아직 계획을 못 만든다 (기본 대표 시간으로 둔다)
     return {"weekly_hours": info.weekly_hours, "break_time": info.break_time}
 
@@ -182,7 +187,8 @@ def _compute(
     )
     # 확정한 예약·단체 주문을 화면 달력(이번 주)의 예상 매출에 더한다. 계획 엔진이 쓰는 달력(planner_calendar)은 그대로다
     if calendar_cells:
-        booked = reservations.list_reservations(store_id, min(c.date for c in calendar_cells), max(c.date for c in calendar_cells))
+        # 끝은 하루 더: 자정 넘는 가게의 마지막 영업일 새벽 예약은 달력 날짜로 그다음 날이다
+        booked = reservations.list_reservations(store_id, min(c.date for c in calendar_cells), max(c.date for c in calendar_cells) + dt.timedelta(days=1))
         calendar_cells = apply_reservations(calendar_cells, booked, inputs, now)
     settings, plan, unavailable = parts.settings, parts.plan, parts.unavailable
 
@@ -419,7 +425,7 @@ def keep_this_week_replies(plan: PlanResult, now: dt.datetime, settings: StoreSe
         1년 전 리뷰나 지난주에 이미 올렸어야 할 답글은 빠진다. 재주문 권유 등 다른 할 일은 그대로 둔다.
     알림 묶음(batches)도 남은 할 일로 다시 만든다.
     """
-    week_start = current_reply_week_start(now)
+    week_start = current_reply_week_start(now, settings)
     items = [
         item
         for item in plan.plan_items

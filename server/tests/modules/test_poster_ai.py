@@ -193,6 +193,25 @@ def test_poster_job_api_with_mock_engine(tmp_path, monkeypatch):
     assert client.get("/api/poster_ai/jobs/../../etc/image").status_code == 404
 
 
+def test_broken_base64_photo_is_422_and_leaves_no_temp_dir(tmp_path, monkeypatch):
+    import tempfile
+
+    mkdtemp = tempfile.mkdtemp
+    monkeypatch.setattr(jobs.tempfile, "mkdtemp", lambda prefix: mkdtemp(prefix=prefix, dir=tmp_path))
+    monkeypatch.setattr(settings, "poster_image_engine", "mock")
+    monkeypatch.setattr(jobs, "POSTER_DIR", tmp_path / "posters")
+    monkeypatch.setattr(naver_place, "_image", lambda url: None)  # 네이버 사진 받기 실패
+    monkeypatch.setattr(ment.clova, "ask", lambda *a, **k: None)
+    client = TestClient(create_app())
+    body = {"plan_id": PLAN, "photos": [{"label": "x", "url": "data:image/png;base64,abc"}], "use_logo": False,
+            "headline": "축제 가는 길에", "line": "들러 주세요", "extra": "", "style": "PHOTO", "menu": ""}
+    res = client.post("/api/poster_ai/jobs", params={"store_id": "s005"}, json=body)
+    assert res.status_code == 422 and res.json()["error"]["code"] == "BAD_PHOTO"
+    res = client.post("/api/poster_ai/jobs", params={"store_id": "s005"}, json={**body, "photos": [{"label": "x", "url": "https://ldb-phinf.pstatic.net/a.jpg"}]})
+    assert res.status_code == 422 and res.json()["error"]["code"] == "BAD_PHOTO"
+    assert list(tmp_path.glob("dona-poster-in-*")) == []  # 사진 준비에 실패하면 임시 폴더를 지운다
+
+
 def test_calendar_api_sends_event_names_for_cards(monkeypatch):
     """포스터 카드 제목에 실제 행사 이름(예: 남양 가을 축제)을 쓰도록 달력 API 가 이름을 같이 보낸다"""
     from app.core.seoul_time import clock_shift, now_seoul, set_clock_shift

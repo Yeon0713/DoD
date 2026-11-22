@@ -58,21 +58,75 @@ def test_confirmed_reservation_makes_that_daypart_busy():
     assert apply_reservations([other], rows, inputs, now) == [other]  # 다른 시간대는 그대로
 
 
+def test_overnight_store_early_morning_reservation_goes_to_previous_business_day():
+    """17:00~03:00 가게(s002)의 11/22 01:00 예약은 11/21 영업일(11/21 17시~11/22 03시) 밤 칸에 더한다. 11/22 칸은 그대로."""
+    now = AT(2026, 11, 20, 15, 0)
+    inputs = build_analysis_inputs("s002", now)
+    cells = [
+        CalendarCell(date=day, daypart="NIGHT", signal="NORMAL", baseline_sales=500000, expected_sales=500000,
+                     ratio=1.0, reasons=[], reason_text="", computed_at=now)
+        for day in (dt.date(2026, 11, 21), dt.date(2026, 11, 22))
+    ]
+    rows = [{"reservation_id": 9, "kind": "RESERVATION", "at": AT(2026, 11, 22, 1, 0), "people": 10, "status": "CONFIRMED"}]
+    saturday, sunday = apply_reservations(cells, rows, inputs, now)
+    assert saturday.expected_sales == 500000 + 10 * per_person_amount(inputs, now)
+    assert sunday == cells[1]
+
+
 def test_reservation_api_flow(client):
     """목록(네이버 동기화) → 문의 받기 → 직접 적기 → 직접 적은 것만 지우기"""
     listed = client.get("/api/reservations", params={"store_id": "s005", "from": "2026-10-05", "to": "2026-10-11"}).json()["reservations"]
     asked = next(r for r in listed if r["status"] == "REQUESTED")
     assert asked["source_label"] == "네이버 예약" and asked["people"] == 15
-    assert client.post(f"/api/reservations/{asked['reservation_id']}/confirm").json()["status"] == "CONFIRMED"
+    assert client.post(f"/api/reservations/{asked['reservation_id']}/confirm", params={"store_id": "s005"}).json()["status"] == "CONFIRMED"
     mine = client.post("/api/reservations", params={"store_id": "s005"},
                        json={"at": "2026-10-10T12:30:00+09:00", "people": 8, "kind": "GROUP_ORDER", "memo": "전화 주문"}).json()
     assert (mine["source"], mine["status"], mine["kind"]) == ("OWNER", "CONFIRMED", "GROUP_ORDER")
-    assert client.delete(f"/api/reservations/{asked['reservation_id']}").json()["error"]["code"] == "NAVER_RESERVATION"
-    assert client.delete(f"/api/reservations/{mine['reservation_id']}").json()["status"] == "CANCELED"
+    assert client.delete(f"/api/reservations/{asked['reservation_id']}", params={"store_id": "s005"}).json()["error"]["code"] == "NAVER_RESERVATION"
+    assert client.delete(f"/api/reservations/{mine['reservation_id']}", params={"store_id": "s005"}).json()["status"] == "CANCELED"
     ids = [r["reservation_id"] for r in client.get("/api/reservations", params={"store_id": "s005"}).json()["reservations"]]
     assert mine["reservation_id"] not in ids  # 지운 것은 목록에 없다
     bad = client.post("/api/reservations", params={"store_id": "s005"}, json={"at": "2026-10-10T12:30:00+09:00", "people": 0})
     assert bad.status_code == 422
+
+
+def test_reservation_cannot_be_changed_from_other_store(client):
+    asked = next(r for r in client.get("/api/reservations", params={"store_id": "s005"}).json()["reservations"] if r["status"] == "REQUESTED")
+    res = client.post(f"/api/reservations/{asked['reservation_id']}/confirm", params={"store_id": "s001"})
+    assert res.status_code == 404 and res.json()["error"]["code"] == "NOT_FOUND"
+    assert reservations.get(asked["reservation_id"])["status"] == "REQUESTED"  # 바뀌지 않았다
+
+
+def test_canceled_or_declined_reservation_cannot_be_confirmed(client):
+    store = {"store_id": "s005"}
+    mine = client.post("/api/reservations", params=store, json={"at": "2026-10-10T12:30:00+09:00", "people": 8}).json()
+    assert client.delete(f"/api/reservations/{mine['reservation_id']}", params=store).json()["status"] == "CANCELED"
+    again = client.post(f"/api/reservations/{mine['reservation_id']}/confirm", params=store)
+    assert again.status_code == 422 and again.json()["error"]["code"] == "BAD_TRANSITION"
+
+    asked = next(r for r in client.get("/api/reservations", params=store).json()["reservations"] if r["status"] == "REQUESTED")
+    assert client.post(f"/api/reservations/{asked['reservation_id']}/decline", params=store).json()["status"] == "DECLINED"
+    assert client.post(f"/api/reservations/{asked['reservation_id']}/decline", params=store).json()["status"] == "DECLINED"  # 두 번 눌러도 그대로
+    again = client.post(f"/api/reservations/{asked['reservation_id']}/confirm", params=store)
+    assert again.status_code == 422 and again.json()["error"]["code"] == "BAD_TRANSITION"
+
+
+def test_status_change_loses_if_status_changed_meanwhile(monkeypatch):
+    """읽은 뒤 다른 요청이 먼저 DECLINED 로 바꿨으면, 늦게 온 CONFIRMED 는 덮지 않고 거절한다."""
+    asked = next(r for r in reservations.list_reservations("s005") if r["status"] == "REQUESTED")
+    real_get = reservations.get
+    reservations.set_status(asked["reservation_id"], "DECLINED")  # 다른 기기가 먼저 바꿈
+    monkeypatch.setattr(reservations, "get", lambda _id: asked)  # 이쪽은 아직 REQUESTED 로 읽었다
+    with pytest.raises(reservations.ReservationError) as err:
+        reservations.set_status(asked["reservation_id"], "CONFIRMED")
+    assert err.value.code == "BAD_TRANSITION"
+    assert real_get(asked["reservation_id"])["status"] == "DECLINED"  # 그대로
+
+
+def test_same_status_again_still_succeeds():
+    asked = next(r for r in reservations.list_reservations("s005") if r["status"] == "REQUESTED")
+    assert reservations.set_status(asked["reservation_id"], "CONFIRMED")["status"] == "CONFIRMED"
+    assert reservations.set_status(asked["reservation_id"], "CONFIRMED")["status"] == "CONFIRMED"  # 두 번 눌러도 그대로
 
 
 def _state_html(state: dict) -> str:

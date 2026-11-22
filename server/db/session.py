@@ -3,9 +3,12 @@
 개발 DB 는 SQLite 파일이다 (git 에 같이 올라간다). 서버가 처음 DB 에 접속할 때 파일을 연다.
     db/data/common.db   공통 테이블 (events, games, weather_daily)
     db/data/s001.db     매장 전용 테이블. 's001' 이라는 이름으로 붙여 s001.orders 처럼 쓴다.
+
+SQLite 는 한 연결에 붙일 수 있는 DB 가 10개뿐이다. 그래서 매장마다 엔진을 따로 두고, 그 연결에는 그 매장 파일 하나만 붙인다.
 """
 
 from pathlib import Path
+from threading import Lock
 
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import sessionmaker
@@ -23,16 +26,28 @@ def store_db_files() -> list[Path]:
 
 engine = create_engine(f"sqlite:///{COMMON_DB}")
 SessionLocal = sessionmaker(engine)
+_store_engines: dict[Path, Engine] = {}  # 매장 파일 경로 → 그 매장 전용 엔진
+_store_engines_lock = Lock()
 
 
 @event.listens_for(engine, "connect")
 def _on_connect(dbapi_conn, _record):
-    """새 연결마다 외래 키 검사를 켜고 매장 파일을 붙인다."""
+    """새 연결마다 외래 키 검사를 켠다."""
     cur = dbapi_conn.cursor()
     cur.execute("PRAGMA foreign_keys = ON")
-    for path in store_db_files():
-        cur.execute("ATTACH DATABASE ? AS ?", (str(path), path.stem))
     cur.close()
+
+
+def _attach_store(path: Path, store_id: str):
+    def on_connect(dbapi_conn, _record):
+        """새 연결마다 외래 키 검사를 켜고 그 매장 파일 하나만 붙인다. 파일이 없으면 붙이지 않는다 (ATTACH 가 빈 파일을 만들지 않게)."""
+        cur = dbapi_conn.cursor()
+        cur.execute("PRAGMA foreign_keys = ON")
+        if path.exists():
+            cur.execute("ATTACH DATABASE ? AS ?", (str(path), store_id))
+        cur.close()
+
+    return on_connect
 
 
 def store_engine(store_id: str) -> Engine:
@@ -42,4 +57,20 @@ def store_engine(store_id: str) -> Engine:
         with store_engine("s001").connect() as conn:
             conn.execute(select(Order))  # → s001.orders
     """
-    return engine.execution_options(schema_translate_map={STORE_SCHEMA: store_id})
+    path = DATA_DIR / f"{store_id}.db"
+    with _store_engines_lock:
+        found = _store_engines.get(path)
+        if found is None:
+            found = create_engine(f"sqlite:///{COMMON_DB}")
+            event.listen(found, "connect", _attach_store(path, store_id))
+            _store_engines[path] = found
+    return found.execution_options(schema_translate_map={STORE_SCHEMA: store_id})
+
+
+def dispose_all() -> None:
+    """공통 엔진과 매장 엔진의 연결을 모두 닫는다. 매장 파일을 만들거나 지우기 전후에 부른다 (열린 연결이 옛 파일을 붙잡고 있지 않게)."""
+    engine.dispose()
+    with _store_engines_lock:
+        for found in _store_engines.values():
+            found.dispose()
+        _store_engines.clear()

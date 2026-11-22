@@ -4,7 +4,8 @@
   사장님 말   "도나야, 다음 주 수요일 쉬어" → 한 번 읽어 주고 "맞아요?" → "응"이면 확정
   네이버      가게를 등록할 때 저장해 둔 네이버 플레이스 휴무 안내(closed_note)와 소식 글에서 날짜를 뽑는다 (agents/holiday_reader).
               잘못 읽으면 공지가 엉뚱한 날 올라가므로, 아침 브리핑에서 묻고 사장님이 확인해야 확정한다
-저장: 가게 문서의 holidays [{date, source: owner | naver, note, confirmed}]. hours.on 이 확정한 날을 쉬는 날로 본다.
+저장: 가게 문서의 holidays [{date, source: owner | naver, note, confirmed, (rejected)}]. hours.on 이 확정한 날을 쉬는 날로 본다.
+네이버에서 읽은 날을 사장님이 아니라고 하면 rejected 로 남겨 둔다 (다음 날 같은 글을 다시 읽어도 다시 묻지 않게).
 그래서 브리핑 준비, 아쉬운 리뷰 알림 시간, 좋은 리뷰 예약 시각, 홈 가게 상태가 저절로 맞춰진다.
 """
 
@@ -30,9 +31,9 @@ def _save(store_id: str, found: list[dict]) -> None:
     repo.put("store", store_id, store_id, {**store, "holidays": sorted(found, key=lambda h: h["date"])})
 
 
-def add(store_id: str, day: str, *, source: str, note: str | None = None, confirmed: bool) -> None:
+def add(store_id: str, day: str, *, source: str, note: str | None = None, confirmed: bool, rejected: bool = False) -> None:
     kept = [h for h in items(repo.store(store_id)) if h["date"] != day]
-    _save(store_id, kept + [{"date": day, "source": source, "note": note, "confirmed": confirmed}])
+    _save(store_id, kept + [{"date": day, "source": source, "note": note, "confirmed": confirmed, **({"rejected": True} if rejected else {})}])
 
 
 def remove(store_id: str, day: str) -> None:
@@ -40,7 +41,7 @@ def remove(store_id: str, day: str) -> None:
 
 
 def unconfirmed(store: dict, today: dt.date) -> list[dict]:
-    return [h for h in items(store) if not h["confirmed"] and h["date"] >= today.isoformat()]
+    return [h for h in items(store) if not h["confirmed"] and not h.get("rejected") and h["date"] >= today.isoformat()]
 
 
 def label(day: str) -> str:
@@ -150,7 +151,7 @@ def from_words(view, name: str, words: str) -> dict:
     if day is None:
         return answer("언제 쉬세요?", [say("언제 쉬시는지 날짜로 다시 말씀해 주세요.")], [])
     action = "remove" if name == "store.holiday_cancel" else "add"
-    if action == "remove" and day.isoformat() not in {h["date"] for h in items(view.store)}:
+    if action == "remove" and day.isoformat() not in {h["date"] for h in items(view.store) if not h.get("rejected")}:
         return answer("적힌 휴무가 없어요", [say(f"{label(day.isoformat())}은 쉬는 날로 적혀 있지 않아요.")], [])
     return ask(day.isoformat(), action, "owner")
 
@@ -165,8 +166,9 @@ def decide(view, name: str, session: dict) -> dict:
         return answer("지금은 물어본 게 없어요", [say("지금은 여쭤본 게 없어요.")], [])
     day = pending["date"]
     if name == "holiday.no":
-        if pending["source"] == "naver":  # 네이버에서 읽은 날을 아니라고 하면 지운다 (다시 묻지 않는다)
-            remove(view.store_id, day)
+        if pending["source"] == "naver":  # 네이버에서 읽은 날을 아니라고 하면 아니라고 한 것으로 남긴다 (다시 묻지 않는다)
+            note = next((h["note"] for h in items(repo.store(view.store_id)) if h["date"] == day), None)
+            add(view.store_id, day, source="naver", note=note, confirmed=False, rejected=True)
         return answer("그대로 둘게요", [say("네, 그대로 둘게요.")], [])
     if pending["action"] == "remove":
         remove(view.store_id, day)

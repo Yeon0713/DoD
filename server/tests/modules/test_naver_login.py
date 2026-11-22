@@ -119,6 +119,15 @@ def test_callback_success_keeps_token_on_server(client, monkeypatch):
     assert "secret-token" not in str(body)
 
 
+def test_callback_returns_to_app_when_naver_sends_non_json(client, monkeypatch):
+    """네이버가 JSON 이 아닌 응답(게이트웨이 오류 html 등)을 주면 500 화면에서 멈추지 않고 앱으로 돌려보낸다."""
+    monkeypatch.setattr(auth.httpx, "get", lambda url, **kwargs: auth.httpx.Response(502, text="<html>Bad Gateway</html>"))
+    state = parse_qs(urlparse(client.get("/api/auth/naver/start", params={"back": BACK}).headers["location"]).query)["state"][0]
+    res = client.get("/api/auth/naver/callback", params={"state": state, "code": "c"})
+    assert res.status_code == 302
+    assert parse_qs(urlparse(res.headers["location"]).query)["error"] == ["NAVER_BAD_RESPONSE"]
+
+
 def test_find_store_ignores_registered_store_and_store_id_wins(client, monkeypatch):
     """DB 에서 find_store 를 켜면 등록 기록이 있어도 가게 찾기부터, store_id 를 넣으면 그 가게로 들어간다."""
     monkeypatch.setattr(settings, "dev_clock_enabled", False)

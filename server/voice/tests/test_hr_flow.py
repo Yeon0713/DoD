@@ -242,3 +242,62 @@ def test_failed_auto_reply_is_asked_next_morning(monkeypatch):
     assert asked["action"]["items"] == [{"job": "negative_reply", "ref": rid}]  # 대리라 다른 리뷰는 묻지 않는다
     donna.turn("응")
     assert repo.review(rid)["reply_status"] == "posted" and ("negative_reply", "approved") in hr_log()
+
+
+# ── 묶어 묻기 결재는 지금 리뷰를 다시 보고 쓴다 (2026-11-22 버그 V9) ──
+
+
+def _posted_right_after_load(monkeypatch, rid: str) -> None:
+    """말 처리를 시작해 가게 문서를 읽은 직후, 작업 큐가 같은 리뷰에 답글을 올린 것처럼 한다."""
+    from voice.dialog import turn
+
+    real = turn.load
+
+    def load_then_posted(store_id):
+        view = real(store_id)
+        repo.save_review({**repo.review(rid), "reply_status": "posted", "reply_text": "먼저 올린 답글"})
+        return view
+
+    monkeypatch.setattr(turn, "load", load_then_posted)
+
+
+def test_batch_reject_does_not_overwrite_a_reply_posted_meanwhile(monkeypatch):
+    donna, rid = staff_negative()
+    donna.clock("2026-11-17T16:10:00+09:00")
+    donna.open_notice()
+    _posted_right_after_load(monkeypatch, rid)
+    donna.turn("안 해")
+    found = repo.review(rid)
+    assert found["reply_status"] == "posted" and found["reply_text"] == "먼저 올린 답글"
+    assert ("negative_reply", "rejected") not in hr_log()
+
+
+def test_batch_approve_does_not_overwrite_a_reply_posted_meanwhile(monkeypatch):
+    donna, rid = staff_negative()
+    donna.clock("2026-11-17T16:10:00+09:00")
+    donna.open_notice()
+    _posted_right_after_load(monkeypatch, rid)
+    donna.turn("응")
+    found = repo.review(rid)
+    assert found["reply_status"] == "posted" and found["reply_text"] == "먼저 올린 답글"
+    assert ("negative_reply", "approved") not in hr_log()
+
+
+# ── 묶음 승인은 그 사이 접힌 할 일 제안을 넣지 않는다 (2026-11-22 버그 V11) ──
+
+
+def test_batch_task_approve_skips_proposal_declined_meanwhile():
+    from voice import proposals, staff
+    from voice.context import load
+    from voice.jobs import batch_ask
+    from voice.tests.conftest import choongjang
+
+    choongjang(keep_tasks=True, at=None)
+    found = proposals.create("s005", dept="customer", by="negative_review", ask_on="2026-11-17", dedupe=False,
+                             payload={"title": "배달 용기 이중 실링", "detail": "랩을 두 번 씌워 주세요", "phase": "open", "days": 2,
+                                      "must_confirm": True, "urgent": False}, reason={"type": "review", "review_id": "rv_0410"})
+    before = len(staff.store_tasks("s005"))
+    proposals.decline(found["id"], "timeout")  # 사장님 "응" 처리 중에 작업 큐가 시간 넘김으로 접었다
+    assert batch_ask._task_approve(load("s005"), found["id"]) is False
+    assert proposals.get(found["id"])["state"] == "declined"
+    assert len(staff.store_tasks("s005")) == before

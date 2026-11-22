@@ -25,21 +25,22 @@ def time_of(text: str) -> dt.time:
 
 def store_clock(text: str) -> str:
     """'10:30' → '오전 10시 30분' (가게 상태 줄, 설정 탭)."""
-    t = time_of(text)
-    return speech.clock_label(dt.datetime(2000, 1, 1, t.hour, t.minute))
+    hour, minute = divmod(hours.minutes(text) % (24 * 60), 60)  # "24:00" 은 00:00
+    return speech.clock_label(dt.datetime(2000, 1, 1, hour, minute))
 
 
 def store_status(store: dict, now: dt.datetime) -> dict:
     """가게 상태 줄. 그날의 영업시간(설정에서 요일마다 고칠 수 있다)에서 바로 나온다. 시각이 바뀌면 앱이 다시 부른다."""
-    t = now.time().replace(tzinfo=None)
+    found = hours.business_day(store, now)  # 자정 넘김 가게의 새벽은 어제 영업
     today = hours.on(store, now.date())
     tomorrow = hours.on(store, now.date() + dt.timedelta(days=1))
+    if found:
+        day, hours_ = found
+        if now < hours.open_at(day, hours_):
+            return {"state": "before_open", "label": "영업 전", "detail": f"{store_clock(hours_['open'])}에 열어요"}
+        return {"state": "open", "label": "영업 중", "detail": f"{store_clock(hours_['close'])}에 닫아요"}
     if today is None:
         return {"state": "closed", "label": "쉬는 날", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "오늘은 쉬어요"}
-    if t < time_of(today["open"]):
-        return {"state": "before_open", "label": "영업 전", "detail": f"{store_clock(today['open'])}에 열어요"}
-    if t < time_of(today["close"]):
-        return {"state": "open", "label": "영업 중", "detail": f"{store_clock(today['close'])}에 닫아요"}
     return {"state": "closed", "label": "영업 끝", "detail": f"내일 {store_clock(tomorrow['open'])}에 열어요" if tomorrow else "내일은 쉬어요"}
 
 

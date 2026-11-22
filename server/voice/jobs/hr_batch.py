@@ -9,7 +9,6 @@
 
 import datetime as dt
 
-from app.core.seoul_time import at_time
 from voice import clock, config, hours, notices, repo, speech
 from voice.clock import iso
 from voice.context import VoiceStore
@@ -24,11 +23,9 @@ def _open_window(store_id: str) -> dict | None:
 
 def _due(store: dict, now: dt.datetime) -> dt.datetime:
     due = now + config.HR_BATCH_WINDOW
-    today = hours.on(store, now.date())
-    if today:
-        close = at_time(now.date(), today["close"])
-        if now < close:
-            due = min(due, close)
+    found = hours.business_day(store, now)  # 자정 넘김 가게의 새벽은 어제 영업
+    if found:
+        due = min(due, hours.close_at(*found))
     return due
 
 

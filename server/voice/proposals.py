@@ -138,14 +138,18 @@ def expire(store_id: str, today: str) -> int:
 
 
 def _candidates(store_id: str, record: dict) -> list[dict]:
-    """지금 보이는(또는 7일 안에 넣은) 할 일과 아직 정하지 않은 제안."""
+    """지금 보이는(또는 7일 안에 넣은) 할 일과 아직 정하지 않은 제안.
+    영업 중 알림에서 물은 제안(asked, 물을 날 없음)은 알림이 2시간 지나면 끝난 것으로 보고 뺀다 (예전에 남은 것)."""
+    from voice.jobs.review_loop import LOOK_BACK as ALERT_LOOK_BACK
+
     now = clock.now()
     found = [{"id": t["id"], "kind": "task", "text": _text(t), "urgent": t["urgent"], "source": t["source"] or {}}
              for t in staff.store_tasks(store_id)
              if not t["canceled"] and (t["repeat"] == "daily" or now - parse(t["created_at"]) <= LOOK_BACK)]
     found += [{"id": p["id"], "kind": "proposal", "text": _text(p["payload"]), "urgent": urgent(p),
                "source": p["link"]}
-              for p in repo.all_of(KIND, store_id) if p["state"] in LIVE and p["id"] != record["id"]]
+              for p in repo.all_of(KIND, store_id) if p["state"] in LIVE and p["id"] != record["id"]
+              and not (p["state"] == "asked" and not p.get("ask_on") and now - parse(p["created_at"]) > ALERT_LOOK_BACK)]
     return found
 
 

@@ -131,18 +131,17 @@ def run_all(snapshot, reply_plan_ids: list[str]) -> None:
     for number, item in enumerate(items, 1):
         _update(store_id, current=f"{item.task_type} {item.plan_id}")
         ctx = RunContext(snapshot=snapshot, now=snapshot.computed_at)
-        try:
+        try:  # 결과를 기억하는 데까지 잡는다: 할 일 하나가 실패해도 남은 할 일과 supervisor 는 계속 돈다 (H9)
             if item.task_type in ("REVISIT_REPLY", "REORDER_NUDGE"):
                 proposal = reply_agent.draft(item, ctx)
             elif item.task_type == "REVIEW_FIX":
                 proposal = complaint_agent.diagnose(item, ctx)
             else:
                 proposal = campaign_agent.plan_campaign(item, ctx)
+            if proposal is not None:
+                _remember(snapshot, item, proposal)
         except Exception:
             logger.exception("%s 에이전트 실패: %s", store_id, item.plan_id)
-            proposal = None
-        if proposal is not None:
-            _remember(snapshot, item, proposal)
         _update(store_id, done=number)
 
     _update(store_id, current="supervisor")
@@ -153,6 +152,8 @@ def run_all(snapshot, reply_plan_ids: list[str]) -> None:
 def _remember(snapshot, item, proposal: Proposal) -> None:
     from Harness.agents import campaign_agent
 
+    if not isinstance(proposal, Proposal):  # 모양이 틀린 값을 기억하면 대시보드(status)까지 깨진다. 기억하기 전에 실패시킨다 (H1)
+        raise TypeError(f"{item.plan_id} 제안이 Proposal 이 아니에요 ({type(proposal).__name__})")
     store_id = snapshot.store_id
     with _lock:
         _proposals.setdefault(store_id, {})[item.plan_id] = proposal
@@ -178,21 +179,21 @@ def _coordinate(snapshot) -> None:
         with _lock:
             proposals = dict(_proposals.get(store_id, {}))
         in_batch = {e.plan_id: proposals[e.plan_id] for e in batch.entries if e.plan_id in proposals}
-        try:
+        try:  # 결과를 기억하는 데까지 잡는다: 묶음 하나가 실패해도 남은 묶음과 _batches 는 계속 처리한다
             result = supervisor.coordinate_batch(batch, in_batch, RunContext(snapshot=snapshot, now=snapshot.computed_at))
+            if result.source == "NONE":
+                continue
+            item_by_id = {i.plan_id: i for i in snapshot.plan.plan_items}
+            for plan_id, proposal in result.proposals.items():
+                if proposals.get(plan_id) is not proposal and plan_id in item_by_id:
+                    _remember(snapshot, item_by_id[plan_id], proposal)
+            seen.append({
+                "slot_at": batch.slot_at.isoformat(timespec="minutes"), "source": result.source, "run_id": result.run_id,
+                "headline": result.headline, "conflicts": [c.describe() for c in result.conflicts], "item_notes": result.item_notes,
+            })
         except Exception:
             logger.exception("%s supervisor 실패: %s", store_id, batch.slot_at)
             continue
-        if result.source == "NONE":
-            continue
-        item_by_id = {i.plan_id: i for i in snapshot.plan.plan_items}
-        for plan_id, proposal in result.proposals.items():
-            if proposals.get(plan_id) is not proposal and plan_id in item_by_id:
-                _remember(snapshot, item_by_id[plan_id], proposal)
-        seen.append({
-            "slot_at": batch.slot_at.isoformat(timespec="minutes"), "source": result.source, "run_id": result.run_id,
-            "headline": result.headline, "conflicts": [c.describe() for c in result.conflicts], "item_notes": result.item_notes,
-        })
     with _lock:
         _batches[store_id] = seen
 

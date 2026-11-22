@@ -28,6 +28,7 @@
 import argparse
 import datetime as dt
 import json
+import logging
 import os
 import threading
 import time
@@ -39,6 +40,8 @@ from app.core.config import settings
 from Harness import grounding, trace
 from Harness.evals import fail_cause, gold, judge, metrics, reply_checks, report, scenarios, systems
 from Harness.evals.guards_eval import CaseAborted, GuardedPost, load_store_facts
+
+logger = logging.getLogger(__name__)
 
 QUESTION_FIT, QUESTION_TASK = 2, 4
 JUDGE_DEADLINE_SECONDS = 600
@@ -129,15 +132,22 @@ class RunIds:
 
 
 def tool_evidence(run_ids: list[str]) -> grounding.Evidence:
-    """그 실행들(과 아래 일꾼 실행)의 도구 결과로 근거 장부를 만든다."""
+    """그 실행들(과 아래 일꾼 실행)의 입력(user 메시지)과 도구 결과로 근거 장부를 만든다. 러너가 검사에 쓴 장부와 같게 (H6).
+    잘려서 JSON 이 깨진 줄(예전 기록)은 잘린 원문을 근거로 쓰지 않고 건너뛴다."""
     evidence = grounding.Evidence()
     for run_id in run_ids:
         for step in trace.steps_of(run_id):
-            if step["kind"] == "tool" and step.get("detail"):
-                try:
-                    detail = json.loads(step["detail"])
-                except (TypeError, ValueError):
-                    detail = step["detail"]
+            if step["kind"] not in ("start", "tool") or not step.get("detail"):
+                continue
+            try:
+                detail = json.loads(step["detail"])
+            except (TypeError, ValueError):
+                logger.warning("잘린 실행 기록은 근거로 쓰지 않아요: %s %s %s", step["run_id"], step["kind"], step.get("name"))
+                continue
+            if step["kind"] == "start":
+                if isinstance(detail, dict) and detail.get("input"):
+                    evidence.add("input", detail["input"])
+            else:
                 evidence.add(step.get("name") or "tool", detail.get("result", detail) if isinstance(detail, dict) else detail)
     return evidence
 
@@ -318,20 +328,23 @@ def remaining(case_id: str, snap, plan_ids: list[str], proposals: dict, notes: d
 
 
 def _rework(run_id: str | None) -> dict:
-    """B supervisor 실행의 재작업 요청(ask_* 도구) 수: 할 일별, 합."""
+    """B supervisor 실행의 재작업 요청(ask_* 도구) 수: 할 일별, 합. 기록이 깨져 할 일을 모르는 요청은 unreadable 로 따로 센다."""
     per_item: Counter = Counter()
+    unreadable = 0
     if run_id:
         for step in trace.steps_of(run_id):
             if step["kind"] == "tool" and str(step.get("name") or "").startswith("ask_"):
                 try:
                     args = json.loads(step["detail"]).get("args") or {}
                 except (TypeError, ValueError, AttributeError):
-                    args = {}
+                    unreadable += 1
+                    continue
                 per_item[args.get("plan_id") or "?"] += 1
-    total = sum(per_item.values())
+    total = sum(per_item.values()) + unreadable  # 묶음당 한도는 할 일을 몰라도 센다
     from Harness.supervisor import MAX_REVISIONS
 
-    return {"per_item": dict(per_item), "total": total, "ok": total <= MAX_REVISIONS and all(n <= 1 for n in per_item.values())}
+    return {"per_item": dict(per_item), "total": total, "ok": total <= MAX_REVISIONS and all(n <= 1 for n in per_item.values()),
+            "unreadable": unreadable}
 
 
 def batch_row(system: str, run: int, case_id: str, *, mode: str, post, judge_post, run_ids: RunIds) -> dict | None:

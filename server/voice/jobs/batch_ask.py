@@ -27,8 +27,8 @@ class Kind:
     line: Callable[[VoiceStore, str], str]  # 묶어 물을 때 한 줄 ("국물이 샜다는 리뷰예요.")
     one: Callable[[VoiceStore, str], tuple[list[str], list[dict]]]  # 한 건만 물을 때 말과 카드
     item: Callable[[VoiceStore, str], dict]  # checklist 한 줄 {title, sub}
-    approve: Callable[[VoiceStore, str], None]
-    reject: Callable[[VoiceStore, str], None]
+    approve: Callable[[VoiceStore, str], bool]  # 했으면 True (그 사이 작업 큐가 먼저 정했으면 False)
+    reject: Callable[[VoiceStore, str], bool]
     many: str  # 묶어 물을 때 첫 줄: "아쉬운 리뷰가 {n} 있어요."
     question: str  # "써 둔 사과 답글을 올릴까요?"
     headline: str
@@ -91,8 +91,10 @@ def ready_reply(view: VoiceStore, review: dict) -> tuple[str, str]:
     return text, ready["source"] if notes else written["source"]
 
 
-def _neg_approve(view: VoiceStore, ref: str) -> None:
-    review = view.review(ref)
+def _neg_approve(view: VoiceStore, ref: str) -> bool:
+    review = repo.review(ref)  # 말 처리를 시작할 때 읽은 view 가 아니라 지금 것 (그 사이 작업 큐가 올렸을 수 있다)
+    if review.get("reply_status", "none") != "none":
+        return False
     text, source = ready_reply(view, review)
     now = clock.now()
     review.update({
@@ -100,8 +102,10 @@ def _neg_approve(view: VoiceStore, ref: str) -> None:
         "reply_posted_at": iso(now), "replied_in_minutes": max(1, round((now - parse(review["written_at"])).total_seconds() / 60)),
         "reply_trigger": "owner_yes",
     })
-    repo.save_review(review)
+    if repo.save_review_if(review, "none") is None:
+        return False
     activity.log(view.store_id, "donna", "아쉬운 리뷰에 사과 답글을 올렸어요", f"fix:{ref}:reply", at=now)
+    return True
 
 
 def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
@@ -130,11 +134,13 @@ def _neg_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
     return True
 
 
-def _neg_reject(view: VoiceStore, ref: str) -> None:
-    review = view.review(ref)
+def _neg_reject(view: VoiceStore, ref: str) -> bool:
+    review = repo.review(ref)
+    if review.get("reply_status", "none") != "none":
+        return False
     ready = review["reply_ready"]
     review.update({"reply_status": "drafted", "reply_by": "donna", "reply_text": ready["text"], "reply_source": ready["source"]})
-    repo.save_review(review)
+    return repo.save_review_if(review, "none") is not None
 
 
 # ── 좋은 리뷰 예약 답글 (positive_reply, 9-0 b) ──
@@ -168,11 +174,16 @@ def _pos_item(view: VoiceStore, ref: str) -> dict:
     return {"title": _when_label(review), "sub": review["reply_text"]}
 
 
-def _pos_approve(view: VoiceStore, ref: str) -> None:
-    review = view.review(ref)
+def _pos_approve(view: VoiceStore, ref: str) -> bool:
+    review = repo.review(ref)
+    if review.get("reply_status") != "awaiting":
+        return False
     post_at = max(parse(review["reply_post_at"]), clock.now())  # 올릴 때가 이미 지났으면 바로 올린다
-    repo.save_review({**review, "reply_status": "scheduled", "reply_trigger": "owner_yes", "reply_post_at": iso(post_at)})
+    if repo.save_review_if({**review, "reply_status": "scheduled", "reply_trigger": "owner_yes", "reply_post_at": iso(post_at)},
+                           "awaiting") is None:
+        return False
     queue.add(view.store_id, "post_scheduled", post_at)
+    return True
 
 
 def _pos_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
@@ -187,8 +198,11 @@ def _pos_revise(view: VoiceStore, ref: str, instruction: str) -> bool:
     return True
 
 
-def _pos_reject(view: VoiceStore, ref: str) -> None:
-    repo.save_review({**view.review(ref), "reply_status": "drafted"})
+def _pos_reject(view: VoiceStore, ref: str) -> bool:
+    review = repo.review(ref)
+    if review.get("reply_status") != "awaiting":
+        return False
+    return repo.save_review_if({**review, "reply_status": "drafted"}, "awaiting") is not None
 
 
 # ── 알바생 할 일 (review_fix_task, field_task, manual_task: 늘 결재, 상한 사원) ──
@@ -218,9 +232,25 @@ def _task_item(view: VoiceStore, ref: str) -> dict:
     return {"title": payload["title"], "sub": payload.get("detail") or ""}
 
 
+def _task_approve(view: VoiceStore, ref: str) -> bool:
+    # apply 는 접힌 제안도 넣는다 (다시 열기 길). 묶음 승인은 락 안에서 살아 있는지 다시 본다. RLock 이라 apply 안에서 다시 잡아도 된다
+    with repo._lock:
+        if not _task_pending(view, ref):
+            return False  # 그 사이 작업 큐가 접었다
+        proposals.apply(ref, "owner_yes")
+    return True
+
+
+def _task_reject(view: VoiceStore, ref: str) -> bool:
+    with repo._lock:
+        if not _task_pending(view, ref):
+            return False  # 그 사이 작업 큐가 접었다
+        proposals.decline(ref, "owner_no")
+    return True
+
+
 TASK = Kind(
-    pending=_task_pending, line=_task_line, one=_task_one, item=_task_item,
-    approve=lambda view, ref: proposals.apply(ref, "owner_yes"), reject=lambda view, ref: proposals.decline(ref, "owner_no"),
+    pending=_task_pending, line=_task_line, one=_task_one, item=_task_item, approve=_task_approve, reject=_task_reject,
     many="알바생 할 일이 {n} 있어요.", question="넣을까요?", headline="알바생 할 일 넣을까요?",
     done=lambda n: "알바생 할 일을 넣었어요." if n == 1 else f"알바생 할 일 {n}개를 넣었어요.", none=("네, 알바생 할 일은 넣지 않을게요.",))
 
@@ -287,7 +317,8 @@ def _settle(view: VoiceStore, items: list[dict], approve: bool, said: str | None
     for i in items:
         if not KINDS[i["job"]].pending(view, i["ref"]):
             continue  # 다른 기기에서 먼저 정했다
-        (KINDS[i["job"]].approve if approve else KINDS[i["job"]].reject)(view, i["ref"])
+        if not (KINDS[i["job"]].approve if approve else KINDS[i["job"]].reject)(view, i["ref"]):
+            continue  # 말 처리를 시작한 뒤 작업 큐가 먼저 정했다 (올렸다 등)
         hr.record(view.store_id, i["job"], i["ref"], "approved" if approve else "rejected", said)
 
 

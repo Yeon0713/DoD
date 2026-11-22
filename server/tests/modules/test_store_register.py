@@ -8,9 +8,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.core import naver_place
+from app.core.error_response import ApiError
 from app.core.naver_place import PlaceInfo, PlaceMenu, parse_place
 from app.core.seoul_time import now_seoul
 from app.data_pipeline import read_store_db, registered_stores
+from app.data_pipeline.analysis_to_plan_inputs import build_store_settings
 from app.main import create_app
 from app.modules.stores import router as stores_router
 from app.modules.stores.review_import import make_reviews
@@ -154,6 +156,32 @@ def test_reset_all_removes_only_registered_store_files(tmp_path, monkeypatch):
     assert not registry.exists()
 
 
+def test_new_place_never_reuses_number_left_in_registry(tmp_path, monkeypatch):
+    """가게 파일만 지워지고(목업 생성기를 다시 돌림) 등록 기록이 남은 번호는 다른 가게에 주지 않는다. 같은 가게를 다시 등록하면 그 번호를 다시 쓴다."""
+    from db import session
+
+    monkeypatch.setattr(session, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(registered_stores, "DATA_DIR", tmp_path)
+    monkeypatch.setattr(registered_stores, "REGISTRY_PATH", tmp_path / "registry.db")
+    first = dataclasses.replace(parse_place("123456", HTML), place_id="P1")
+    second = dataclasses.replace(parse_place("123456", HTML), place_id="P2", name="B가게")
+    try:
+        assert registered_stores.register(first) == "s101"
+        registered_stores.set_owner("naver:A", "s101")
+        session.dispose_all()
+        (tmp_path / "s101.db").unlink()
+
+        assert registered_stores.register(second) == "s102"
+        assert registered_stores.store_for_place("P2") == "s102"
+        assert registered_stores.store_for_owner("naver:A") is None  # 파일이 없으니
+        assert registered_stores.place_info("s101").place_id == "P1"  # 남은 기록을 덮지 않았다
+
+        assert registered_stores.register(first) == "s101"
+        assert registered_stores.store_for_owner("naver:A") == "s101"
+    finally:
+        session.dispose_all()
+
+
 def test_mock_place_takes_over_old_registration_without_deleting_it(client, tmp_path, monkeypatch):
     """목업 가게로 잇는 규칙이 생기기 전에 피플스클럽을 s101 로 등록해 둔 기록이 있어도, 다시 등록하면 s004 로 잇는다.
     예전 기록(s101 가게 파일, 등록 정보, 불러온 리뷰, 그 계정 연결)은 지우지 않고 네이버 가게 id 만 비켜 둔다."""
@@ -199,6 +227,38 @@ def test_single_day_line_overrides_group_line():
     assert info.weekly_hours["MON"] == info.weekly_hours["FRI"] == {"open": "10:00", "close": "21:00"}
     assert info.weekly_hours["SAT"] == {"open": "11:00", "close": "15:00"} and info.weekly_hours["SUN"] is None
     assert info.break_time == {"start": "15:00", "end": "17:00"}
+
+
+def _every_day(start: str, end: str) -> str:
+    return _hours_html([{"day": "매일", "businessHours": {"start": start, "end": end}, "breakHours": []}])
+
+
+def test_midnight_close_is_normalized():
+    """네이버가 자정 마감을 "24:00" 으로 주면 "23:59" 로 맞춘다. 이미 저장해 둔 정보(info_json)도 읽을 때 맞춘다."""
+    info = parse_place("123456", _every_day("11:00", "24:00"))
+    assert info.weekly_hours["MON"]["close"] == "23:59"
+    stored = {**info.to_dict(), "weekly_hours": {code: {"open": "11:00", "close": "24:00"} for code in info.weekly_hours}}
+    assert all(h["close"] == "23:59" for h in PlaceInfo.from_dict(stored).weekly_hours.values())
+    assert not registered_stores.is_overnight(info.weekly_hours)
+
+
+def test_midnight_close_store_gets_plan():
+    info = parse_place("123456", _every_day("11:00", "24:00"))
+    row = registered_stores.store_row("s101", info)
+    settings = build_store_settings(row, {"weekly_hours": info.weekly_hours, "break_time": None})
+    assert settings.close_time == "23:59"
+    assert settings.slots.CLOSING == "23:29"
+
+
+@pytest.mark.parametrize(("start", "end"), [("11:00", "00:00"), ("17:00", "03:00")])
+def test_zero_close_and_overnight_store_stay_blocked(start, end):
+    """마감 "00:00" 은 맞추지 않는다. 자정을 넘기는 가게(17:00~03:00)처럼 계획을 막는다."""
+    info = parse_place("123456", _every_day(start, end))
+    assert info.weekly_hours["MON"]["close"] == end
+    assert registered_stores.is_overnight(info.weekly_hours)
+    with pytest.raises(ApiError) as error:
+        build_store_settings(registered_stores.store_row("s101", info))
+    assert error.value.code == "OVERNIGHT_STORE_NOT_SUPPORTED"
 
 
 @pytest.mark.parametrize(

@@ -21,7 +21,6 @@
 
 import datetime as dt
 
-from app.core.seoul_time import at_time
 from voice import activity, clock, config, hours, hr, notices, proposals, repo, speech
 from voice.agents import fix_card, voice_reply
 from voice.clock import iso, parse
@@ -45,11 +44,11 @@ def _obj(word: str) -> str:
 
 
 def in_alert_hours(store: dict, moment: dt.datetime) -> bool:
-    today = hours.on(store, moment.date())
-    if today is None:
+    found = hours.business_day(store, moment)  # 자정 넘김 가게의 새벽은 어제 영업
+    if found is None:
         return False
-    start = at_time(moment.date(), today["open"]) - config.ALERT_BEFORE_OPEN
-    return start <= moment < at_time(moment.date(), today["close"])
+    day, today = found
+    return hours.open_at(day, today) - config.ALERT_BEFORE_OPEN <= moment
 
 
 def on_new_review(review: dict) -> str:
@@ -193,6 +192,10 @@ def fallback(store_id: str, review_id: str) -> str | None:
         if allowed:  # 사과만: 보상 문장과 교정 카드는 사장님이 정할 몫이라 넣지 않는다 (나중에 "진행해"면 카드만 넣는다)
             _post({**record, "use_card": False, "use_compensation": False}, "timeout")
             repo.put("alert", record["id"], store_id, {**record, "state": "fallback_posted"})
+            if record["use_card"] and record.get("proposal_id"):  # 할 일은 다음 아침 브리핑에서 묻는다
+                proposals.carry(record["proposal_id"], staff_tasks.briefing_day(repo.store(store_id), clock.now(), after_today=True))
+            else:
+                _decline_card(record, "timeout")
             notices.push(store_id, "reply_fallback", "대답이 없으셔서 사과 답글만 올렸어요", say=["대답이 없으셔서 사과 답글만 먼저 올렸어요."])
             result = "fallback_posted"
         else:
@@ -200,6 +203,7 @@ def fallback(store_id: str, review_id: str) -> str | None:
             review.update({"reply_status": "none", "reply_ready": {"text": record["reply_plain"], "source": "TEMPLATE", "notes": []}})
             repo.save_review(review)
             repo.put("alert", record["id"], store_id, {**record, "state": "left_draft"})
+            _decline_card(record, "timeout")
             notices.push(store_id, "reply_fallback", "답글은 초안으로 남겨 뒀어요", say=["대답이 없으셔서 답글은 올리지 않고 초안으로 남겨 뒀어요."])
             result = "left_draft"
     # 브리핑을 다시 만드는 일(답글 쓰기, LLM)은 느린 줄로 넘긴다. 알림 줄은 다른 리뷰 알림을 기다리게 하지 않는다 (jobs/queue.py)
@@ -345,6 +349,13 @@ def _finish(record: dict, trigger: str) -> dict:
     })
 
 
+def _decline_card(record: dict, trigger: str) -> None:
+    """끝난 알림(반려·초안으로 남김)의 할 일 제안을 접는다. 묻는 중(asked)으로 남으면 다음 교정 카드가 거기에 묶여 사라진다.
+    그 뒤 "진행해"로 다시 열면 proposals.apply 가 상태를 보지 않고 넣는다."""
+    if record.get("proposal_id"):
+        proposals.decline(record["proposal_id"], trigger)
+
+
 def _record_card(record: dict, reaction: str, said: str | None) -> None:
     """교정 할 일 결재를 인사과에 남긴다 (카드가 있을 때만, ref 는 제안 id)."""
     if record.get("card") and record.get("proposal_id"):
@@ -355,6 +366,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
     """사장님 대답 (action.approve | action.edit | action.cancel | action.unclear | notice.open). said: 사장님 말 (인사과 기록)."""
     from voice.jobs.briefing import answer, say
 
+    revising = None
     with repo._lock:
         # 어느 리뷰의 대답인가: 이 대화가 묻던 리뷰가 아직 묻는 중이면 그것, 아니면 지금 묻고 있는 가장 새 리뷰
         # (다른 기기에서 새 알림을 열었을 수 있다), 그것도 없으면 이 대화가 묻던 리뷰나 최근 리뷰 ("이미 올렸어요" 등)
@@ -396,6 +408,7 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             repo.put("alert", record["id"], record["store_id"], {**record, "state": "canceled", "decided_by": "owner_no", "decided_at": iso(clock.now())})
             hr.record(record["store_id"], "negative_reply", record["review_id"], "rejected", said)  # "안 해": 둘 다 반려
             _record_card(record, "rejected", said)
+            _decline_card(record, "owner_no")
             return answer("올리지 않을게요", [say("네, 올리지 않을게요."), say("초안은 남겨 둘게요.")], [])
 
         if intent_name == "action.edit":
@@ -405,17 +418,18 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
             response["say"] = [say(f"{_dropped(changed)}, {_offer(record)}")]
             return response
 
-        if intent_name == "action.revise":  # "좀 더 부드럽게" (인사과 6단계)
-            return _revise(view, record, said)
-        if intent_name != "action.approve":  # 모르는 대답을 승인으로 보고 올리지 않는다
+        if intent_name == "action.revise":  # "좀 더 부드럽게" (인사과 6단계). 고쳐 쓰기(LLM)는 락 밖에서
+            revising = record
+        elif intent_name != "action.approve":  # 모르는 대답을 승인으로 보고 올리지 않는다
             return ask(view, record, lead=["진행하시려면 '응, 진행해'라고 말씀해 주세요."], headline="이렇게 올릴까요?")
-
-        # action.approve
-        was = record["state"]
-        record = _finish(record, "owner_yes")
-        if was != "fallback_posted":  # 25분 시간 넘김으로 올린 답글은 기록하지 않는다 (무응답). "쿠폰 빼고"도 답글은 그대로 승인 (9-0 k)
-            hr.record(record["store_id"], "negative_reply", record["review_id"], "approved", said)
-        _record_card(record, "approved" if record["task_id"] else "rejected", said)  # "카드는 넣지 마": 할 일만 반려 (9-0 l)
+        else:  # action.approve
+            was = record["state"]
+            record = _finish(record, "owner_yes")
+            if was != "fallback_posted":  # 25분 시간 넘김으로 올린 답글은 기록하지 않는다 (무응답). "쿠폰 빼고"도 답글은 그대로 승인 (9-0 k)
+                hr.record(record["store_id"], "negative_reply", record["review_id"], "approved", said)
+            _record_card(record, "approved" if record["task_id"] else "rejected", said)  # "카드는 넣지 마": 할 일만 반려 (9-0 l)
+    if revising is not None:
+        return _revise(view, revising, said)
     review = repo.review(record["review_id"])
     cards = _cards(record, review, posted=True)
     if was == "fallback_posted":
@@ -435,16 +449,24 @@ def decide(view, intent_name: str, edits: dict | None, alert_id: str | None = No
 
 
 def _revise(view, record: dict, said: str | None) -> dict:
-    """사장님 고침 지시대로 답글을 다시 써서 다시 묻는다. 인사과에는 '조금 수정'(edited)으로 남는다."""
+    """사장님 고침 지시대로 답글을 다시 써서 다시 묻는다. 인사과에는 '조금 수정'(edited)으로 남는다.
+    고쳐 쓰기(LLM, 최대 40초)는 repo._lock 밖에서 한다. 그 사이 작업 큐(25분 fallback 등)가 알림을 처리했으면 고친 글을 버린다."""
+    from voice.jobs.briefing import answer, say
+
     review = repo.review(record["review_id"])
     key = "reply_base" if record["use_card"] and record["card"] else "reply_plain"
     fix = {"cause": record["cause"]["summary"], "action": record["card"]["detail"], "reply": record["reply_base"]} if key == "reply_base" else None
     written = voice_reply.revise(view, review, "AUTO", record[key], said or "", fix=fix)
     text, notes = voice_reply.safe_reply(written["text"], None, record[key]) if written else (None, [])  # 고친 글에도 보상은 없어야 한다
-    if written is None or notes:  # 못 고쳤거나, 고친 글이 보상 검사에 걸려 예전 글로 돌아갔다
-        return ask(view, record, lead=["지금은 고치지 못했어요.", "이대로 올릴지 다시 말씀해 주세요."], headline="이렇게 올릴까요?")
-    record = repo.put("alert", record["id"], record["store_id"], {**record, key: text, "reply_source": written["source"],
-                                                                 "notes": record["notes"] + written["notes"]})
+    with repo._lock:
+        fresh = repo.get("alert", record["id"])
+        same = fresh is not None and (fresh["state"] == record["state"] or {fresh["state"], record["state"]} <= PENDING)  # 다시 알림(reminded)은 아직 묻는 중
+        if not same:
+            return answer("이미 처리했어요", [say("그 리뷰는 이미 처리했어요.")], [])
+        if written is None or notes:  # 못 고쳤거나, 고친 글이 보상 검사에 걸려 예전 글로 돌아갔다
+            return ask(view, fresh, lead=["지금은 고치지 못했어요.", "이대로 올릴지 다시 말씀해 주세요."], headline="이렇게 올릴까요?")
+        record = repo.put("alert", record["id"], record["store_id"], {**fresh, key: text, "reply_source": written["source"],
+                                                                     "notes": fresh["notes"] + written["notes"]})
     hr.record(record["store_id"], "negative_reply", record["review_id"], "edited", said)
     return ask(view, record, lead=["이렇게 고쳤어요."], headline="이렇게 올릴까요?")
 

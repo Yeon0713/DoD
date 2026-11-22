@@ -24,11 +24,25 @@ def set_max_concurrent(count: int) -> None:
     _semaphore = threading.BoundedSemaphore(count)
 
 
+class SlotBusy(Exception):
+    """기다릴 수 있는 시간 안에 자리를 잡지 못했다."""
+
+
 @contextmanager
-def slot() -> Iterator[None]:
-    """CLOVA 를 부르는 동안 자리 하나를 잡는다."""
-    with _semaphore:
-        yield
+def slot(wait: float | None = None) -> Iterator[float]:
+    """CLOVA 를 부르는 동안 자리 하나를 잡고, 자리를 기다린 초를 준다 (바로 잡으면 0).
+    wait 가 있으면 그만큼만 기다리고, 못 잡으면 SlotBusy (엄격한 예산, H4)."""
+    semaphore = _semaphore  # set_max_concurrent 가 바꿔도 잡은 객체에서 푼다
+    waited = 0.0
+    if not semaphore.acquire(blocking=False):
+        asked = time.perf_counter()
+        if not semaphore.acquire(timeout=wait):
+            raise SlotBusy
+        waited = time.perf_counter() - asked
+    try:
+        yield waited
+    finally:
+        semaphore.release()
 
 
 # ── 429 기다리기: 응답 헤더를 따른다 ──

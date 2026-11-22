@@ -11,7 +11,6 @@
 import datetime as dt
 import re
 
-from app.core.seoul_time import at_time
 from voice import clock, hours, hr, repo, speech
 from voice.clock import iso
 from voice.context import VoiceStore
@@ -88,8 +87,7 @@ def _candidates(store_id: str, today: dt.date) -> tuple[list[dict], bool]:
 
 
 def _open_now(store: dict, now: dt.datetime) -> bool:
-    today = hours.on(store, now.date())
-    return bool(today) and now < at_time(now.date(), today["close"])
+    return hours.business_day(store, now) is not None  # 자정 넘김 가게의 새벽은 어제 영업
 
 
 def _pick(items: list[dict], n: str) -> list[dict]:

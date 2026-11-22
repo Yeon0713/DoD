@@ -4,7 +4,7 @@ import sqlite3
 
 from app.core import clova_usage_log
 from app.core.config import settings
-from Harness import clova_tools, guards, runner, trace
+from Harness import cache, clova_tools, guards, runner, trace
 from Harness.grounding import Evidence, ungrounded_numbers
 from Harness.spec import AgentSpec, Budget, CallBudget, Tool
 from Harness.tests.fakes import FakeClova, call
@@ -168,6 +168,49 @@ def test_time_budget(make_ctx, monkeypatch):
     assert runner.run(spec(budget=Budget(max_seconds=10)), {"id": "T7"}, make_ctx(fake)).source == "FALLBACK"
 
 
+class TimeoutRecorder(FakeClova):
+    """받은 timeout 을 남기는 가짜 CLOVA."""
+
+    def __init__(self, *turns):
+        super().__init__(*turns)
+        self.timeouts = []
+
+    def __call__(self, url, headers=None, json=None, timeout=None):
+        self.timeouts.append(timeout)
+        return super().__call__(url, headers=headers, json=json, timeout=timeout)
+
+
+def test_non_strict_call_timeout_follows_remaining_budget(make_ctx, monkeypatch):
+    """엄격하지 않은 예산도 호출 하나의 제한 시간을 남은 시간으로 묶는다 (H7). 재시도 규칙은 그대로."""
+    ticks = iter([0.0, 10.0])  # 시작, 1단계 시작(10초 지남)
+    monkeypatch.setattr(runner, "clock", lambda: next(ticks))
+    fake = TimeoutRecorder([call("submit_text", {"text": "끝"})])
+    runner.run(spec(budget=Budget(max_seconds=15)), {"id": "T14"}, make_ctx(fake))
+    assert fake.timeouts == [5.0]
+    fresh = TimeoutRecorder([call("submit_text", {"text": "끝"})])
+    monkeypatch.setattr(runner, "clock", lambda: 0.0)
+    runner.run(spec(), {"id": "T15"}, make_ctx(fresh))
+    assert fresh.timeouts == [20]  # 남은 시간이 넉넉하면 기본 제한 시간 그대로
+
+
+def test_worker_uses_earlier_parent_deadline(make_ctx, frozen_clock):
+    """부모(supervisor) 마감이 더 이르면 그 마감까지만 쓴다 (H7)."""
+    fake = TimeoutRecorder([call("submit_text", {"text": "끝"})])
+    runner.run(spec(), {"id": "T16"}, make_ctx(fake, deadline=3.0))
+    assert fake.timeouts == [3.0]
+
+
+def test_fallback_can_be_skipped_after_deadline(make_ctx, monkeypatch):
+    """fallback_after_deadline=False 면 마감이 지난 뒤 물러나기 호출을 하지 않는다. 기본(True)은 그대로 물러난다 (H7)."""
+    called = []
+    ticks = iter([0.0, 0.0, 99.0, 99.0])  # 시작, 1단계, 2단계(시간 초과), 물러나기 전 확인
+    monkeypatch.setattr(runner, "clock", lambda: next(ticks))
+    late = spec(budget=Budget(max_seconds=10), fallback=lambda task, ctx: called.append(task) or {"text": "기본 문장"},
+                fallback_after_deadline=False)
+    assert runner.run(late, {"id": "T17"}, make_ctx(FakeClova([call("get_word", {"key": "a"})]))) is None
+    assert called == []
+
+
 def test_shared_call_budget_stops_before_calling(make_ctx, frozen_clock):
     fake = FakeClova()
     proposal = runner.run(spec(), {"id": "T8"}, make_ctx(fake, call_budget=CallBudget(0)))
@@ -185,12 +228,46 @@ def test_cache_hit_skips_clova_and_fallbacks_are_not_cached(make_ctx, frozen_clo
     assert len(failing.requests) == 2  # 물러나기 결과는 기억하지 않아 다시 시도한다
 
 
+def test_cache_scope_none_keeps_old_key(make_ctx):
+    """cache_scope 가 없는 스펙(음성 서버 에이전트들)은 예전과 같은 입력 해시를 쓴다 (H2: 디스크 캐시가 빗나가지 않게)."""
+    ctx = make_ctx(FakeClova())
+    key = runner.cache_key(spec(), {"id": "T1"}, ctx, "시스템", "할 일 T1")
+    assert key[2] == cache.digest(["할 일 T1", []])
+    scoped = runner.cache_key(spec(cache_scope=lambda task: task["id"]), {"id": "T1"}, ctx, "시스템", "할 일 T1")
+    assert scoped[2] == cache.digest(["할 일 T1", [], "T1"]) and scoped[2] != key[2]
+
+
 def test_trace_records_each_step(make_ctx, frozen_clock):
     ctx = make_ctx(FakeClova([call("get_word", {"key": "a"})], [call("submit_text", {"text": "끝"})]))
     runner.run(spec(), {"id": "T11"}, ctx)
     kinds = [(s["step"], s["kind"], s["name"]) for s in trace.steps_of(ctx.run_id)]
     assert kinds == [(0, "start", "T11"), (1, "llm", "tool_calls"), (1, "tool", "get_word"), (2, "llm", "tool_calls"),
                      (2, "submit", "submit_text"), (2, "end", "accepted")]
+
+
+def test_trace_failure_does_not_break_the_run(make_ctx, frozen_clock, monkeypatch):
+    """실행 기록 DB 가 잠기거나 망가져도 에이전트 실행은 그대로 끝난다 (H5)."""
+    def locked():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(trace, "_db", locked)
+    fake = FakeClova([call("get_word", {"key": "a"})], [call("submit_text", {"text": "a-42 입니다"})])
+    proposal = runner.run(spec(), {"id": "T18"}, make_ctx(fake))
+    assert proposal.source == "AGENT" and proposal.content == {"text": "a-42 입니다"}
+
+
+def test_trace_uses_wal():
+    """읽기(대시보드)와 쓰기가 서로 막지 않게 WAL 로 쓴다 (H5)."""
+    trace.record(run_id="r", parent_run_id=None, agent="echo", store_id="t001", step=0, kind="start", name="T")
+    with sqlite3.connect(trace.TRACE_PATH) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
+def test_record_without_limit_keeps_full_text():
+    """limit=None 이면 detail 을 자르지 않는다 (H10)."""
+    trace.record(run_id="r", parent_run_id=None, agent="echo", store_id="t001", step=0, kind="start", name="T",
+                 detail="x" * 10000, limit=None)
+    assert len(trace.steps_of("r")[0]["detail"]) == 10000
 
 
 # ── 근거 대조와 규칙 검사 ──

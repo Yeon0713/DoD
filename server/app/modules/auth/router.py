@@ -137,6 +137,8 @@ def naver_callback(
             answer = httpx.get(PROFILE_URL, headers={"Authorization": f"Bearer {access_token}"}, timeout=10).json()
         except httpx.HTTPError:
             return _back_with(back, error="NAVER_UNREACHABLE")
+        except ValueError:  # JSON 이 아닌 응답 (게이트웨이 오류 html, 빈 본문 등)
+            return _back_with(back, error="NAVER_BAD_RESPONSE")
         if answer.get("resultcode") != "00":
             return _back_with(back, error="PROFILE_FAILED", detail=answer.get("message", ""))
         profile, expires_in = answer.get("response", {}), int(token.get("expires_in", 0) or 0)
@@ -253,7 +255,7 @@ def naver_unlink(ticket: str):
             },
             timeout=10,
         ).json()
-    except httpx.HTTPError:
+    except (httpx.HTTPError, ValueError):  # ValueError: JSON 이 아닌 응답
         raise ApiError(502, "NAVER_UNREACHABLE", "네이버에 닿지 않아요")
     return {"unlinked": answer.get("result") == "success"}
 

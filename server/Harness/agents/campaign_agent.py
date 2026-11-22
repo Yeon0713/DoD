@@ -342,6 +342,8 @@ SPEC = AgentSpec(
     budget=Budget(max_steps=6, max_rejections=3, max_seconds=40),  # 검사 항목이 많아 거절을 한 번 더 받는다
     temperature=0.5,
     retry_hint="확정한 부분은 다시 내지 말고, 아직 필요한 것만 넣어 {submit} 로 다시 제출해 줘.",
+    # 어느 행사인지(ref_id)는 user 메시지에 없고 도구만 읽는다. plan_id 는 넣지 않는다: 같은 날·같은 상황의 메뉴판과 포스터는 결과를 나눠 쓴다 (H8)
+    cache_scope=lambda task: [task["date"], task.get("tag"), task.get("kind"), task.get("ref_id")],
 )
 
 

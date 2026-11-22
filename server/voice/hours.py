@@ -10,6 +10,8 @@
 import datetime as dt
 from collections import Counter
 
+from app.core.seoul_time import at_time
+
 WEEKDAYS = ["월", "화", "수", "목", "금", "토", "일"]
 NOTIFY_BEFORE = [120, 90, 60, 30]  # 알림 시각 고르기: 문 열기 몇 분 전
 DEFAULT_BEFORE = 60
@@ -54,6 +56,33 @@ def on(store: dict, day: dt.date) -> dict | None:
     return week(store)[day.weekday()]
 
 
+def _at(day: dt.date, text: str) -> dt.datetime:
+    if text == "24:00":  # 24시간 가게: 다음 날 00:00
+        return at_time(day + dt.timedelta(days=1), "00:00")
+    return at_time(day, text)
+
+
+def open_at(day: dt.date, today: dict) -> dt.datetime:
+    return _at(day, today["open"])
+
+
+def close_at(day: dt.date, today: dict) -> dt.datetime:
+    """그날 문 닫는 시각. 닫는 시각이 여는 시각보다 이르거나 같으면 자정을 넘긴 것이라 다음 날
+    (app/data_pipeline/db_rows_to_analysis_inputs.py 와 같은 규칙)."""
+    close = _at(day, today["close"])
+    return close if close > open_at(day, today) else close + dt.timedelta(days=1)
+
+
+def business_day(store: dict, now: dt.datetime) -> tuple[dt.date, dict] | None:
+    """now 가 아직 끝나지 않은 영업 (날짜, 그날 시간). 자정 넘김 가게의 새벽은 어제 영업의 연장으로 보고,
+    아니면 오늘 것 (열기 전도 포함). 오늘 문을 닫았거나 쉬는 날이면 None. 어제가 쉬는 날이면 어제는 보지 않는다."""
+    for day in (now.date() - dt.timedelta(days=1), now.date()):
+        found = on(store, day)
+        if found and now < close_at(day, found):
+            return day, found
+    return None
+
+
 def summary(days: list[dict | None]) -> str:
     """설정 줄 오른쪽에 적을 한 줄: 모두 같으면 '10:30 ~ 20:30', 아니면 '요일마다 달라요'."""
     spans = {(d["open"], d["close"]) for d in days if d}
@@ -70,8 +99,8 @@ def apply_week(store: dict, days: list[dict | None]) -> dict:
     if len(days) != 7:
         raise ValueError("요일 7칸이 필요해요")
     for d in days:
-        if d and minutes(d["open"]) >= minutes(d["close"]):
-            raise ValueError("닫는 시간이 여는 시간보다 늦어야 해요")
+        if d and minutes(d["open"]) == minutes(d["close"]):  # 닫는 시각이 이르면 자정을 넘겨 닫는 것 (close_at)
+            raise ValueError("여는 시간과 닫는 시간이 같아요")
     opened = [d for d in days if d]
     updated = {**store, "naver_hours": naver_week(store), "weekly_hours": days,
                "closed_weekdays": [i for i, d in enumerate(days) if not d]}

@@ -20,6 +20,8 @@ from app.data_pipeline import registered_stores, test_scenario
 
 KINDS = ("RESERVATION", "GROUP_ORDER")
 STATUSES = ("REQUESTED", "CONFIRMED", "DECLINED", "CANCELED")
+# 바꿀 수 있는 상태: 문의는 받거나 어렵다고 답하고, 확정한 것은 사장님이 직접 적은 것만 지운다 (같은 상태로 다시 누르는 것은 그대로 둔다)
+CHANGES = {("REQUESTED", "CONFIRMED"), ("REQUESTED", "DECLINED"), ("CONFIRMED", "CANCELED")}
 COLUMNS = ("reservation_id", "store_id", "source", "external_id", "kind", "at", "people", "name", "memo", "status", "created_at", "updated_at")
 
 
@@ -109,6 +111,16 @@ def set_status(reservation_id: int, status: str) -> dict:
     row = get(reservation_id)
     if row is None:
         raise ReservationError("NOT_FOUND", "예약을 찾지 못했어요")
+    if row["status"] != status and ((row["status"], status) not in CHANGES or (status == "CANCELED" and row["source"] != "OWNER")):
+        raise ReservationError("BAD_TRANSITION", "이미 정한 예약이에요")
+    if row["status"] == status:
+        return row  # 같은 상태로 다시 누름: 그대로 성공
+    # 읽은 상태일 때만 바꾼다 (with 는 커밋만 하고 cur.rowcount 는 그대로 남는다)
     with _db() as conn:
-        conn.execute("UPDATE reservations SET status = ?, updated_at = ? WHERE reservation_id = ?", (status, now_seoul().isoformat(), reservation_id))
+        cur = conn.execute(
+            "UPDATE reservations SET status = ?, updated_at = ? WHERE reservation_id = ? AND status = ?",
+            (status, now_seoul().isoformat(), reservation_id, row["status"]),
+        )
+    if cur.rowcount == 0:  # 그 사이 다른 요청이 먼저 바꿨다
+        raise ReservationError("BAD_TRANSITION", "이미 정한 예약이에요")
     return get(reservation_id)

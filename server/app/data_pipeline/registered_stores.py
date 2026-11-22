@@ -27,7 +27,7 @@ from sqlalchemy.schema import CreateIndex, CreateTable
 from app.core.naver_place import PlaceInfo
 from app.core.seoul_time import now_seoul
 from db import models
-from db.session import DATA_DIR, engine, store_engine
+from db.session import DATA_DIR, dispose_all, store_engine
 
 REGISTRY_PATH = Path(__file__).resolve().parents[2] / "db" / "app_data" / "registry.db"
 FIRST_NUMBER = 101  # s001~s099 는 목업 가게 자리
@@ -96,6 +96,11 @@ def place_info(store_id: str) -> PlaceInfo | None:
     return PlaceInfo.from_dict(json.loads(row[0])) if row else None
 
 
+def is_overnight(weekly_hours: dict[str, dict | None]) -> bool:
+    """자정을 넘겨 여는 요일이 있나 (닫는 시각이 여는 시각과 같거나 이르면). 등록 화면과 기본 설정이 같은 기준을 쓴다."""
+    return any(h and h["close"] <= h["open"] for h in weekly_hours.values())
+
+
 def _hhmm(value: str) -> dt.time:
     hour, minute = map(int, value.split(":"))
     return dt.time(hour % 24, minute)
@@ -145,7 +150,10 @@ def _menu_rows(info: PlaceInfo) -> list[dict]:
 
 
 def _next_store_id() -> str:
+    """새 가게 번호. 가게 파일이 있는 번호와 등록 기록에 남은 번호(파일이 지워진 옛 가게)는 피한다."""
     used = {path.stem for path in DATA_DIR.glob("s[0-9][0-9][0-9].db")}
+    with _db() as conn:
+        used |= {row[0] for row in conn.execute("SELECT store_id FROM stores")}
     number = FIRST_NUMBER
     while f"s{number:03d}" in used:
         number += 1
@@ -154,7 +162,7 @@ def _next_store_id() -> str:
 
 def _create_store_file(store_id: str) -> None:
     (DATA_DIR / f"{store_id}.db").touch()
-    engine.dispose()  # 새 연결이 새 가게 파일을 붙이게 한다 (db/session.py 는 연결할 때 가게 파일을 붙인다)
+    dispose_all()  # 새 연결이 새 가게 파일을 붙이게 한다 (db/session.py 는 연결할 때 가게 파일을 붙인다)
     tables = [models.Base.metadata.tables[f"{models.STORE_SCHEMA}.{name}"] for name in models.STORE_TABLES]
     with store_engine(store_id).begin() as conn:
         for table in tables:
@@ -176,15 +184,15 @@ def register(info: PlaceInfo) -> str:
         refresh(existing, info)
         return existing
     store_id = existing or _next_store_id()
-    _create_store_file(store_id)
     try:
+        _create_store_file(store_id)
         with store_engine(store_id).begin() as conn:
             conn.execute(insert(models.Store), [store_row(store_id, info)])
             if info.menus:
                 conn.execute(insert(models.Menu), _menu_rows(info))
     except Exception:
         # 반쯤 만든 가게 파일을 남기지 않는다
-        engine.dispose()
+        dispose_all()
         (DATA_DIR / f"{store_id}.db").unlink(missing_ok=True)
         raise
     _save_place(store_id, info, now)
@@ -274,7 +282,7 @@ def reset_all() -> list[str]:
 
     지운 가게 id 를 돌려준다.
     """
-    engine.dispose()  # 열린 연결이 지울 파일을 붙잡고 있지 않게
+    dispose_all()  # 열린 연결이 지울 파일을 붙잡고 있지 않게
     removed = []
     for path in sorted(DATA_DIR.glob("s[0-9][0-9][0-9].db")):
         if int(path.stem[1:]) >= FIRST_NUMBER:
@@ -282,5 +290,5 @@ def reset_all() -> list[str]:
             removed.append(path.stem)
     REGISTRY_PATH.unlink(missing_ok=True)
     shutil.rmtree(REGISTRY_PATH.parent / "weather", ignore_errors=True)  # 목업 가게로 이은 가게의 날씨
-    engine.dispose()
+    dispose_all()
     return removed

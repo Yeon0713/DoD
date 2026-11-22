@@ -110,6 +110,21 @@ def test_nudge_uses_existing_rules_without_critic(snapshot, make_ctx, frozen_clo
     assert fake.done()  # 재주문 인사는 리뷰 답글이 아니라 LLM 검토를 부르지 않는다
 
 
+def test_nudge_cache_is_per_customer(snapshot, make_ctx, frozen_clock):
+    """다른 손님의 재주문 인사는 앞 손님 결과를 캐시에서 받지 않는다 (H2)."""
+    from app.planner.data_shapes import Basis
+
+    text = "늘 찾아 주셔서 감사해요. 이번 주말엔 새콤달콤한 비빔국수 한 그릇 어떠세요?"
+    c1 = item(snapshot, "REORDER_NUDGE:c1:2026-11-15")
+    c2 = c1.model_copy(update={"plan_id": "REORDER_NUDGE:c2:2026-11-15", "basis": Basis(kind="CUSTOMER", ref_id="c2")})
+    fake = FakeClova([submit(text, quoted=(), menus=("비빔국수",))], [submit(text, quoted=(), menus=("비빔국수",))])
+    reply_agent.draft(c1, make_ctx(fake))
+    second = reply_agent.draft(c2, make_ctx(fake))
+    assert len(fake.requests) == 2 and second.task_id == c2.plan_id
+    again = reply_agent.draft(c2, make_ctx(fake))  # 같은 할 일은 캐시가 맞는다
+    assert again is second and len(fake.requests) == 2
+
+
 def test_rewrite_keeps_owner_numbers_and_owner_promise_is_allowed(snapshot, make_ctx, frozen_clock):
     current = "죄송합니다. 12월부터 국물을 바꿀게요."
     allowed = "정말 죄송합니다. 12월부터 국물을 바꾸고, 다음 주문 때 음료 하나 드릴게요."
@@ -265,6 +280,21 @@ def test_excuses_are_rejected_but_promises_are_not(snapshot, make_ctx):
     reply = "오래 기다리시게 해서 죄송합니다. 바쁜 시간에도 늦지 않게 조리 순서를 다시 정하겠습니다."
     fake = FakeClova(judged(), fixed("조리 순서를 다시 정하겠습니다"), judged(), judged("바쁜 시간에도 늦지 않게 조리 순서를 다시 정하겠습니다"), judged(), unasked())
     assert reply_critic.inspect(reply, make_ctx(fake), review_text="배달이 늦었어요", has_complaint=True).ok
+
+
+def test_quote_judge_survives_trace_failure(snapshot, make_ctx, monkeypatch):
+    """실행 기록 DB 가 잠겨도 답글 검사(좁은 질문)는 답을 돌려준다 (H5)."""
+    import sqlite3
+
+    from Harness import trace
+
+    def locked():
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(trace, "_db", locked)
+    reply = "배달앱 오류였던 것 같아요. 다음엔 확인할게요."
+    fake = FakeClova(judged("배달앱 오류였던 것 같아요"))
+    assert quote_judge.ask("excuse", reply, make_ctx(fake), "안 왔어요") == ["배달앱 오류였던 것 같아요"]
 
 
 def test_quote_judge_tells_wrong_quotes_and_asks_again(snapshot, make_ctx):

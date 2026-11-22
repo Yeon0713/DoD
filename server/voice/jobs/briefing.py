@@ -487,6 +487,7 @@ def _prepare(store_id: str) -> dict | None:
     holidays.read_naver(load(store_id))  # 네이버 휴무 안내에서 쉬는 날을 읽어 확인 전으로 둔다 (아래 holiday 단계에서 묻는다)
     marketing.plan_today(load(store_id))  # 마케팅: 소재 발굴 → 캡션 작성 (인스타를 연결한 가게만, voice/marketing.py)
     auto_instagram(load(store_id), now)  # 인스타 게시 대리: 묻지 않고 첫 식사 피크 한 시간 전에 올린다 (9-0 d)
+    story_event.prepare_poster(load(store_id))  # 비 오는 날 이벤트 포스터를 미리 그려 둔다 (브리핑에서 바로 보여 주고 묻게, 2026-11-22)
     departments.run_reports(load(store_id))  # 부서 보고를 남기고, 부서 사이 충돌을 거른다 (voice/departments.py)
     view = load(store_id)  # 위에서 바꾼 리뷰를 다시 읽는다
     waiting = awaiting(view)

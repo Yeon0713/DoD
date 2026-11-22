@@ -1,10 +1,17 @@
 """비 오는 날 스토리 이벤트 → 알바생 할 일 (개선안 [2]-3 A3, 고리 [2] 온라인 → 오프라인).
 
+  0. 밤사이 준비(jobs/briefing.prepare)에서 비 오는 날이면 포스터를 미리 그려 둔다 (prepare_poster, 2026-11-22).
+     브리핑 단계 story_event 는 그려 둔 포스터와 스토리 사진을 보여 주며 바로 묻는다 (type ask):
+     "… 스토리에 올리고, 알바생 할 일 맨 위에 … 넣을까요?" → "응" 이면 바로 게시, "나중에·안 해" 면 올리지 않는다.
+     미리 그리기에 실패했으면 아래 1 ~ 3 (그 자리에서 그리기)으로 묻는다.
   1. 비 오는 날 브리핑에서 도나가 묻는다 (단계 story_event, type ask): "… 이벤트 포스터를 만들어 스토리에 올릴까요?"
   2. "응" → 뒤에서 AI 포스터를 그린다 (메인 서버 app/poster_ai, 50초 ~ 2분). 다 되면 알림(story_event, opens_turn)
   3. 사장님 앱이 알림을 열면 미리보기와 함께 묻는다 (type ask_action): "스토리에 올리고, 알바생 할 일 맨 위에 … 넣을까요?"
      "응, 올려" → 스토리 게시 작업 / "다시 그려 줘" → 다시 그림 / "할 일은 넣지 마" → 스토리만 / "안 해" → 하지 않음
   4. 스토리가 올라가면 알바생 할 일 맨 위에 이벤트 카드를 넣는다 (urgent). 게시에 실패하면 카드를 넣지 않는다.
+
+그림은 둘을 둔다 (MEDIA_DIR/<이벤트 id>/): poster_<n>.jpg 는 그린 포스터 그대로, story_<n>.jpg 는 스토리 크기(1080 × 1920)로
+맞춘 것이다. 인스타에는 story 를 올린다 (image_url). 앱은 둘을 나란히 보여 준다 (images 카드).
 
 이벤트 혜택은 사장님이 설정에 정해 둔 문장(settings.story_event)만 쓴다. 가게가 손님에게 하는 약속이라 지어내지 않는다.
   {"headline": "비 오는 날 이벤트", "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요", "staff_task": "스토리 태그 손님 음료 1캔 드리기"}
@@ -72,7 +79,8 @@ def preset(store_id: str) -> dict | None:
 
 
 def step(view: VoiceStore) -> dict | None:
-    """브리핑 단계 story_event. 비 오는 날 + 설정 있음 + 인스타 연결 + 오늘 아직 안 함 + 1등 메뉴 사진이 있을 때만."""
+    """브리핑 단계 story_event. 비 오는 날 + 설정 있음 + 인스타 연결 + 오늘 아직 안 함 + 1등 메뉴 사진이 있을 때만.
+    밤사이 그려 둔 포스터가 있으면 그것을 보여 주며 올릴지 묻고, 미리 그리지 못했으면 그릴지부터 묻는다."""
     from voice.jobs.briefing import answer, rain_text, rain_today, say
 
     today = view.now.date()
@@ -82,8 +90,20 @@ def step(view: VoiceStore) -> dict | None:
         return None
     if hr.asks(view.store_id, "story_poster", offer=bool(event.get("offer"))) is None:
         return None  # 혜택 없는 포스터를 묻지 않고 올리는 길은 아직 없다 (9-0 f). 지금 포스터는 늘 혜택이 있어 사원 상한
-    if get(event_id(view.store_id, today)) or not posts.top_menus(view, 1)["items"]:
+    if not posts.top_menus(view, 1)["items"]:
         return None
+    record = get(event_id(view.store_id, today))
+    if waiting_in_briefing(record):  # 밤사이 그려 둔 포스터: 보여 주고 올릴지 묻는다
+        says = [say(f"오늘은 {rain_text(rain, today)} 소식이 있어요."),
+                say("비 오는 날 손님을 부르는 이벤트 포스터를 만들어 뒀어요.", None, ["story_images"]),
+                say(f"{record['offer']}.", None, ["story_offer"]),
+                say(_offer(record))]
+        cards = [_images(record), *_offer_cards(record, posted=False, use_card=record["use_card"])]
+        response = answer("이벤트 스토리를 올릴까요?", says, cards, kind="ask", ask={"key": "story_event"})
+        response["expects_reply"] = True
+        return response
+    if record and not (record.get("predrawn") and record["state"] == "failed"):
+        return None  # 오늘은 이미 했거나 정했다
     says = [say(f"오늘은 {rain_text(rain, today)} 소식이 있어요."),
             say("비 오는 날 손님을 부르는 스토리 이벤트를 준비했어요."),
             say(f"{event['offer']}.", None, ["story_offer"]),
@@ -91,6 +111,11 @@ def step(view: VoiceStore) -> dict | None:
     response = answer("스토리 이벤트를 할까요?", says, _offer_cards(event, posted=False), kind="ask", ask={"key": "story_event"})
     response["expects_reply"] = True
     return response
+
+
+def waiting_in_briefing(record: dict | None) -> bool:
+    """밤사이 그려 둔 포스터가 브리핑에서 대답을 기다리는 중 (브리핑에서 "응"이면 바로 올린다)."""
+    return bool(record and record.get("predrawn") and record["state"] == "ready")
 
 
 def _offer_cards(event: dict, *, posted: bool, use_card: bool = True) -> list[dict]:
@@ -107,6 +132,29 @@ def staff_title(event: dict) -> str:
 
 
 # ── 2. 그리기 ──
+
+
+def prepare_poster(view: VoiceStore) -> dict | None:
+    """밤사이 준비: 오늘 비가 오고 사장님이 이벤트를 정해 두었으면 포스터를 미리 그려 둔다 (브리핑에서 바로 보여 주고 묻게).
+    인스타 연결과 직급은 보지 않는다. 그리기만 하고, 올릴지는 브리핑 단계(step)가 연결·직급을 보고 묻는다.
+    이벤트를 정해 둔 가게만 그리므로 (preset) 쓰지 않을 그림에 돈을 쓰지 않는다. 오늘 이미 했으면 그대로 둔다."""
+    from voice.jobs.briefing import rain_today
+
+    today = view.now.date()
+    event = preset(view.store_id)
+    if not (event and rain_today(view, today) and posts.top_menus(view, 1)["items"]):
+        return None
+    se_id = event_id(view.store_id, today)
+    with repo._lock:
+        if get(se_id):
+            return get(se_id)
+        save({
+            "id": se_id, "store_id": view.store_id, "date": today.isoformat(), "state": "generating", **event, "predrawn": True,
+            "use_card": True, "drawn": 0, "image_url": None, "poster_url": None, "post_id": None, "task_id": None,
+            "error": None, "started_at": iso(clock.now()), "created_at": iso(clock.now()),
+        })
+    activity.log(view.store_id, "donna", "비 오는 날 이벤트 포스터를 미리 그렸어요", "story_event_predrawn")
+    return draw(se_id, notify=False)
 
 
 def start(store_id: str) -> dict | None:
@@ -153,8 +201,9 @@ def _prompt(view: VoiceStore, record: dict) -> tuple[str, list]:
     return poster_prompt.build(_situation(view), choice), files
 
 
-def draw(se_id: str) -> dict | None:
-    """그림을 그려 MEDIA_DIR/<se_id>/poster_<n>.jpg 로 두고 사장님께 알린다. 실패하면 failed 로 두고 알린다."""
+def draw(se_id: str, notify: bool = True) -> dict | None:
+    """그림을 그려 MEDIA_DIR/<se_id>/ 에 포스터(poster_<n>.jpg)와 스토리 사진(story_<n>.jpg)을 두고 사장님께 알린다.
+    실패하면 failed 로 두고 알린다. notify=False (밤사이 미리 그리기): 알리지 않는다. 브리핑에서 보여 주며 묻는다."""
     with _drawing:
         record = get(se_id)
         if record is None or record["state"] != "generating":
@@ -163,29 +212,40 @@ def draw(se_id: str) -> dict | None:
         try:
             view = load(store_id)
             text, files = _prompt(view, record)
-            story = image_engine.to_story(image_engine.generate(text, files))
+            raw = image_engine.generate(text, files)
             number = record["drawn"] + 1
-            path = media.MEDIA_DIR / se_id / f"poster_{number}.jpg"  # 다시 그리면 이름을 바꾼다 (앱이 옛 그림을 들고 있지 않게)
-            path.parent.mkdir(parents=True, exist_ok=True)
-            Image.open(io.BytesIO(story)).convert("RGB").save(path, "JPEG", quality=media.QUALITY)  # 인스타는 JPEG 만 받는다
+            folder = media.MEDIA_DIR / se_id
+            folder.mkdir(parents=True, exist_ok=True)
+            poster = folder / f"poster_{number}.jpg"  # 다시 그리면 이름을 바꾼다 (앱이 옛 그림을 들고 있지 않게)
+            story = folder / f"story_{number}.jpg"
+            drawn = Image.open(io.BytesIO(raw)).convert("RGB")
+            drawn.save(poster, "JPEG", quality=media.QUALITY)  # 그린 그대로
+            Image.open(io.BytesIO(image_engine.to_story(raw))).convert("RGB").save(story, "JPEG", quality=media.QUALITY)  # 인스타는 JPEG 만 받는다
         except Exception as error:  # PosterEngineError(로그인·사용량·시간 초과), 사진 파일 오류
             logger.warning("이벤트 포스터를 그리지 못했어요 %s: %s", se_id, error)
             save({**record, "state": "failed", "error": str(error)})
-            notices.push(store_id, KIND, "이벤트 포스터를 그리지 못했어요", say=["이벤트 포스터를 그리지 못했어요."])
+            if notify:
+                notices.push(store_id, KIND, "이벤트 포스터를 그리지 못했어요", say=["이벤트 포스터를 그리지 못했어요."])
             return get(se_id)
-        record = save({**record, "state": "ready", "drawn": number, "image_url": f"/media/{se_id}/{path.name}", "ready_at": iso(clock.now())})
-    notices.push(store_id, KIND, "이벤트 포스터를 다 만들었어요", opens_turn=True, alert_id=se_id)
+        record = save({**record, "state": "ready", "drawn": number, "image_url": f"/media/{se_id}/{story.name}",
+                       "poster_url": f"/media/{se_id}/{poster.name}", "poster_aspect": f"{drawn.width}:{drawn.height}", "ready_at": iso(clock.now())})
+    if notify:
+        notices.push(store_id, KIND, "이벤트 포스터를 다 만들었어요", opens_turn=True, alert_id=se_id)
     return record
 
 
 # ── 3. 미리보기와 대답 ──
 
 
-def _preview(view: VoiceStore, record: dict) -> dict:
-    """앱의 insta_post 카드 (4:5 로 보인다. 포스터는 위 12%, 아래 15% 에 중요한 글자를 두지 않아 잘려도 글이 남는다)."""
-    connection = posts.connection(view.store_id)
-    return {"type": "insta_post", "id": "story_preview", "handle": connection.get("handle") or "", "logo_url": view.store.get("logo_url"),
-            "slide": 1, "slides": 1, "photo_url": record["image_url"], "top_label": "", "title": "", "caption": record["offer"]}
+def _images(record: dict) -> dict:
+    """앱의 images 카드: 그린 포스터와 스토리에 올릴 사진을 나란히 (각자 제 비율 그대로, 잘리지 않게).
+    poster_url 이 없는 예전 기록은 스토리 사진 하나만 보인다."""
+    items = []
+    if record.get("poster_url"):
+        items.append({"id": "poster", "label": "포스터", "photo_url": record["poster_url"], "aspect": record.get("poster_aspect") or "2:3"})
+    items.append({"id": "story", "label": "스토리에 올릴 사진", "photo_url": record["image_url"], "aspect": "9:16"})
+    return {"type": "images", "id": "story_images", "items": items}
+
 
 
 def _offer(record: dict) -> str:
@@ -198,7 +258,7 @@ def ask(view: VoiceStore, record: dict, *, lead: list[str] | None = None, headli
     from voice.jobs.briefing import answer, say
 
     says = [say(text) for text in (lead if lead is not None else ["이벤트 포스터를 다 만들었어요.", "화면에 띄웠어요."])]
-    cards = [_preview(view, record), *_offer_cards(record, posted=False, use_card=record["use_card"])[1:]]
+    cards = [_images(record), *_offer_cards(record, posted=False, use_card=record["use_card"])[1:]]
     response = answer(headline or "이벤트 포스터를 다 만들었어요", [*says, say(_offer(record))], cards, kind="ask_action")
     response["expects_reply"] = True
     return response
@@ -271,7 +331,7 @@ def decide(view: VoiceStore, intent_name: str, edits: dict | None, se_id: str | 
     says = [say("네, 이벤트 스토리를 올릴게요.")]
     if record["use_card"]:
         says.append(say(f"올라가면 알바생 할 일 맨 위에 {_obj(staff_title(record))} 넣을게요."))
-    return answer("이벤트 스토리를 올릴게요", says, [_preview(view, record)])
+    return answer("이벤트 스토리를 올릴게요", says, [_images(record)])
 
 
 # ── 4. 올라간 뒤 ──

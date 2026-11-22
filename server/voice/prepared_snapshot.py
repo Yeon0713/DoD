@@ -11,10 +11,12 @@ fixtures/<시나리오>.prepared.json 에 저장해 두고, 다음부터는 계�
 
 시나리오 파일(fixtures/<시나리오>.json)이 바뀌면 저장본의 fixture_sha 와 달라져 쓰지 않고 예전처럼 새로 준비한다.
 알바생 표는 시나리오 파일에서 매번 새로 넣는다 (staff.seed). 대화 기록(turn, session)과 알림은 저장하지 않는다.
+밤사이 그려 둔 그림(비 오는 날 이벤트 포스터)은 fixtures/<시나리오>.prepared_media/ 에 함께 두고, 넣을 때 MEDIA_DIR 로 복사한다.
 """
 
 import hashlib
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -30,6 +32,23 @@ def path(name: str) -> Path:
     return (FOLDER or config.FIXTURES) / f"{name}.prepared.json"
 
 
+def media_folder(name: str) -> Path:
+    """저장본과 함께 두는 그림 (밤사이 그려 둔 이벤트 포스터 등, MEDIA_DIR 아래 경로 그대로)."""
+    return (FOLDER or config.FIXTURES) / f"{name}.prepared_media"
+
+
+def _media_paths(docs: list[dict]) -> list[str]:
+    """문서가 가리키는 /media/... 그림 (MEDIA_DIR 기준 상대 경로)."""
+    found = []
+    for doc in docs:
+        data = doc.get("data") or {}
+        for key in ("image_url", "poster_url"):
+            url = data.get(key) if isinstance(data, dict) else None
+            if isinstance(url, str) and url.startswith("/media/"):
+                found.append(url.removeprefix("/media/"))
+    return sorted(set(found))
+
+
 def fixture_sha(name: str) -> str:
     return hashlib.sha256((config.FIXTURES / f"{name}.json").read_bytes()).hexdigest()[:16]
 
@@ -41,7 +60,36 @@ def save(name: str, store_id: str) -> Path:
             "demo_now": clock.iso(clock.now()), "counters": repo.counters_of(store_id), "docs": docs}
     out = path(name)
     out.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
+    _save_media(name, docs)
     return out
+
+
+def _save_media(name: str, docs: list[dict]) -> None:
+    """문서가 가리키는 그림을 저장본 옆 폴더로 복사한다 (예전 그림은 지운다)."""
+    from voice.instagram import media
+
+    folder = media_folder(name)
+    if folder.exists():
+        shutil.rmtree(folder)
+    for relative in _media_paths(docs):
+        source = media.MEDIA_DIR / relative
+        if source.exists():
+            (folder / relative).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, folder / relative)
+
+
+def _restore_media(name: str) -> None:
+    """저장본 옆 그림을 MEDIA_DIR 로 되돌린다 (앱 미리보기와 인스타 게시가 /media/... 로 읽는다)."""
+    from voice.instagram import media
+
+    folder = media_folder(name)
+    if not folder.exists():
+        return
+    for source in folder.rglob("*"):
+        if source.is_file():
+            target = media.MEDIA_DIR / source.relative_to(folder)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, target)
 
 
 def load(name: str) -> dict | None:
@@ -70,6 +118,7 @@ def restore(name: str, payload: dict) -> bool:
     staff_orders.forget_recent()
     repo.put_many(store_id, data["docs"])
     repo.set_counters(data["counters"])
+    _restore_media(name)
     staff.seed(store_id, payload)  # 알바생 표는 시나리오 파일에서 (하린은 아직 안 들어온 상태)
     return True
 

@@ -39,6 +39,8 @@ export type MenusCard = { type: 'menus'; id: string; title?: string | null; edit
 export type QuoteCard = { type: 'quote'; id: string; label: string; text: string };
 /** 인스타 게시물 모양 그대로 (D-15). */
 export type InstaPostCard = { type: 'insta_post'; id: string; handle: string; logo_url: string; slide: number; slides: number; photo_url: string | null; top_label: string; title: string; caption: string };
+/** 그림 여러 장을 나란히 (비 오는 날 이벤트: 포스터, 스토리에 올릴 사진). aspect 는 '가로:세로' (예: '9:16'), 그림이 잘리지 않게 그 비율로 보인다. */
+export type ImagesCard = { type: 'images'; id: string; items: { id: string; label: string; photo_url: string; aspect?: string }[] };
 /** 알바생에게 시킨 것 (D-24, D-33). state: todo / done / canceled */
 /** tone urgent: 아쉬운 리뷰에서 나온 알바생 교정 카드 (2026-11-18) */
 export type ChecklistCard = { type: 'checklist'; id: string; title: string; items: { id: string; title: string; sub: string; state: 'todo' | 'done' | 'canceled'; tone?: 'urgent' }[] };
@@ -49,7 +51,7 @@ export type ManualCard = { type: 'manual'; id: string; groups: { id: string; kin
 export type ActionCard = { type: 'action'; id: string; label: string; action: 'instagram_connect' };
 export type Card =
   | RowsCard | CountsCard | ReviewCard | TipCard | BarsCard | ScheduledCard
-  | MenusCard | QuoteCard | InstaPostCard | ChecklistCard | PeopleCard | InviteCard | ManualCard | ActionCard;
+  | MenusCard | QuoteCard | InstaPostCard | ImagesCard | ChecklistCard | PeopleCard | InviteCard | ManualCard | ActionCard;
 
 export type StoreStatus = { state: 'before_open' | 'open' | 'closed'; label: string; detail: string };
 

@@ -51,3 +51,22 @@ def test_changed_scenario_is_prepared_again(snapshot_on, monkeypatch):
 
 def test_tests_do_not_use_the_real_snapshot():
     assert prepared_snapshot.ENABLED is False  # conftest
+
+
+def test_snapshot_carries_predrawn_poster(snapshot_on):
+    """밤사이 그려 둔 이벤트 포스터와 스토리 사진도 저장본 옆에 두고, '처음부터'에 MEDIA_DIR 로 되돌린다 (2026-11-22)."""
+    from voice.instagram import media
+
+    donna = Choongjang()
+    fresh(donna)
+    files = ["se_s005_2026-11-17/poster_1.jpg", "se_s005_2026-11-17/story_1.jpg"]
+    assert all((media.MEDIA_DIR / f).exists() for f in files)
+    prepared_snapshot.save(NAME, "s005")
+    assert all((prepared_snapshot.media_folder(NAME) / f).exists() for f in files)
+
+    for f in files:
+        (media.MEDIA_DIR / f).unlink()  # 다른 컴퓨터에서 처음 켠 것과 같다
+    again = Choongjang()
+    assert fresh(again)["prepared"] == "snapshot"
+    assert all((media.MEDIA_DIR / f).exists() for f in files)
+    assert again.client.get("/media/se_s005_2026-11-17/story_1.jpg").status_code == 200

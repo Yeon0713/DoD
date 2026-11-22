@@ -3,7 +3,7 @@
 import { ReactNode } from 'react';
 import { Image, Pressable, StyleSheet, View } from 'react-native';
 
-import { ActionCard, BarsCard, Card, ChecklistCard, CountsCard, InstaPostCard, InviteCard, ManualCard, media, MenusCard, PeopleCard, QuoteCard, ReasonKind, ReviewCard, RowKind, RowsCard, ScheduledCard, TipCard } from '@/lib/api';
+import { ActionCard, BarsCard, Card, ChecklistCard, CountsCard, ImagesCard, InstaPostCard, InviteCard, ManualCard, media, MenusCard, PeopleCard, QuoteCard, ReasonKind, ReviewCard, RowKind, RowsCard, ScheduledCard, TipCard } from '@/lib/api';
 import { useLayout } from '@/lib/layout';
 import { ColorName, colors, radius, space } from '@/theme/tokens';
 
@@ -382,6 +382,33 @@ function InstaPost({ card }: { card: InstaPostCard }) {
   );
 }
 
+/** '9:16' → 9/16. 모르면 세로 2:3. */
+function ratioOf(aspect?: string): number {
+  const [w, h] = (aspect ?? '').split(':').map(Number);
+  return w > 0 && h > 0 ? w / h : 2 / 3;
+}
+
+/** 그림 여러 장을 나란히 (비 오는 날 이벤트: 포스터, 스토리에 올릴 사진). 높이를 맞추고 각자 제 비율로, 잘리지 않게. */
+function Images({ card, focus }: { card: ImagesCard; focus: string[] }) {
+  const { scale } = useLayout();
+  const h = Math.round(240 * scale);
+  const on = focus.includes(card.id);
+  return (
+    <View style={[styles.inline, { justifyContent: 'center', alignItems: 'flex-start', gap: space.s12 }]}>
+      {card.items.map((it) => (
+        <View key={it.id} style={{ alignItems: 'center', gap: space.s8 }}>
+          <View style={[styles.post, { width: Math.round(h * ratioOf(it.aspect)), height: h, backgroundColor: colors.brandSoft }, on && { borderColor: colors.brand }]}>
+            <Image source={{ uri: media(it.photo_url) ?? undefined }} style={StyleSheet.absoluteFill} resizeMode="contain" accessibilityLabel={it.label} />
+          </View>
+          <Txt variant="label" color="ink2">
+            {it.label}
+          </Txt>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 /** 알바생에게 시킨 것 (D-24 다 했는지, D-33 취소). 안 된 것이 위, 끝난 것이 아래. */
 function Checklist({ card }: { card: ChecklistCard }) {
   const { scale } = useLayout();
@@ -516,6 +543,8 @@ export function Cards({ cards, focus = [], mono = true, onAction }: { cards: Car
             return <Quote key={c.id} card={c} focus={focus} />;
           case 'insta_post':
             return <InstaPost key={c.id} card={c} />;
+          case 'images':
+            return <Images key={c.id} card={c} focus={focus} />;
           case 'checklist':
             return <Checklist key={c.id} card={c} />;
           case 'people':

@@ -2126,6 +2126,31 @@
    }
   },
   {
+   "kind": "story_event",
+   "id": "se_s005_2026-11-17",
+   "data": {
+    "id": "se_s005_2026-11-17",
+    "store_id": "s005",
+    "date": "2026-11-17",
+    "state": "ready",
+    "headline": "비 오는 날 이벤트",
+    "offer": "매장을 태그해 스토리에 올려 주시면 음료 1캔을 드려요",
+    "staff_task": "스토리 태그 손님 음료 1캔 드리기",
+    "predrawn": true,
+    "use_card": true,
+    "drawn": 1,
+    "image_url": "/media/se_s005_2026-11-17/story_1.jpg",
+    "poster_url": "/media/se_s005_2026-11-17/poster_1.jpg",
+    "post_id": null,
+    "task_id": null,
+    "error": null,
+    "started_at": "2026-11-17T09:02:00+09:00",
+    "created_at": "2026-11-17T09:02:00+09:00",
+    "poster_aspect": "1024:1536",
+    "ready_at": "2026-11-17T09:02:00+09:00"
+   }
+  },
+  {
    "kind": "briefing",
    "id": "s005:2026-11-17",
    "data": {

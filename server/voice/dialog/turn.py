@@ -45,7 +45,7 @@ SITUATIONS = {
     "ask_action": "도나가 '아쉬운 리뷰에 사과 답글을 올리고, 알바생 할 일에 고칠 것을 넣을까요?' 하고 물었어요",
     "ask_staff": "도나가 알바생 일로 '보낼까요?', '초대할까요?', '카카오톡으로 보낼까요?' 하고 물었어요",
     "ask_story": "도나가 비 오는 날 이벤트 포스터를 보여 주며 '스토리에 올리고, 알바생 할 일 맨 위에 이벤트 안내를 넣을까요?' 하고 물었어요",
-    "ask_story_event": "도나가 '비 오는 날 이벤트 포스터를 만들어 스토리에 올릴까요?' 하고 물었어요",
+    "ask_story_event": "도나가 비 오는 날 이벤트 포스터 이야기를 하며 '스토리에 올릴까요?' 하고 물었어요",
     "ask_tasks": "도나가 '알바생 할 일로 첫째 …, 둘째 …를 넣을까요?' 하고 물었어요",
     "ask_holiday": "도나가 '○월 ○일을 쉬는 날로 적을게요. 맞아요?' 하고 물었어요",
 }
@@ -206,9 +206,17 @@ def _instagram_revise(session: dict, brief: dict, view, said: str | None) -> dic
     return _prefixed(_step(brief, "instagram"), "이렇게 고쳤어요.")
 
 
-def story_reply(name: str, session: dict, brief: dict, view) -> dict:
-    """'스토리 이벤트를 할까요?' 뒤의 대답: 그리기 시작하고 브리핑을 이어 가거나, 하지 않는다."""
+def story_reply(name: str, session: dict, brief: dict, view, said: str | None = None) -> dict:
+    """'스토리 이벤트를 할까요?' 뒤의 대답: 그리기 시작하고 브리핑을 이어 가거나, 하지 않는다.
+    밤사이 그려 둔 포스터를 보여 주며 물었으면 (story_event.waiting_in_briefing): "응"은 바로 올리고, 아니면 올리지 않는다."""
     yes = name in ("instagram.post", "permission.yes")
+    record = story_event.get(story_event.event_id(view.store_id, view.now.date()))
+    if story_event.waiting_in_briefing(record):
+        edits = intent_rules.edits_in(intent_rules.normalize(said or ""))  # "할 일은 빼고 올려"
+        decided = story_event.decide(view, "action.approve" if yes else "action.cancel", edits, record["id"], said)
+        lead = [s["text"] for s in decided["say"]] if yes else ["네, 오늘은 스토리를 올리지 않을게요."]
+        brief = briefing_job.refresh_instagram(view.store_id) or brief  # 오늘은 다시 묻지 않는다
+        return _prefixed(_go(brief, session, _after(brief, "story_event")), *lead)
     if yes:
         story_event.start(view.store_id)
         lead = ["네, 이벤트 포스터를 그릴게요.", "1~2분 걸려요. 다 되면 알려 드릴게요."]
@@ -284,7 +292,7 @@ def dispatch(intent: Intent, session: dict, brief: dict | None, view) -> dict:
 
     step = session.get("step")
     if asking_story(session) and name in ("permission.yes", "permission.no", "instagram.post", "instagram.later"):
-        return story_reply(name, session, brief, view)
+        return story_reply(name, session, brief, view, intent.owner_said)
     if asking_instagram(session) and name in ("permission.yes", "permission.no"):  # LLM 이 허락 대답으로 가른 경우
         name = "instagram.post" if name == "permission.yes" else "instagram.later"
     if name.startswith("instagram."):

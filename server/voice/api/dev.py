@@ -273,3 +273,13 @@ def post_hr(payload: dict = Body(...)):
         return store_not_found()
     hr.set_ranks(store_id, payload.get("ranks") or {})
     return {"store_id": store_id, "ranks": {job: hr.rank(store_id, job) for job, spec in hr.JOBS.items() if not spec.get("future")}}
+
+
+@router.get("/audit")
+def get_audit(store_id: str, day: str | None = None):
+    """감사 기록과 업무별 요약 (개발자 대시보드 감사 탭, 감사팀 계획 12장). day 를 비우면 오늘 (시연 시계)."""
+    from voice.audit import log as audit_log
+
+    if repo.store(store_id) is None:
+        return store_not_found()
+    return audit_log.day_summary(store_id, dt.date.fromisoformat(day) if day else clock.now().date())

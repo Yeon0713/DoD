@@ -139,7 +139,7 @@ def listen_to_the_end(donna: Choongjang) -> dict:
 def test_h_morning_then_night_promotion(h: Choongjang):
     end = listen_to_the_end(h)
     # 시연: 끝 화면을 보여 준 뒤 밤 9시 장면으로 (시계를 멈춘 픽스처 가게, 밤에 물을 승진이 있다)
-    assert end["next_scene"] == {"event": "night_hr", "after_ms": 4000}
+    assert end["next_scene"] == {"event": "night_hr", "after_ms": hr_night.SCENE_AFTER_MS}
     assert ("비 오는 날 이벤트 스토리", "9:02에 스토리에 올렸어요") in [(r["value"], r["sub"]) for r in end["cards"][0]["rows"]]
 
     k01 = h.turn(event="night_hr")

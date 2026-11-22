@@ -24,7 +24,7 @@ ASK_KIND = "hr_promotion_ask"  # 물은 기록 id <가게>:<업무>
 NIGHT_AT = "21:00"
 RECENT = 20
 ASK_AGAIN_DAYS = 7
-SCENE_AFTER_MS = 4000  # 시연: 끝 화면을 보여 주는 시간
+SCENE_AFTER_MS = 2000  # 시연: 끝 화면을 보여 주는 시간 (2026-11-22, 4초에서 줄임)
 # 업무를 사장님 말로: 묶음 이름(Figma '인스타 관리'), 무엇을("스토리는 …")
 AREA = {"story_poster": "인스타 관리", "instagram_post": "인스타 관리", "negative_reply": "아쉬운 리뷰 답글",
         "positive_reply": "좋은 리뷰 답글", "review_fix_task": "리뷰 교정 할 일", "field_task": "현장 할 일", "manual_task": "매뉴얼"}

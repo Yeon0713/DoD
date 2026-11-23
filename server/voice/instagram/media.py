@@ -4,14 +4,15 @@ prepare: 원본 사진(가게 메뉴 사진, 로고)을 인스타 비율의 JPEG
          문구를 얹는 등 사진 디자인은 아직 정하지 않았다. 정해지면 이 함수만 바꾼다.
 public_url: 인스타 서버가 내려받을 공개 HTTPS 주소 (settings.media_host)
   base_url        PUBLIC_MEDIA_BASE_URL/media/<게시물>/<n>.jpg  (main.py 가 MEDIA_DIR 을 /media 로 내보낸다. ngrok 등으로 백엔드를 열어야 한다)
-  object_storage  NCP Object Storage 버킷에 public-read 로 올린 주소
-  litterbox       litterbox.catbox.moe 에 올린 임시 주소 (1시간 뒤 지워진다). 테스트용이다. 사진이 외부 서비스에 공개로 올라간다
+  ncloud_storage  비공개 Ncloud Storage 버킷에 올리고 발급한 만료형 조회 주소
 """
 
-import time
 from pathlib import Path
 
-import httpx
+import boto3
+from boto3.exceptions import S3UploadFailedError
+from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image
 
 from app.core.config import settings
@@ -63,51 +64,49 @@ def prepare(post_id: str, sources: list[str], kind: str) -> list[Path]:
     return made
 
 
-def _s3():
-    import boto3  # object_storage 모드에서만 필요하다
+SIGNED_URL_SECONDS = 60 * 60
 
-    return boto3.client("s3", endpoint_url=settings.ncp_object_storage_endpoint, region_name=settings.ncp_object_storage_region,
-                        aws_access_key_id=settings.ncloud_access_key, aws_secret_access_key=settings.ncloud_secret_key)
+
+def _s3():
+    access_key = settings.ncloud_storage_access_key
+    secret_key = settings.ncloud_storage_secret_key
+    if not (access_key or secret_key):
+        access_key, secret_key = settings.ncloud_access_key, settings.ncloud_secret_key
+    if not (access_key and secret_key):
+        raise InstagramError("Ncloud Storage 인증키 두 개를 설정해 주세요")
+    endpoint = settings.ncloud_storage_endpoint.rstrip("/")
+    if not endpoint.startswith("https://"):
+        raise InstagramError("Ncloud Storage에 HTTPS 주소를 설정해 주세요")
+    return boto3.client(
+        "s3",
+        endpoint_url=endpoint,
+        region_name=settings.ncloud_storage_region,
+        aws_access_key_id=access_key,
+        aws_secret_access_key=secret_key,
+        config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+    )
 
 
 s3_client = _s3  # 테스트에서 가짜를 넣는다
 
-LITTERBOX = "https://litterbox.catbox.moe/resources/internals/api.php"
-UPLOAD_TRIES = 3
-post = httpx.post  # 테스트에서 가짜를 넣는다
 
-
-def _litterbox(path: Path) -> str:
-    """litterbox 에 1시간짜리로 올리고 그 주소를 돌려준다. 연결이 안 될 때만 다시 시도한다."""
-    for attempt in range(1, UPLOAD_TRIES + 1):
-        try:
-            with path.open("rb") as f:
-                response = post(LITTERBOX, data={"reqtype": "fileupload", "time": "1h"},
-                                files={"fileToUpload": (path.name, f, "image/jpeg")}, timeout=60)
-            break
-        except (httpx.ConnectError, httpx.ConnectTimeout) as error:
-            if attempt == UPLOAD_TRIES:
-                raise InstagramError(f"사진을 올리지 못했어요 ({type(error).__name__})") from error
-            time.sleep(1)
-        except httpx.HTTPError as error:
-            raise InstagramError(f"사진을 올리지 못했어요 ({type(error).__name__})") from error
-    url = response.text.strip()
-    if response.status_code != 200 or not url.startswith("https://"):
-        raise InstagramError(f"사진을 올리지 못했어요 (litterbox {response.status_code})")
-    return url
-
-
-def public_url(path: Path) -> str:
+def public_url(path: Path, *, store_id: str) -> str:
     key = path.relative_to(MEDIA_DIR).as_posix()
-    if settings.media_host == "litterbox":
-        return _litterbox(path)
-    if settings.media_host == "object_storage":
-        bucket = settings.ncp_object_storage_bucket
+    if settings.media_host in ("ncloud_storage", "object_storage"):
+        bucket = settings.ncloud_storage_bucket
         if not bucket:
-            raise InstagramError("NCP_OBJECT_STORAGE_BUCKET 이 비어 있어요")
-        key = f"instagram/{key}"
-        s3_client().upload_file(str(path), bucket, key, ExtraArgs={"ACL": "public-read", "ContentType": "image/jpeg"})
-        return f"{settings.ncp_object_storage_endpoint.rstrip('/')}/{bucket}/{key}"
+            raise InstagramError("NCLOUD_STORAGE_BUCKET 이 비어 있어요")
+        key = f"instagram/{store_id}/{key}"
+        client = s3_client()
+        try:
+            client.upload_file(str(path), bucket, key, ExtraArgs={"ContentType": "image/jpeg"})
+            return client.generate_presigned_url(
+                "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=SIGNED_URL_SECONDS,
+            )
+        except (BotoCoreError, ClientError, S3UploadFailedError) as error:
+            raise InstagramError(f"Ncloud Storage에 사진을 올리지 못했어요 ({type(error).__name__})") from error
+    if settings.media_host != "base_url":
+        raise InstagramError("MEDIA_HOST에 ncloud_storage 또는 base_url을 설정해 주세요")
     base = settings.public_media_base_url.rstrip("/")
     if not base.startswith("https://"):
         raise InstagramError("PUBLIC_MEDIA_BASE_URL 에 인스타가 닿을 수 있는 https 주소를 넣어 주세요")

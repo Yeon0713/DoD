@@ -214,7 +214,7 @@ def _upload(post: dict) -> str:
         paths = [media.made_path(src) for src in sources]
     else:
         paths = media.prepare(post["id"], sources, post["kind"])
-    urls = [media.public_url(path) for path in paths]
+    urls = [media.public_url(path, store_id=post["store_id"]) for path in paths]
     if post["kind"] == "story":
         return graph.story_container(urls[0])
     if len(urls) == 1:

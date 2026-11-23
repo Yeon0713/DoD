@@ -1,0 +1,11 @@
+donna.ai.kr {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+
+	encode zstd gzip
+	root * /srv/donna/landing/current
+	file_server
+}

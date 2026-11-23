@@ -1,5 +1,6 @@
 import re
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -93,14 +94,17 @@ class Settings(BaseSettings):
     instagram_access_token: str = ""
     instagram_user_id: str = ""  # IG 프로페셔널 계정 id (GET /me/assigned_instagram_accounts?fields=id,username)
     instagram_graph_version: str = "v23.0"
-    # 인스타가 사진을 가져갈 공개 주소. base_url: PUBLIC_MEDIA_BASE_URL(ngrok 등) 아래 /media 로 내보낸다.
-    # object_storage: NCP Object Storage 버킷에 올린다 (키는 NCLOUD_ACCESS_KEY / NCLOUD_SECRET_KEY)
-    # litterbox: 테스트용. litterbox.catbox.moe 에 1시간짜리 공개 주소로 올린다
+    # 인스타 게시용 사진. ncloud_storage: 비공개 버킷에 올리고 만료형 URL을 발급한다.
+    # base_url: 로컬 시험에서 PUBLIC_MEDIA_BASE_URL 아래 /media 를 사용한다.
     media_host: str = "base_url"
     public_media_base_url: str = ""
-    ncp_object_storage_bucket: str = ""
-    ncp_object_storage_endpoint: str = "https://kr.object.ncloudstorage.com"
-    ncp_object_storage_region: str = "kr-standard"
+    ncloud_storage_bucket: str = Field(
+        default="", validation_alias=AliasChoices("NCLOUD_STORAGE_BUCKET", "NCP_OBJECT_STORAGE_BUCKET"),
+    )
+    ncloud_storage_endpoint: str = "https://kr.ncloudstorage.com"
+    ncloud_storage_region: str = "kr"
+    ncloud_storage_access_key: str = ""
+    ncloud_storage_secret_key: str = ""
 
     def allows_origin(self, origin: str) -> bool:
         """이 서버를 불러도 되는 앱 주소인지 (CORS 와 네이버 로그인 뒤 돌려보낼 주소가 같은 기준을 쓴다)."""

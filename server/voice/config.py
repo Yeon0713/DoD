@@ -19,6 +19,7 @@ def env(name: str, default: str) -> str:
 
 
 DB_PATH = Path(env("VOICE_DB_PATH", str(Path(__file__).resolve().parents[1] / "db" / "app_data" / "voice.db")))
+DATABASE_URL = env("VOICE_DATABASE_URL", "")
 PORT = int(env("VOICE_PORT", "8100"))
 
 GROUP_MIN_PEOPLE = 8  # 몇 명부터 단체 예약인가 (14장 8번 제안)

@@ -65,9 +65,10 @@ cd donna-voice/app && npm run web
 
 1. Meta 쪽 준비: IG **비즈니스** 계정을 Facebook 페이지에 연결하고, Meta 앱(Business 유형)에 Facebook Login 과 Instagram 을 더한 뒤, Graph API Explorer 에서 `instagram_basic`, `instagram_content_publish`, `pages_read_engagement` 권한으로 페이지 토큰을 받아 장기 토큰으로 바꿉니다. IG 계정 id 는 `GET /me/accounts?fields=instagram_business_account` 로 봅니다.
 2. `server/.env` 에 `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID` 를 넣습니다.
-3. 인스타 서버가 사진(JPEG)을 공개 주소에서 직접 가져가므로 둘 중 하나를 고릅니다.
-   - `MEDIA_HOST=base_url` (기본): `ngrok http 8100` 으로 연 주소를 `PUBLIC_MEDIA_BASE_URL` 에 넣습니다. 사진은 `/media/...` 로 나갑니다. **이 방법은 백엔드 전체(`/v1/dev/*` 포함)가 인터넷에 열리므로 시험할 때만 씁니다.**
-   - `MEDIA_HOST=object_storage`: `NCP_OBJECT_STORAGE_BUCKET` 에 버킷 이름을 넣습니다 (키는 `NCLOUD_ACCESS_KEY` / `NCLOUD_SECRET_KEY`, `pip install boto3`).
+3. 게시용 미디어를 설정합니다. 인스타 서버가 JPEG를 HTTPS로 가져갑니다.
+   - 배포 환경은 `MEDIA_HOST=ncloud_storage`, `NCLOUD_STORAGE_BUCKET=<환경별 인스타 게시 버킷>`을 사용합니다. 기본 연결 주소는 `https://kr.ncloudstorage.com`, 리전은 `kr`입니다. JPEG는 비공개로 업로드하며 Meta에는 한 시간짜리 조회 URL을 전달합니다.
+   - 앱 전용 키는 `NCLOUD_STORAGE_ACCESS_KEY`와 `NCLOUD_STORAGE_SECRET_KEY`에 넣습니다. 둘 다 비어 있으면 `NCLOUD_ACCESS_KEY`와 `NCLOUD_SECRET_KEY`를 사용합니다. [버킷 준비 방법](../infra/README.md#ncloud-storage-버킷-준비)
+   - 로컬 시험에서는 `MEDIA_HOST=base_url`과 외부에서 접근 가능한 `PUBLIC_MEDIA_BASE_URL`을 사용할 수 있습니다.
 4. 백엔드를 켜고 앱의 인스타 허용 화면에서 "허용"을 누르거나 `curl -X POST localhost:8100/v1/instagram/connect -H 'Content-Type: application/json' -d '{}'` 를 부릅니다.
 
 API: `GET /v1/instagram?store_id=s005` (연결, 남은 게시 한도, 최근 게시물), `POST /v1/instagram/posts` (`{"store_id":"s005","kind":"feed"|"story","post_at":null}`), `GET /v1/instagram/posts/{id}`. 올리는 건 작업 큐가 뒤에서 하고, 끝나면 도나 알림(`/v1/notices`)이 옵니다. 사진은 지금 메뉴 사진을 비율(피드 4:5, 스토리 9:16)에 맞춰 여백을 채운 것뿐입니다 (디자인은 `server/voice/instagram/media.py` 의 `prepare`).

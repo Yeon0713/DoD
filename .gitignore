@@ -1,5 +1,10 @@
 # 비밀 값 (API 키 등)
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
 
 # 개인 작업 문서 (GitHub에 올리지 않음)
 personal_docs/
@@ -15,6 +20,8 @@ venv/
 *.tfstate
 *.tfstate.*
 *.tfvars
+infra/.build/
+infra/environments/*/app.env
 
 # 개인용 API 연결 점검 스크립트
 server/check_apis.py
@@ -37,3 +44,9 @@ crawling/datasets/*
 
 # 개인 데이터 폴더 (엑셀 등, GitHub에 올리지 않음)
 /data/
+
+# 서버가 실행 중에 만드는 그림 (server/voice/media.py MEDIA_DIR)
+server/media/
+
+# 디자인 도구 캐시
+.hallmark/

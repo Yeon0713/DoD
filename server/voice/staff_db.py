@@ -51,7 +51,7 @@ def new_token() -> str:
 
 def _rows(sql: str, params: tuple = ()) -> list[dict]:
     with repo.lock(), repo.connect() as conn:
-        return [dict(row) for row in conn.execute(sql, params).fetchall()]
+        return [{key: value for key, value in dict(row).items() if key != "rowid"} for row in conn.execute(sql, params)]
 
 
 def _row(sql: str, params: tuple = ()) -> dict | None:
@@ -71,7 +71,7 @@ def add_member(member: dict) -> dict:
     columns = ("staff_id", "store_id", "name", "call", "login_id", "password_hash", "status",
                "signed_up_at", "started_at", "removed_at", "created_at")
     row = {column: member.get(column) for column in columns}
-    _write(f"INSERT OR REPLACE INTO staff_members ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+    _write(repo.upsert("staff_members", columns, ("staff_id",), ordered=True),
            tuple(row[c] for c in columns))
     return row
 
@@ -113,7 +113,7 @@ def new_invite(store_id: str, staff_id: str, now_iso: str) -> dict:
 
 
 def add_invite(code: str, store_id: str, staff_id: str, now_iso: str) -> None:
-    _write("INSERT OR REPLACE INTO staff_invites (code, store_id, staff_id, created_at) VALUES (?, ?, ?, ?)", (code, store_id, staff_id, now_iso))
+    _write(repo.upsert("staff_invites", ("code", "store_id", "staff_id", "created_at", "shared_at", "used_at", "revoked_at"), ("code",), ordered=True), (code, store_id, staff_id, now_iso, None, None, None))
 
 
 def invite(code: str) -> dict | None:
@@ -187,7 +187,7 @@ def marks_of_store(store_id: str) -> list[dict]:
 def set_mark(task_id: str, staff_id: str, day: str, store_id: str, **fields) -> None:
     """fields: done_at, confirmed_at (None 이면 지운다)."""
     with repo.lock(), repo.connect() as conn:
-        conn.execute("INSERT OR IGNORE INTO staff_task_marks (task_id, staff_id, day, store_id) VALUES (?, ?, ?, ?)",
+        conn.execute("INSERT INTO staff_task_marks (task_id, staff_id, day, store_id) VALUES (?, ?, ?, ?) ON CONFLICT (task_id, staff_id, day) DO NOTHING",
                      (task_id, staff_id, day, store_id))
         sets = ", ".join(f"{name} = ?" for name in fields)
         conn.execute(f"UPDATE staff_task_marks SET {sets} WHERE task_id = ? AND staff_id = ? AND day = ?",
@@ -210,7 +210,7 @@ def attendance_on(store_id: str, day: str) -> list[dict]:
 
 
 def check_in(staff_id: str, day: str, store_id: str, now_iso: str) -> dict:
-    _write("INSERT OR IGNORE INTO staff_attendance (staff_id, day, store_id, in_at) VALUES (?, ?, ?, ?)",
+    _write("INSERT INTO staff_attendance (staff_id, day, store_id, in_at) VALUES (?, ?, ?, ?) ON CONFLICT (staff_id, day) DO NOTHING",
            (staff_id, day, store_id, now_iso))
     return attendance(staff_id, day)
 

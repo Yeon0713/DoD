@@ -3,7 +3,7 @@ import { Platform as RNPlatform, Pressable, ScrollView, StyleSheet, TextInput, V
 
 import { Txt } from '@/components/Txt';
 import { api } from '@/lib/api';
-import { DEMO_VIEWS, DevMessage, onDev, sendDev } from '@/lib/devChannel';
+import { DEMO_VIEWS, DEV_TOOLS, DevMessage, onDev, sendDev } from '@/lib/devChannel';
 import { useSession } from '@/lib/session';
 import { colors, fonts, radius, space } from '@/theme/tokens';
 
@@ -127,7 +127,7 @@ export default function DevScreen() {
     add(`사장님 말 보냄: “${clean}”`, 'me');
   };
 
-  if (RNPlatform.OS !== 'web' || !__DEV__) {
+  if (RNPlatform.OS !== 'web' || !DEV_TOOLS) {
     return (
       <View style={styles.page}>
         <Txt variant="body">개발자 모드는 웹 개발 모드에서만 열려요.</Txt>

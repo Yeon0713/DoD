@@ -1,0 +1,39 @@
+(donna_app) {
+	tls {
+		issuer acme {
+			disable_tlsalpn_challenge
+		}
+	}
+
+	encode zstd gzip
+
+	route {
+		@blocked not remote_ip {$DONNA_STAGING_OPERATOR_CIDRS}
+		respond @blocked 403
+
+		@api path /v1 /v1/* /api /api/* /health /static /static/* /media /media/*
+		handle @api {
+			reverse_proxy 127.0.0.1:{args.0}
+		}
+
+		@expo_assets path /_expo/* /assets/* /node_modules/* /favicon.ico /metadata.json
+		handle @expo_assets {
+			root * /srv/donna/current/web
+			file_server
+		}
+
+		handle {
+			root * /srv/donna/current/web
+			header Cache-Control "no-cache"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
+
+staging.donna.ai.kr {
+	import donna_app 8100
+}
+
+# 랜딩, 시연 자리(staging.donna.ai.kr:8441 … → 백엔드 8101 …)는 install_release.sh 가 sites/ 에 둔다
+import /etc/caddy/sites/*.caddy

@@ -1,7 +1,9 @@
 // 서버와 주고받는 곳은 이 파일 하나다. 모양은 docs/v0.2.0-voice-agent-handoff.md 4 ~ 5장, 17장(v0.2.1 화면 포맷).
 import { staffSession } from './staffSession';
 
-export const BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8100').replace(/\/$/, '');
+// same-origin: 웹 페이지를 연 주소를 그대로 쓴다. staging 의 시연 자리(:8441 …)마다 다른 백엔드로 가게 (infra/README.md)
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'http://localhost:8100';
+export const BASE = (API_BASE === 'same-origin' && typeof window !== 'undefined' ? window.location.origin : API_BASE).replace(/\/$/, '');
 /** 지금 보고 있는 가게. 로그인한 계정의 가게로 바뀐다 (lib/session.tsx). 로그인 전에는 시연 가게(초옹장). */
 export const DEMO_STORE_ID = 's005';
 let currentStore = DEMO_STORE_ID;

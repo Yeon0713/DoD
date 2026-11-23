@@ -1,0 +1,24 @@
+[Unit]
+Description=DONNA staging voice backend
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=donna
+Group=donna
+WorkingDirectory=/srv/donna/current/server
+EnvironmentFile=/etc/donna/staging.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStartPre=/srv/donna/current/.venv/bin/python -m voice.postgres
+ExecStart=/srv/donna/current/.venv/bin/python -m uvicorn voice.main:app --host 127.0.0.1 --port 8100 --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/donna/shared
+
+[Install]
+WantedBy=multi-user.target

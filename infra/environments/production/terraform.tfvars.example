@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and replace the example values from the NCP console or API.
+deployment = {
+  primary_zone           = "KR-2"
+  secondary_zone         = "KR-1"
+  app_image_number       = "REPLACE_WITH_KVM_IMAGE_NUMBER"
+  app_spec_code          = "c16-g3"
+  login_key_name         = "REPLACE_WITH_EXISTING_NCP_LOGIN_KEY"
+  operator_ipv4_cidrs    = ["203.0.113.10/32"]
+  bucket_suffix          = "replace-with-unique-id"
+  db_image_product_code  = "REPLACE_WITH_DB_IMAGE_PRODUCT_CODE"
+  db_product_code        = "REPLACE_WITH_DB_SHAPE_CODE" # G3 Standard 4 vCPU / 16 GB
+  db_engine_version_code = "REPLACE_WITH_DB_ENGINE_VERSION_CODE"
+}

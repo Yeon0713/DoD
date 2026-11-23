@@ -208,48 +208,53 @@ def test_scheduled_post_waits_for_its_time(chj: Choongjang, ig_on):
     assert chj.client.get(f"/v1/instagram/posts/{post['id']}").json()["status"] == "published"
 
 
-def test_public_url_modes(monkeypatch, tmp_path):
+def test_public_url_modes(monkeypatch):
     path = media.MEDIA_DIR / "ig_0001" / "1.jpg"
-    assert media.public_url(path) == "https://media.example.test/media/ig_0001/1.jpg"
+    assert media.public_url(path, store_id="s005") == "https://media.example.test/media/ig_0001/1.jpg"
 
     monkeypatch.setattr(settings, "public_media_base_url", "")
     with pytest.raises(InstagramError):
-        media.public_url(path)
+        media.public_url(path, store_id="s005")
 
-    uploads = []
+    calls = []
+    signed = "https://kr.ncloudstorage.com/donna-media/image.jpg?X-Amz-Signature=sig"
 
     class FakeS3:
         def upload_file(self, filename, bucket, key, ExtraArgs=None):
-            uploads.append((filename, bucket, key, ExtraArgs))
+            calls.append(("upload", filename, bucket, key, ExtraArgs))
 
-    monkeypatch.setattr(settings, "media_host", "object_storage")
-    monkeypatch.setattr(settings, "ncp_object_storage_bucket", "donna-media")
+        def generate_presigned_url(self, method, *, Params, ExpiresIn):
+            calls.append(("sign", method, Params, ExpiresIn))
+            return signed
+
+    monkeypatch.setattr(settings, "media_host", "ncloud_storage")
+    monkeypatch.setattr(settings, "ncloud_storage_bucket", "donna-media")
     monkeypatch.setattr(media, "s3_client", lambda: FakeS3())
-    assert media.public_url(path) == "https://kr.object.ncloudstorage.com/donna-media/instagram/ig_0001/1.jpg"
-    assert uploads == [(str(path), "donna-media", "instagram/ig_0001/1.jpg", {"ACL": "public-read", "ContentType": "image/jpeg"})]
+    assert media.public_url(path, store_id="s005") == signed
+    key = "instagram/s005/ig_0001/1.jpg"
+    assert calls == [
+        ("upload", str(path), "donna-media", key, {"ContentType": "image/jpeg"}),
+        ("sign", "get_object", {"Bucket": "donna-media", "Key": key}, 3600),
+    ]
 
 
-def test_public_url_litterbox(monkeypatch):
-    path = media.MEDIA_DIR / "ig_0001" / "1.jpg"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(b"jpeg")
-    sent = []
-
-    def fake_post(url, data=None, files=None, timeout=None):
-        sent.append((url, data, files["fileToUpload"][0]))
-        if len(sent) == 1:
-            raise httpx.ConnectTimeout("boom")
-        return httpx.Response(200, text="https://litter.catbox.moe/abc123.jpg\n")
-
+def test_public_url_rejects_litterbox(monkeypatch):
     monkeypatch.setattr(settings, "media_host", "litterbox")
-    monkeypatch.setattr(media, "post", fake_post)
-    monkeypatch.setattr(media.time, "sleep", lambda s: None)
-    assert media.public_url(path) == "https://litter.catbox.moe/abc123.jpg"
-    assert len(sent) == 2 and sent[-1][1] == {"reqtype": "fileupload", "time": "1h"} and sent[-1][2] == "1.jpg"
+    path = media.MEDIA_DIR / "ig_0001" / "1.jpg"
+    with pytest.raises(InstagramError, match="MEDIA_HOST"):
+        media.public_url(path, store_id="s005")
 
-    monkeypatch.setattr(media, "post", lambda *a, **k: httpx.Response(412, text="error"))
-    with pytest.raises(InstagramError, match="litterbox 412"):
-        media.public_url(path)
+
+def test_signed_url_is_not_exposed_when_meta_echoes_it(monkeypatch, caplog):
+    signed = "https://kr.ncloudstorage.com/bucket/post.jpg?X-Amz-Signature=do-not-log"
+    monkeypatch.setattr(graph, "post", lambda *args, **kwargs: httpx.Response(
+        400, json={"error": {"code": 190, "message": f"Cannot fetch {signed}"}},
+    ))
+    with pytest.raises(InstagramError) as caught:
+        graph.story_container(signed)
+    assert caught.value.token_invalid is True
+    assert "do-not-log" not in str(caught.value)
+    assert "do-not-log" not in caplog.text
 
 
 def test_source_must_be_static():

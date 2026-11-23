@@ -1,0 +1,29 @@
+[Unit]
+Description=DONNA staging demo seat %i (https://staging.donna.ai.kr:844%i)
+After=network-online.target
+Wants=network-online.target
+
+# 시연 자리마다 따로 도는 음성 백엔드. 시계·알림·답글이 자리마다 따로다.
+# 데이터는 SQLite(VOICE_DATABASE_URL 비움)로 /srv/donna/seats/<자리>/ 에 두고,
+# 코드가 쓰는 shared/app_data·shared/db_data 자리에 이 자리 폴더를 겹쳐 보인다 (BindPaths).
+[Service]
+User=donna
+Group=donna
+WorkingDirectory=/srv/donna/current/server
+EnvironmentFile=/etc/donna/staging.env
+EnvironmentFile=/etc/donna/seat-%i.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/srv/donna/current/.venv/bin/python -m uvicorn voice.main:app --host 127.0.0.1 --port 810%i --workers 1 --no-access-log
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+BindPaths=/srv/donna/seats/%i/app_data:/srv/donna/shared/app_data
+BindPaths=/srv/donna/seats/%i/db_data:/srv/donna/shared/db_data
+ReadWritePaths=/srv/donna/shared /srv/donna/seats/%i
+
+[Install]
+WantedBy=multi-user.target

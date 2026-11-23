@@ -1,6 +1,6 @@
 # 감사팀이 지금 하는 일
 
-2026-11-22 · 기준: 브랜치 `feat-audit` (main 미머지)
+2026-11-22 · 기준: `main` 98dd06f (감사팀은 PR #42로 합쳐짐)
 
 감사팀은 인사과를 뺀 담당 에이전트의 결과물을 검사합니다. 불합격이면 같은 대화로 지적을 돌려줘 다시 만들게 하고(최대 2번), 끝내 불합격이면 직급에 따라 처리합니다.
 
@@ -30,15 +30,15 @@ flowchart TB
 
 | 담당 | 하는 일 | 업무 | 2차 감사 기준 (지금 연결됨) |
 | --- | --- | --- | --- |
-| `voice_reply` | 리뷰 답글 쓰기·고쳐 쓰기 | `negative_reply`, `positive_reply` | `reply_critic` 6개(보상, 고칠 점, 가게 사정, 변명, 아는 척, 상관없는 말) + 부정 답글에 교정 카드가 있으면 `card_promise`(카드 조치를 약속했나). 고쳐 쓰기일 때는 `card_promise`를 묻지 않음 |
-| `fix_card` | 아쉬운 리뷰로 알바생 교정 할 일 | `review_fix_task` | `staff_scope`(알바생이 할 수 있나) |
-| `field_tasks` | 날씨·예약 메모로 오늘 할 일 | `field_task` | 할 일마다 `staff_scope` |
-| `caption_writer` | 인스타 글·해시태그 | `instagram_post` | `caption_off`(올릴 메뉴·이야기 밖 이야기) |
+| `voice_reply` | 리뷰 답글 쓰기·고쳐 쓰기 | `negative_reply`, `positive_reply` | `reply_critic` 6개(보상, 고칠 점, 가게 사정, 변명, 아는 척, 상관없는 말). 부정 답글에 교정 카드가 있으면 + `card_promise`(카드 조치를 약속했나, 고쳐 쓰기일 때는 묻지 않음). 칭찬 답글에 올리는 날 정보가 있으면 + `occasion_claim`(올리는 날 정보와 맞지 않는 날씨·행사·계절 이야기) |
+| `fix_card` | 아쉬운 리뷰로 알바생 교정 할 일 | `review_fix_task` | `staff_scope`(알바생이 할 수 있나) → `fix_relevance`(불만이 생긴 단계를 고치나). 조치할 수 없다고 판단(`actionable=false`)하면 묻지 않음 |
+| `field_tasks` | 날씨·예약 메모로 오늘 할 일 | `field_task` | 할 일마다 `staff_scope` → `field_link`(코드가 행동을 나눠 행동마다 근거 때문에 필요한지 예·아니오) → 긴급(`today_impact`)이면 `today_need`(오늘 안 하면 손님이 바로 겪나) |
+| `manual_line` | 반복 할 일을 매일 할 일 한 줄로 | `manual_task` | `manual_added`(행동마다 반복된 할 일에 같은 일이 있나, 예·아니오) |
+| `topic_finder` | 인스타 소재 고르기 | `instagram_post` | `angle_menu`(이야기 한 줄에 고른 메뉴 밖 음식이 있나) |
+| `caption_writer` | 인스타 글·해시태그 | `instagram_post` | `caption_off`(올릴 메뉴·이야기 밖 이야기) → `store_claim`(재료·만드는 법·방송·수상 같은 사실 주장이 가게가 등록한 사실에 있나) |
 | `holiday_reader` | 네이버 휴무 안내 읽기 | (사실 확인) | 날짜마다 `holiday_says`(그 날 쉰다는 뜻인가) |
-| `manual_line` | 반복 할 일을 매일 할 일 한 줄로 | `manual_task` | 없음 (1차만) |
-| `topic_finder` | 인스타 소재 고르기 | `instagram_post` | 없음 (1차만) |
 
-새 기준 10개 중 판정 세트(기준마다 4+4건, CLOVA HCX-005 2회)에서 놓침 5%·오탐 10% 목표를 넘은 `card_promise`, `caption_off`, `holiday_says` 3개만 담당에 이었습니다. 실행 중 켜고 끄는 스위치는 없고, 목표를 못 넘은 기준은 코드에 잇지 않는 것이 규칙입니다.
+기준은 정한 순서대로 묻고 처음 걸린 기준에서 멈춥니다. 새 기준 10개는 처음 측정에서 3개만 목표(놓침 5%·오탐 10% 이하)를 넘었고, 프롬프트를 다듬어 다시 재 10개 모두 넘어 전부 담당에 이었습니다(CLOVA HCX-005, 판정 세트 기준마다 4+4건). 고칠 점(`tip_grounded`)은 `improve_tip`이 운영 길에 없어 잇지 않았습니다. 실행 중 켜고 끄는 스위치는 없고, 기준을 고친 뒤 목표를 못 넘으면 그 기준을 빼는 것이 규칙입니다(`python -m Harness.evals audit`).
 
 템플릿·규칙으로 만든 결과는 2차 감사를 하지 않습니다. 감사 질문도 담당과 같은 호출 예산(`CallBudget`)을 쓰고, 한 회차가 60초를 넘거나 예산이 모자라면 감사 못 함(`unchecked`)입니다.
 
@@ -85,9 +85,7 @@ flowchart TB
 
 ## 아직 안 된 것
 
-- `feat-audit` 브랜치를 main에 합치지 않음
-- 목표를 못 넘은 기준 7개(`occasion_claim`, `fix_relevance`, `field_link`, `today_need`, `manual_added`, `angle_menu`, `store_claim`)는 함수·질문만 있고 담당에 잇지 않음. `tip_grounded`는 `improve_tip`이 운영 길에 없어 적기만 함
-- 판정 세트가 기준마다 4+4건 초안이라 계획(기준마다 6~10건)보다 적고 팀 검토 전
+- 판정 세트가 기준마다 4+4건 초안이라 계획(기준마다 6~10건)보다 적고 팀 검토 전. 같은 세트로 프롬프트를 다듬고 같은 세트로 쟀으므로 세트에 맞춘 효과가 섞여 있을 수 있음. 세트를 늘리거나 떼어 둔 사례로 다시 재야 함
 - 기준선 측정(기존 거절 수, 질문 하나 시간)과 시연 가게 감사 켬·끔 전체 비교를 하지 않음. 영업 중 알림이 최악 1~2분 늦어진다는 것은 추정
 - 시연 저장본(`prepared_snapshot`)을 다시 만들지 않음
 - 앱에서 "다시 써"를 직접 해 보는 확인을 하지 않음

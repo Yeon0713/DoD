@@ -5,7 +5,7 @@ import { Platform as RNPlatform, Pressable, ScrollView, StyleSheet, View } from 
 import { Icon } from '@/components/Icon';
 import { Txt } from '@/components/Txt';
 import { api, Platform } from '@/lib/api';
-import { DEMO_VIEWS, DemoView, onDev } from '@/lib/devChannel';
+import { DEMO_VIEWS, DEV_TOOLS, DemoView, onDev } from '@/lib/devChannel';
 import { useSession } from '@/lib/session';
 import { staffSession } from '@/lib/staffSession';
 import { colors, radius, space } from '@/theme/tokens';
@@ -77,7 +77,7 @@ export default function DemoScreen() {
     return () => clearInterval(id);
   }, [loadPlatform, round]);
 
-  if (RNPlatform.OS !== 'web' || !__DEV__) {
+  if (RNPlatform.OS !== 'web' || !DEV_TOOLS) {
     return (
       <View style={styles.page}>
         <Txt variant="body">시연 화면은 웹 개발 모드에서만 열려요.</Txt>

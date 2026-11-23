@@ -3,7 +3,7 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { Platform } from 'react-native';
 
 import { api, Home, Notice, Turn } from './api';
-import { onDev, sendDev } from './devChannel';
+import { DEV_TOOLS, onDev, sendDev } from './devChannel';
 import { useSession } from './session';
 import { voice } from './voice';
 
@@ -393,7 +393,7 @@ export function ConversationProvider({ children }: { children: ReactNode }) {
 
   // 개발할 때 말을 대신 넣는 길. 마이크로 들은 말과 같은 길을 탄다 (웹 콘솔에서 __donna.say('도나야, 오늘 일정 브리핑해 줘')).
   useEffect(() => {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || !__DEV__) return;
+    if (Platform.OS !== 'web' || typeof window === 'undefined' || !DEV_TOOLS) return;
     (window as any).__donna = { say: (text: string) => hearRef.current(text, 0.9), reset };
   }, [reset]);
   // 다른 탭의 개발자 모드(/dev)가 보낸 사장님 말. 위의 __donna.say 와 같은 길이다 (lib/devChannel.ts)

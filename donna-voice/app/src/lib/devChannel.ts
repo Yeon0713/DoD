@@ -25,7 +25,9 @@ export type DevMessage =
   | { type: 'turn'; said: string | null; headline: string | null; kind: string; intent: string; say: string[] };
 
 const NAME = 'donna-dev';
-const usable = () => Platform.OS === 'web' && __DEV__ && typeof BroadcastChannel !== 'undefined';
+/** 시연·개발자 화면(/demo, /dev)을 켤지. 개발 모드이거나, 빌드할 때 EXPO_PUBLIC_DEV_TOOLS=true 를 넣었을 때 (staging) */
+export const DEV_TOOLS = __DEV__ || process.env.EXPO_PUBLIC_DEV_TOOLS === 'true';
+const usable = () => Platform.OS === 'web' && DEV_TOOLS && typeof BroadcastChannel !== 'undefined';
 
 export function sendDev(message: DevMessage) {
   if (!usable()) return;

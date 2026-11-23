@@ -72,8 +72,13 @@ def _call(method: str, path: str, params: dict) -> dict:
         body = {}
     if response.status_code != 200 or "error" in body:
         error = body.get("error") or {}
-        logger.warning("Instagram %s %s → %s %s", method, path, response.status_code, response.text[:300])
-        raise InstagramError(error.get("message") or f"HTTP {response.status_code}", error.get("code"))
+        code = error.get("code")
+        logger.warning("Instagram %s %s → HTTP %s, code %s", method, path, response.status_code, code)
+        message = error.get("message") or f"HTTP {response.status_code}"
+        if "image_url" in params or "x-amz-" in message.lower():
+            # Meta가 실패한 image_url을 반사해도 서명 URL을 로그나 게시 기록에 남기지 않는다.
+            message = f"인스타가 사진을 받지 못했어요 (HTTP {response.status_code})"
+        raise InstagramError(message, code)
     return body
 
 

@@ -1,4 +1,4 @@
-"""음성 백엔드 저장소 (sqlite, db/app_data/voice.db).
+"""음성 백엔드 저장소 (PostgreSQL 배포, SQLite 로컬 개발).
 
 종류(kind)마다 문서 8장 모양의 JSON 을 한 줄씩 둔다. 목업 단계라 표를 잘게 나누지 않았다.
   store        가게 (menus, facts, open_time, close_time, closed_weekdays, location 포함.
@@ -22,6 +22,7 @@
 import json
 import sqlite3
 import threading
+from contextlib import contextmanager
 from pathlib import Path
 
 from voice import config
@@ -64,7 +65,7 @@ def _path() -> Path:
     return config.DB_PATH
 
 
-def _db() -> sqlite3.Connection:
+def _sqlite() -> sqlite3.Connection:
     path = _path()
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -78,11 +79,44 @@ def _db() -> sqlite3.Connection:
     return conn
 
 
-def connect() -> sqlite3.Connection:
-    """알바생 표를 읽고 쓸 연결 (voice/staff_db.py). 줄을 이름으로 꺼낼 수 있게 한다. 쓸 때는 lock() 안에서."""
-    conn = _db()
-    conn.row_factory = sqlite3.Row
-    return conn
+@contextmanager
+def _db(*, named: bool = False):
+    if config.DATABASE_URL:
+        from voice import postgres
+
+        with postgres.connect(named=named) as conn:
+            yield conn
+        return
+
+    conn = _sqlite()
+    if named:
+        conn.row_factory = sqlite3.Row
+    try:
+        with conn:
+            yield conn
+    finally:
+        conn.close()
+
+
+def connect():
+    """알바생 표를 이름으로 읽고 쓴다."""
+    return _db(named=True)
+
+
+def upsert(table: str, columns: tuple[str, ...], keys: tuple[str, ...], *, ordered: bool = False) -> str:
+    """기존 행 교체 의미를 유지하고 PostgreSQL에서 충돌 대상을 명시한다."""
+    placeholders = ", ".join("CAST(? AS jsonb)" if table == "docs" and name == "data" and config.DATABASE_URL else "?" for name in columns)
+    values = f"{table} ({', '.join(columns)}) VALUES ({placeholders})"
+    if not config.DATABASE_URL:
+        return f"INSERT OR REPLACE INTO {values}"
+    updates = [f"{name} = excluded.{name}" for name in columns if name not in keys]
+    if ordered:
+        updates.append("rowid = DEFAULT")
+    return f"INSERT INTO {values} ON CONFLICT ({', '.join(keys)}) DO UPDATE SET {', '.join(updates)}"
+
+
+def _json(value):
+    return json.loads(value) if isinstance(value, str) else value
 
 
 def lock() -> threading.RLock:
@@ -92,7 +126,7 @@ def lock() -> threading.RLock:
 def put(kind: str, doc_id: str, store_id: str | None, data: dict) -> dict:
     with _lock, _db() as conn:
         conn.execute(
-            "INSERT OR REPLACE INTO docs (kind, id, store_id, data) VALUES (?, ?, ?, ?)",
+            upsert("docs", ("kind", "id", "store_id", "data"), ("kind", "id"), ordered=True),
             (kind, doc_id, store_id, json.dumps(data, ensure_ascii=False)),
         )
     return data
@@ -101,13 +135,13 @@ def put(kind: str, doc_id: str, store_id: str | None, data: dict) -> dict:
 def get(kind: str, doc_id: str) -> dict | None:
     with _lock, _db() as conn:
         row = conn.execute("SELECT data FROM docs WHERE kind = ? AND id = ?", (kind, doc_id)).fetchone()
-    return json.loads(row[0]) if row else None
+    return _json(row[0]) if row else None
 
 
 def all_of(kind: str, store_id: str) -> list[dict]:
     with _lock, _db() as conn:
         rows = conn.execute("SELECT data FROM docs WHERE kind = ? AND store_id = ? ORDER BY rowid", (kind, store_id)).fetchall()
-    return [json.loads(row[0]) for row in rows]
+    return [_json(row[0]) for row in rows]
 
 
 def store_ids() -> list[str]:
@@ -120,7 +154,7 @@ def kinds_of(store_id: str) -> dict[str, list[dict]]:
         rows = conn.execute("SELECT kind, data FROM docs WHERE store_id = ? ORDER BY rowid", (store_id,)).fetchall()
     result: dict[str, list[dict]] = {}
     for kind, data in rows:
-        result.setdefault(kind, []).append(json.loads(data))
+        result.setdefault(kind, []).append(_json(data))
     return result
 
 
@@ -135,12 +169,12 @@ def store_docs(store_id: str) -> list[dict]:
     """한 가게의 모든 문서 {kind, id, data} (넣은 순서대로). 밤사이 준비 결과를 저장할 때 (voice/prepared_snapshot.py)."""
     with _lock, _db() as conn:
         rows = conn.execute("SELECT kind, id, data FROM docs WHERE store_id = ? ORDER BY rowid", (store_id,)).fetchall()
-    return [{"kind": kind, "id": doc_id, "data": json.loads(data)} for kind, doc_id, data in rows]
+    return [{"kind": kind, "id": doc_id, "data": _json(data)} for kind, doc_id, data in rows]
 
 
 def put_many(store_id: str, docs: list[dict]) -> None:
     with _lock, _db() as conn:
-        conn.executemany("INSERT OR REPLACE INTO docs (kind, id, store_id, data) VALUES (?, ?, ?, ?)",
+        conn.executemany(upsert("docs", ("kind", "id", "store_id", "data"), ("kind", "id"), ordered=True),
                          [(d["kind"], d["id"], store_id, json.dumps(d["data"], ensure_ascii=False)) for d in docs])
 
 
@@ -153,15 +187,21 @@ def counters_of(store_id: str) -> dict[str, int]:
 
 def set_counters(values: dict[str, int]) -> None:
     with _lock, _db() as conn:
-        conn.executemany("INSERT OR REPLACE INTO counters (name, value) VALUES (?, ?)", list(values.items()))
+        conn.executemany(upsert("counters", ("name", "value"), ("name",)), list(values.items()))
 
 
 def next_number(name: str) -> int:
     """이름마다 1 부터 올라가는 번호 (리뷰 id, turn id 등)."""
     with _lock, _db() as conn:
+        if config.DATABASE_URL:
+            return conn.execute(
+                "INSERT INTO counters (name, value) VALUES (?, 1) "
+                "ON CONFLICT (name) DO UPDATE SET value = counters.value + 1 RETURNING value",
+                (name,),
+            ).fetchone()[0]
         row = conn.execute("SELECT value FROM counters WHERE name = ?", (name,)).fetchone()
         value = (row[0] if row else 0) + 1
-        conn.execute("INSERT OR REPLACE INTO counters (name, value) VALUES (?, ?)", (name, value))
+        conn.execute(upsert("counters", ("name", "value"), ("name",)), (name, value))
     return value
 
 
